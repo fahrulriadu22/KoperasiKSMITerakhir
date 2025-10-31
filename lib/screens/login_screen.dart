@@ -19,7 +19,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscureText = true;
 
-  // ✅ FIX: Tambahkan async/await dan handle Future
   void _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -29,18 +28,26 @@ class _LoginScreenState extends State<LoginScreen> {
     final pass = passwordController.text.trim();
 
     try {
-      // ✅ FIX: Tambahkan await karena login() return Future
-      final user = await _authService.login(input, pass);
+      // ✅ FIX: Sekarang login() return Map<String, dynamic>
+      final result = await _authService.login(input, pass);
 
-      if (user != null) {
+      if (result['success'] == true) {
         if (!mounted) return;
         
-        // ✅ FIX: user sudah Map, tidak perlu konversi lagi
-        final bool sudahUploadKTP = user['ktpPath'] != null && user['ktpPath'].isNotEmpty;
-        final bool sudahUploadKK = user['kkPath'] != null && user['kkPath'].isNotEmpty;
+        final user = result['user'];
+        
+        // ✅ CEK APAKAH SUDAH UPLOAD DOKUMEN (sesuaikan dengan field dari API)
+        final bool sudahUploadKTP = user['foto_ktp'] != null && user['foto_ktp'].isNotEmpty;
+        final bool sudahUploadKK = user['foto_kk'] != null && user['foto_kk'].isNotEmpty;
+        final bool sudahUploadDiri = user['foto_diri'] != null && user['foto_diri'].isNotEmpty;
 
-        if (sudahUploadKTP && sudahUploadKK) {
-          // ✅ SUDAH UPLOAD, LANGSUNG KE DASHBOARD
+        print('🔍 Status Upload Dokumen:');
+        print('   - KTP: $sudahUploadKTP');
+        print('   - KK: $sudahUploadKK');
+        print('   - Foto Diri: $sudahUploadDiri');
+
+        if (sudahUploadKTP && sudahUploadKK && sudahUploadDiri) {
+          // ✅ SUDAH UPLOAD SEMUA DOKUMEN, LANGSUNG KE DASHBOARD
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => DashboardMain(user: user)),
@@ -53,9 +60,10 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         }
       } else {
-        _showErrorDialog('Username/Email atau Password salah.');
+        _showErrorDialog(result['message'] ?? 'Login gagal. Silakan coba lagi.');
       }
     } catch (e) {
+      print('❌ Login error: $e');
       _showErrorDialog('Terjadi kesalahan saat login: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -76,6 +84,14 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       ),
     );
+  }
+
+  // ✅ TEST LOGIN FUNCTION (untuk debugging)
+  void _testLogin() async {
+    // Test dengan credential default
+    inputController.text = 'sonik';
+    passwordController.text = 'sonik';
+    _handleLogin();
   }
 
   @override
@@ -238,6 +254,26 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                     ),
                   ),
+
+                  // ✅ TOMBOL TEST LOGIN (Hanya untuk development)
+                  if (true) // Set false untuk production
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 40,
+                      child: OutlinedButton(
+                        onPressed: _isLoading ? null : _testLogin,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.green[700],
+                          side: BorderSide(color: Colors.green[700]!),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text(
+                          'Test Login (sonik/sonik)',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 16),
 
                   // ✅ TOMBOL REGISTER

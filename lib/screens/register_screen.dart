@@ -10,87 +10,138 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
+  
+  // ✅ STATE UNTUK STEP-BY-STEP REGISTER
+  int _currentStep = 0;
+  final List<GlobalKey<FormState>> _formKeys = [
+    GlobalKey<FormState>(),
+    GlobalKey<FormState>(),
+    GlobalKey<FormState>(),
+    GlobalKey<FormState>(),
+    GlobalKey<FormState>(),
+  ];
 
-  // ✅ CONTROLLERS SESUAI DENGAN API REGISTER
+  // ✅ CONTROLLERS
+  // Data Umum
   final TextEditingController usernameController = TextEditingController();
+  final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController confirmPasswordController = TextEditingController();
-  final TextEditingController emailController = TextEditingController();
   final TextEditingController fullnameController = TextEditingController();
+  final TextEditingController birthPlaceController = TextEditingController();
   final TextEditingController faxController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController jobController = TextEditingController();
-  final TextEditingController birthPlaceController = TextEditingController();
-  final TextEditingController birthDateController = TextEditingController();
-  final TextEditingController agamaIdController = TextEditingController(text: "1");
-  final TextEditingController cabangIdController = TextEditingController(text: "1");
+  DateTime? _selectedBirthDate;
+
+  // Identitas
+  final TextEditingController agamaIdController = TextEditingController();
+  final TextEditingController cabangIdController = TextEditingController();
   final TextEditingController jenisIdentitasController = TextEditingController(text: "KTP");
-  final TextEditingController tanggalBerlakuController = TextEditingController(text: "2025-12-31");
   final TextEditingController nomorIdentitasController = TextEditingController();
-  final TextEditingController sumberInformasiController = TextEditingController(text: "Teman");
+  final TextEditingController sumberInformasiController = TextEditingController();
+  DateTime? _selectedTanggalBerlaku;
+
+  // Data KTP
   final TextEditingController ktpAlamatController = TextEditingController();
+  final TextEditingController ktpNoController = TextEditingController();
   final TextEditingController ktpRtController = TextEditingController();
   final TextEditingController ktpRwController = TextEditingController();
-  final TextEditingController ktpIdProvinceController = TextEditingController(text: "35");
-  final TextEditingController ktpIdRegencyController = TextEditingController();
   final TextEditingController ktpPostalController = TextEditingController();
-  final TextEditingController ktpNoController = TextEditingController();
+  String? _selectedProvinsiKtp;
+  String? _selectedKotaKtp;
+
+  // Data Domisili
   final TextEditingController domisiliAlamatController = TextEditingController();
+  final TextEditingController domisiliNoController = TextEditingController();
   final TextEditingController domisiliRtController = TextEditingController();
   final TextEditingController domisiliRwController = TextEditingController();
-  final TextEditingController domisiliIdRegencyController = TextEditingController();
   final TextEditingController domisiliPostalController = TextEditingController();
-  final TextEditingController domisiliNoController = TextEditingController();
+  String? _selectedProvinsiDomisili;
+  String? _selectedKotaDomisili;
+  bool _sameAsKtp = false;
+
+  // Data Ahli Waris
   final TextEditingController namaAhliWarisController = TextEditingController();
   final TextEditingController tempatLahirAhliWarisController = TextEditingController();
-  final TextEditingController tanggalLahirAhliWarisController = TextEditingController();
   final TextEditingController hubunganController = TextEditingController(text: "Orang Tua");
+  DateTime? _selectedTanggalLahirAhliWaris;
+
+  // ✅ DATA MASTER (akan diisi dari API)
+  List<dynamic> _provinsiList = [];
+  List<dynamic> _kotaListKtp = [];
+  List<dynamic> _kotaListDomisili = [];
+  List<dynamic> _agamaList = [];
+  List<dynamic> _cabangList = [];
+  List<dynamic> _sumberInfoList = [
+    {'id': '1', 'nama': 'Teman/Keluarga'},
+    {'id': '2', 'nama': 'Media Sosial'},
+    {'id': '3', 'nama': 'Iklan'},
+    {'id': '4', 'nama': 'Event'},
+    {'id': '5', 'nama': 'Lainnya'},
+  ];
 
   bool _isLoading = false;
   bool _obscureText = true;
   bool _obscureConfirmText = true;
-  DateTime? _selectedDate;
-  DateTime? _selectedTanggalBerlaku;
-  DateTime? _selectedTanggalLahirAhliWaris;
 
-  String? _selectedProvinsi;
-  String? _selectedKota;
-  String? _selectedDomisiliKota;
+  @override
+  void initState() {
+    super.initState();
+    _loadMasterData();
+  }
 
-  // ✅ Daftar provinsi dan kota di Indonesia
-  final Map<String, List<String>> _provinsiKotaMap = {
-    '35': [
-      'Jakarta Pusat',
-      'Jakarta Utara', 
-      'Jakarta Barat',
-      'Jakarta Selatan',
-      'Jakarta Timur',
-    ],
-    '32': [
-      'Bandung',
-      'Bekasi',
-      'Bogor',
-    ],
-    '33': [
-      'Semarang',
-      'Surakarta',
-    ],
-  };
+  // ✅ LOAD DATA PROVINSI, AGAMA, CABANG DARI API
+  Future<void> _loadMasterData() async {
+    try {
+      // Load provinsi
+      final provinsiResult = await _apiService.getProvince();
+      if (provinsiResult['success'] == true) {
+        setState(() {
+          _provinsiList = provinsiResult['data'] ?? [];
+        });
+      }
 
-  List<String> get _provinsiList => _provinsiKotaMap.keys.toList();
-  List<String> get _kotaList => _selectedProvinsi != null 
-      ? _provinsiKotaMap[_selectedProvinsi]! 
-      : [];
+      // Load master data untuk agama dan cabang
+      final masterResult = await _apiService.getMasterData();
+      if (masterResult['success'] == true) {
+        setState(() {
+          _agamaList = masterResult['data']['agama'] ?? [];
+          _cabangList = masterResult['data']['cabang'] ?? [];
+        });
+      }
+    } catch (e) {
+      print('Error loading master data: $e');
+    }
+  }
 
+  // ✅ LOAD KOTA BERDASARKAN PROVINSI
+  Future<void> _loadKota(String idProvinsi, bool forKtp) async {
+    try {
+      final result = await _apiService.getRegency(idProvinsi);
+      if (result['success'] == true) {
+        setState(() {
+          if (forKtp) {
+            _kotaListKtp = result['data'] ?? [];
+          } else {
+            _kotaListDomisili = result['data'] ?? [];
+          }
+        });
+      }
+    } catch (e) {
+      print('Error loading kota: $e');
+    }
+  }
+
+  // ✅ HANDLE REGISTER
   void _handleRegister() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_validateAllForms()) return;
 
     setState(() => _isLoading = true);
 
     try {
-      // ✅ CHECK USER EXIST FIRST
+      // Check user exist
       final checkResult = await _apiService.checkUserExist(
         usernameController.text.trim(),
         emailController.text.trim(),
@@ -102,8 +153,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         return;
       }
 
-      // ✅ PREPARE REGISTER DATA
+      // Prepare register data
       final userData = {
+        // Data Umum
         'username': usernameController.text.trim(),
         'password': passwordController.text.trim(),
         'email': emailController.text.trim(),
@@ -112,9 +164,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         'phone': phoneController.text.trim(),
         'job': jobController.text.trim().isEmpty ? "Karyawan Swasta" : jobController.text.trim(),
         'birth_place': birthPlaceController.text.trim(),
-        'birth_date': _selectedDate != null 
-            ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}' 
+        'birth_date': _selectedBirthDate != null 
+            ? '${_selectedBirthDate!.year}-${_selectedBirthDate!.month.toString().padLeft(2, '0')}-${_selectedBirthDate!.day.toString().padLeft(2, '0')}' 
             : '2000-01-01',
+
+        // Identitas
         'agama_id': agamaIdController.text.trim(),
         'cabang_id': cabangIdController.text.trim(),
         'jenis_identitas': jenisIdentitasController.text.trim(),
@@ -123,19 +177,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
             : '2025-12-31',
         'nomor_identitas': nomorIdentitasController.text.trim(),
         'sumber_informasi': sumberInformasiController.text.trim(),
+
+        // Data KTP
         'ktp_alamat': ktpAlamatController.text.trim(),
         'ktp_rt': ktpRtController.text.trim().isEmpty ? "001" : ktpRtController.text.trim(),
         'ktp_rw': ktpRwController.text.trim().isEmpty ? "001" : ktpRwController.text.trim(),
-        'ktp_id_province': ktpIdProvinceController.text.trim(),
-        'ktp_id_regency': ktpIdRegencyController.text.trim().isEmpty ? "3578" : ktpIdRegencyController.text.trim(),
+        'ktp_id_province': _selectedProvinsiKtp ?? "35",
+        'ktp_id_regency': _selectedKotaKtp ?? "3578",
         'ktp_postal': ktpPostalController.text.trim().isEmpty ? "60111" : ktpPostalController.text.trim(),
         'ktp_no': ktpNoController.text.trim().isEmpty ? "01" : ktpNoController.text.trim(),
-        'domisili_alamat': domisiliAlamatController.text.trim().isEmpty ? ktpAlamatController.text.trim() : domisiliAlamatController.text.trim(),
-        'domisili_rt': domisiliRtController.text.trim().isEmpty ? ktpRtController.text.trim() : domisiliRtController.text.trim(),
-        'domisili_rw': domisiliRwController.text.trim().isEmpty ? ktpRwController.text.trim() : domisiliRwController.text.trim(),
-        'domisili_id_regency': domisiliIdRegencyController.text.trim().isEmpty ? ktpIdRegencyController.text.trim() : domisiliIdRegencyController.text.trim(),
-        'domisili_postal': domisiliPostalController.text.trim().isEmpty ? ktpPostalController.text.trim() : domisiliPostalController.text.trim(),
-        'domisili_no': domisiliNoController.text.trim().isEmpty ? ktpNoController.text.trim() : domisiliNoController.text.trim(),
+
+        // Data Domisili
+        'domisili_alamat': _sameAsKtp ? ktpAlamatController.text.trim() : domisiliAlamatController.text.trim(),
+        'domisili_rt': _sameAsKtp ? ktpRtController.text.trim() : domisiliRtController.text.trim(),
+        'domisili_rw': _sameAsKtp ? ktpRwController.text.trim() : domisiliRwController.text.trim(),
+        'domisili_id_regency': _sameAsKtp ? (_selectedKotaKtp ?? "3578") : (_selectedKotaDomisili ?? "3578"),
+        'domisili_postal': _sameAsKtp ? ktpPostalController.text.trim() : domisiliPostalController.text.trim(),
+        'domisili_no': _sameAsKtp ? ktpNoController.text.trim() : domisiliNoController.text.trim(),
+
+        // Data Ahli Waris
         'nama_ahli_waris': namaAhliWarisController.text.trim().isEmpty ? fullnameController.text.trim() : namaAhliWarisController.text.trim(),
         'tempat_lahir_ahli_waris': tempatLahirAhliWarisController.text.trim().isEmpty ? birthPlaceController.text.trim() : tempatLahirAhliWarisController.text.trim(),
         'tanggal_lahir_ahli_waris': _selectedTanggalLahirAhliWaris != null
@@ -144,7 +204,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         'hubungan': hubunganController.text.trim(),
       };
 
-      // ✅ CALL REGISTER API
+      // Call register API
       final result = await _apiService.register(userData);
 
       setState(() => _isLoading = false);
@@ -152,7 +212,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
 
       if (result['success'] == true) {
-        _showSuccessDialog(result['message']); // ✅ PERBAIKAN: Panggil dengan parameter
+        _showSuccessDialog(result['message']);
       } else {
         _showErrorDialog(result['message'] ?? 'Registrasi gagal. Silakan coba lagi.');
       }
@@ -162,13 +222,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  // ✅ PERBAIKAN: Method _showSuccessDialog yang menerima parameter
-  void _showSuccessDialog([String? message]) {
+  bool _validateAllForms() {
+    for (int i = 0; i < _formKeys.length; i++) {
+      if (!_formKeys[i].currentState!.validate()) {
+        setState(() => _currentStep = i);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void _showSuccessDialog(String message) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Pendaftaran Berhasil 🎉'),
-        content: Text(message ?? 'Akun Anda telah berhasil dibuat. Silakan login untuk melanjutkan.'),
+        content: Text(message),
         actions: [
           TextButton(
             onPressed: () {
@@ -201,13 +270,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ✅ DATE PICKER METHODS
   Future<void> _selectDate(Function(DateTime) onDateSelected, DateTime? initialDate) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: initialDate ?? DateTime.now().subtract(const Duration(days: 365 * 18)),
+      initialDate: initialDate ?? DateTime.now(),
       firstDate: DateTime(1900),
-      lastDate: DateTime.now(),
+      lastDate: DateTime(2100),
     );
     if (picked != null) {
       onDateSelected(picked);
@@ -262,289 +330,547 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.green[50],
-      appBar: AppBar(
-        title: const Text('Daftar Anggota'),
-        backgroundColor: Colors.green[800],
-        foregroundColor: Colors.white,
+  // ✅ STEP CONTENT
+  Widget _buildStepContent(int step) {
+    switch (step) {
+      case 0:
+        return _buildInfoStep();
+      case 1:
+        return _buildDataUmumStep();
+      case 2:
+        return _buildIdentitasStep();
+      case 3:
+        return _buildDataKtpStep();
+      case 4:
+        return _buildDataDomisiliStep();
+      case 5:
+        return _buildDataAhliWarisStep();
+      default:
+        return Container();
+    }
+  }
+
+  // ✅ STEP 0: INFORMASI KOPERASI
+  Widget _buildInfoStep() {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildInfoCard(
+            'Profil Koperasi KSMI',
+            'Koperasi Serba Usaha KSMI adalah koperasi yang berfokus pada pemberdayaan anggota melalui berbagai layanan keuangan dan non-keuangan yang berkualitas.',
+            Icons.business,
+          ),
+          const SizedBox(height: 16),
+          _buildInfoCard(
+            'Visi',
+            'Menjadi koperasi terdepan dalam meningkatkan kesejahteraan anggota melalui layanan yang profesional dan inovatif.',
+            Icons.visibility,
+          ),
+          const SizedBox(height: 16),
+          _buildInfoCard(
+            'Misi',
+            '1. Memberikan layanan keuangan yang terjangkau\n2. Meningkatkan kapasitas usaha anggota\n3. Mengembangkan jaringan kemitraan yang strategis\n4. Menerapkan prinsip tata kelola yang baik',
+            Icons.flag,
+          ),
+          const SizedBox(height: 16),
+          _buildInfoCard(
+            'Manfaat Bergabung',
+            '• Akses pinjaman dengan bunga kompetitif\n• Bagi hasil dari usaha koperasi\n• Pelatihan dan pengembangan usaha\n• Jaringan bisnis yang luas\n• Layanan konsultasi keuangan',
+            Icons.emoji_events,
+          ),
+          const SizedBox(height: 16),
+          _buildInfoCard(
+            'Manfaat Anggota',
+            '• Hak suara dalam Rapat Anggota\n• Hak mendapatkan pembagian SHU\n• Akses terhadap semua produk koperasi\n• Perlindungan asuransi\n• Program kesejahteraan anggota',
+            Icons.people,
+          ),
+          const SizedBox(height: 24),
+          CheckboxListTile(
+            title: const Text(
+              'Saya telah membaca dan menyetujui semua ketentuan yang berlaku',
+              style: TextStyle(fontSize: 14),
+            ),
+            value: _currentStep > 0, // Auto set true setelah step 0
+            onChanged: (value) {
+              if (value == true) {
+                setState(() => _currentStep = 1);
+              }
+            },
+            controlAffinity: ListTileControlAffinity.leading,
+          ),
+        ],
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    );
+  }
+
+  Widget _buildInfoCard(String title, String content, IconData icon) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                // ✅ SECTION: DATA LOGIN
-                _buildSectionHeader('Data Login'),
-                _buildTextField(
-                  controller: usernameController,
-                  label: 'Username *',
-                  icon: Icons.person_outline,
-                  validator: (v) => _validateRequired(v, 'Username'),
-                  hintText: 'min. 4 karakter',
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: emailController,
-                  label: 'Email *',
-                  icon: Icons.email_outlined,
-                  keyboardType: TextInputType.emailAddress,
-                  validator: _validateEmail,
-                ),
-                const SizedBox(height: 16),
-                _buildPasswordField(
-                  controller: passwordController,
-                  label: 'Password *',
-                  obscureText: _obscureText,
-                  onToggle: () => setState(() => _obscureText = !_obscureText),
-                  validator: _validatePassword,
-                ),
-                const SizedBox(height: 16),
-                _buildPasswordField(
-                  controller: confirmPasswordController,
-                  label: 'Konfirmasi Password *',
-                  obscureText: _obscureConfirmText,
-                  onToggle: () => setState(() => _obscureConfirmText = !_obscureConfirmText),
-                  validator: _validateConfirmPassword,
-                ),
-
-                const SizedBox(height: 24),
-
-                // ✅ SECTION: DATA PRIBADI
-                _buildSectionHeader('Data Pribadi'),
-                _buildTextField(
-                  controller: fullnameController,
-                  label: 'Nama Lengkap *',
-                  icon: Icons.badge_outlined,
-                  validator: (v) => _validateRequired(v, 'Nama lengkap'),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildTextField(
-                        controller: birthPlaceController,
-                        label: 'Tempat Lahir *',
-                        icon: Icons.place_outlined,
-                        validator: (v) => _validateRequired(v, 'Tempat lahir'),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildDateField(
-                        label: 'Tanggal Lahir *',
-                        value: _selectedDate,
-                        onTap: () => _selectDate((date) {
-                          setState(() => _selectedDate = date);
-                        }, DateTime.now().subtract(const Duration(days: 365 * 18))),
-                        validator: (v) => _selectedDate == null ? 'Tanggal lahir wajib diisi' : null,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: phoneController,
-                  label: 'No. Telepon *',
-                  icon: Icons.phone_outlined,
-                  keyboardType: TextInputType.phone,
-                  validator: _validatePhone,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: jobController,
-                  label: 'Pekerjaan *',
-                  icon: Icons.work_outline,
-                  validator: (v) => _validateRequired(v, 'Pekerjaan'),
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: faxController,
-                  label: 'Fax',
-                  icon: Icons.fax_outlined,
-                  keyboardType: TextInputType.phone,
-                ),
-
-                const SizedBox(height: 24),
-
-                // ✅ SECTION: DATA KTP
-                _buildSectionHeader('Data Identitas (KTP)'),
-                _buildTextField(
-                  controller: nomorIdentitasController,
-                  label: 'Nomor KTP *',
-                  icon: Icons.credit_card_outlined,
-                  keyboardType: TextInputType.number,
-                  validator: (v) => _validateRequired(v, 'Nomor KTP'),
-                ),
-                const SizedBox(height: 16),
-                _buildDateField(
-                  label: 'Tanggal Berlaku KTP',
-                  value: _selectedTanggalBerlaku,
-                  onTap: () => _selectDate((date) {
-                    setState(() => _selectedTanggalBerlaku = date);
-                  }, DateTime.now().add(const Duration(days: 365 * 5))),
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: ktpAlamatController,
-                  label: 'Alamat KTP *',
-                  icon: Icons.home_outlined,
-                  maxLines: 2,
-                  validator: (v) => _validateRequired(v, 'Alamat KTP'),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildTextField(
-                        controller: ktpRtController,
-                        label: 'RT *',
-                        icon: Icons.numbers_outlined,
-                        keyboardType: TextInputType.number,
-                        validator: (v) => _validateRequired(v, 'RT'),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildTextField(
-                        controller: ktpRwController,
-                        label: 'RW *',
-                        icon: Icons.numbers_outlined,
-                        keyboardType: TextInputType.number,
-                        validator: (v) => _validateRequired(v, 'RW'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: ktpNoController,
-                  label: 'No. Rumah *',
-                  icon: Icons.house_outlined,
-                  validator: (v) => _validateRequired(v, 'No. Rumah'),
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: ktpPostalController,
-                  label: 'Kode Pos *',
-                  icon: Icons.markunread_mailbox_outlined,
-                  keyboardType: TextInputType.number,
-                  validator: (v) => _validateRequired(v, 'Kode Pos'),
-                ),
-
-                const SizedBox(height: 24),
-
-                // ✅ SECTION: DATA AHLI WARIS
-                _buildSectionHeader('Data Ahli Waris'),
-                _buildTextField(
-                  controller: namaAhliWarisController,
-                  label: 'Nama Ahli Waris *',
-                  icon: Icons.person_outlined,
-                  validator: (v) => _validateRequired(v, 'Nama ahli waris'),
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  controller: tempatLahirAhliWarisController,
-                  label: 'Tempat Lahir Ahli Waris *',
-                  icon: Icons.place_outlined,
-                  validator: (v) => _validateRequired(v, 'Tempat lahir ahli waris'),
-                ),
-                const SizedBox(height: 16),
-                _buildDateField(
-                  label: 'Tanggal Lahir Ahli Waris *',
-                  value: _selectedTanggalLahirAhliWaris,
-                  onTap: () => _selectDate((date) {
-                    setState(() => _selectedTanggalLahirAhliWaris = date);
-                  }, DateTime.now().subtract(const Duration(days: 365 * 18))),
-                  validator: (v) => _selectedTanggalLahirAhliWaris == null ? 'Tanggal lahir ahli waris wajib diisi' : null,
-                ),
-
-                const SizedBox(height: 32),
-
-                // ✅ TOMBOL REGISTER
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _handleRegister,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green[800],
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : const Text(
-                            'DAFTAR SEKARANG',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
+                Icon(icon, color: Colors.green[800]),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green[800],
                   ),
                 ),
-
-                const SizedBox(height: 16),
-
-                // ✅ LINK KE LOGIN
-                Center(
-                  child: TextButton(
-                    onPressed: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      );
-                    },
-                    child: const Text(
-                      'Sudah punya akun? Login di sini',
-                      style: TextStyle(color: Colors.black54),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
               ],
             ),
-          ),
+            const SizedBox(height: 8),
+            Text(
+              content,
+              style: const TextStyle(fontSize: 14, height: 1.5),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+
+  // ✅ STEP 1: DATA UMUM
+  Widget _buildDataUmumStep() {
+    return Form(
+      key: _formKeys[0],
+      child: Column(
+        children: [
+          _buildTextField(
+            controller: usernameController,
+            label: 'Username *',
+            icon: Icons.person_outline,
+            validator: (v) => _validateRequired(v, 'Username'),
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: emailController,
+            label: 'Email *',
+            icon: Icons.email_outlined,
+            keyboardType: TextInputType.emailAddress,
+            validator: _validateEmail,
+          ),
+          const SizedBox(height: 16),
+          _buildPasswordField(
+            controller: passwordController,
+            label: 'Password *',
+            obscureText: _obscureText,
+            onToggle: () => setState(() => _obscureText = !_obscureText),
+            validator: _validatePassword,
+          ),
+          const SizedBox(height: 16),
+          _buildPasswordField(
+            controller: confirmPasswordController,
+            label: 'Konfirmasi Password *',
+            obscureText: _obscureConfirmText,
+            onToggle: () => setState(() => _obscureConfirmText = !_obscureConfirmText),
+            validator: _validateConfirmPassword,
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: fullnameController,
+            label: 'Nama Lengkap *',
+            icon: Icons.badge_outlined,
+            validator: (v) => _validateRequired(v, 'Nama lengkap'),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildTextField(
+                  controller: birthPlaceController,
+                  label: 'Tempat Lahir *',
+                  icon: Icons.place_outlined,
+                  validator: (v) => _validateRequired(v, 'Tempat lahir'),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildDateField(
+                  label: 'Tanggal Lahir *',
+                  value: _selectedBirthDate,
+                  onTap: () => _selectDate((date) {
+                    setState(() => _selectedBirthDate = date);
+                  }, DateTime.now().subtract(const Duration(days: 365 * 18))),
+                  validator: (v) => _selectedBirthDate == null ? 'Tanggal lahir wajib diisi' : null,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: phoneController,
+            label: 'No. Telepon *',
+            icon: Icons.phone_outlined,
+            keyboardType: TextInputType.phone,
+            validator: _validatePhone,
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: jobController,
+            label: 'Pekerjaan *',
+            icon: Icons.work_outline,
+            validator: (v) => _validateRequired(v, 'Pekerjaan'),
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: faxController,
+            label: 'No. Fax',
+            icon: Icons.fax_outlined,
+            keyboardType: TextInputType.phone,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ STEP 2: IDENTITAS
+  Widget _buildIdentitasStep() {
+    return Form(
+      key: _formKeys[1],
+      child: Column(
+        children: [
+          _buildDropdown(
+            label: 'Agama *',
+            value: agamaIdController.text.isEmpty ? null : agamaIdController.text,
+            items: _agamaList.map((agama) {
+              return DropdownMenuItem(
+                value: agama['id'].toString(),
+                child: Text(agama['nama'] ?? ''),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() => agamaIdController.text = value!);
+            },
+            validator: (v) => _validateRequired(agamaIdController.text, 'Agama'),
+          ),
+          const SizedBox(height: 16),
+          _buildDropdown(
+            label: 'Cabang *',
+            value: cabangIdController.text.isEmpty ? null : cabangIdController.text,
+            items: _cabangList.map((cabang) {
+              return DropdownMenuItem(
+                value: cabang['id'].toString(),
+                child: Text(cabang['nama'] ?? ''),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() => cabangIdController.text = value!);
+            },
+            validator: (v) => _validateRequired(cabangIdController.text, 'Cabang'),
+          ),
+          const SizedBox(height: 16),
+          _buildDropdown(
+            label: 'Jenis Identitas *',
+            value: jenisIdentitasController.text,
+            items: const [
+              DropdownMenuItem(value: 'KTP', child: Text('KTP')),
+              DropdownMenuItem(value: 'SIM', child: Text('SIM')),
+              DropdownMenuItem(value: 'Passport', child: Text('Passport')),
+            ],
+            onChanged: (value) {
+              setState(() => jenisIdentitasController.text = value!);
+            },
+            validator: (v) => _validateRequired(jenisIdentitasController.text, 'Jenis identitas'),
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: nomorIdentitasController,
+            label: 'Nomor Identitas *',
+            icon: Icons.credit_card_outlined,
+            keyboardType: TextInputType.number,
+            validator: (v) => _validateRequired(v, 'Nomor identitas'),
+          ),
+          const SizedBox(height: 16),
+          _buildDateField(
+            label: 'Tanggal Berlaku Identitas',
+            value: _selectedTanggalBerlaku,
+            onTap: () => _selectDate((date) {
+              setState(() => _selectedTanggalBerlaku = date);
+            }, DateTime.now().add(const Duration(days: 365 * 5))),
+          ),
+          const SizedBox(height: 16),
+          _buildDropdown(
+            label: 'Dari mana Anda mengetahui kami? *',
+            value: sumberInformasiController.text.isEmpty ? null : sumberInformasiController.text,
+            items: _sumberInfoList.map((sumber) {
+              return DropdownMenuItem(
+                value: sumber['id'].toString(),
+                child: Text(sumber['nama']),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() => sumberInformasiController.text = value!);
+            },
+            validator: (v) => _validateRequired(sumberInformasiController.text, 'Sumber informasi'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ STEP 3: DATA KTP
+  Widget _buildDataKtpStep() {
+    return Form(
+      key: _formKeys[2],
+      child: Column(
+        children: [
+          _buildTextField(
+            controller: ktpAlamatController,
+            label: 'Alamat Sesuai KTP *',
+            icon: Icons.home_outlined,
+            maxLines: 2,
+            validator: (v) => _validateRequired(v, 'Alamat KTP'),
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: ktpNoController,
+            label: 'No. Rumah *',
+            icon: Icons.house_outlined,
+            validator: (v) => _validateRequired(v, 'No. Rumah'),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildTextField(
+                  controller: ktpRtController,
+                  label: 'RT *',
+                  icon: Icons.numbers_outlined,
+                  keyboardType: TextInputType.number,
+                  validator: (v) => _validateRequired(v, 'RT'),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildTextField(
+                  controller: ktpRwController,
+                  label: 'RW *',
+                  icon: Icons.numbers_outlined,
+                  keyboardType: TextInputType.number,
+                  validator: (v) => _validateRequired(v, 'RW'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildDropdown(
+            label: 'Provinsi *',
+            value: _selectedProvinsiKtp,
+            items: _provinsiList.map((provinsi) {
+              return DropdownMenuItem(
+                value: provinsi['id'].toString(),
+                child: Text(provinsi['nama'] ?? ''),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                _selectedProvinsiKtp = value;
+                _selectedKotaKtp = null;
+                _kotaListKtp = [];
+              });
+              if (value != null) _loadKota(value, true);
+            },
+            validator: (v) => _selectedProvinsiKtp == null ? 'Provinsi wajib dipilih' : null,
+          ),
+          const SizedBox(height: 16),
+          _buildDropdown(
+            label: 'Kabupaten/Kota *',
+            value: _selectedKotaKtp,
+            items: _kotaListKtp.map((kota) {
+              return DropdownMenuItem(
+                value: kota['id'].toString(),
+                child: Text(kota['nama'] ?? ''),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() => _selectedKotaKtp = value);
+            },
+            validator: (v) => _selectedKotaKtp == null ? 'Kabupaten/Kota wajib dipilih' : null,
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: ktpPostalController,
+            label: 'Kode Pos *',
+            icon: Icons.markunread_mailbox_outlined,
+            keyboardType: TextInputType.number,
+            validator: (v) => _validateRequired(v, 'Kode Pos'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ STEP 4: DATA DOMISILI
+  Widget _buildDataDomisiliStep() {
+    return Form(
+      key: _formKeys[3],
+      child: Column(
+        children: [
+          CheckboxListTile(
+            title: const Text('Sama dengan alamat KTP'),
+            value: _sameAsKtp,
+            onChanged: (value) {
+              setState(() => _sameAsKtp = value!);
+              if (value!) {
+                domisiliAlamatController.text = ktpAlamatController.text;
+                domisiliNoController.text = ktpNoController.text;
+                domisiliRtController.text = ktpRtController.text;
+                domisiliRwController.text = ktpRwController.text;
+                domisiliPostalController.text = ktpPostalController.text;
+                _selectedProvinsiDomisili = _selectedProvinsiKtp;
+                _selectedKotaDomisili = _selectedKotaKtp;
+              }
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: domisiliAlamatController,
+            label: 'Alamat Saat Ini *',
+            icon: Icons.home_outlined,
+            maxLines: 2,
+            validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Alamat domisili'),
+            enabled: !_sameAsKtp,
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: domisiliNoController,
+            label: 'No. Rumah *',
+            icon: Icons.house_outlined,
+            validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'No. Rumah'),
+            enabled: !_sameAsKtp,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildTextField(
+                  controller: domisiliRtController,
+                  label: 'RT *',
+                  icon: Icons.numbers_outlined,
+                  keyboardType: TextInputType.number,
+                  validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RT'),
+                  enabled: !_sameAsKtp,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildTextField(
+                  controller: domisiliRwController,
+                  label: 'RW *',
+                  icon: Icons.numbers_outlined,
+                  keyboardType: TextInputType.number,
+                  validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RW'),
+                  enabled: !_sameAsKtp,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildDropdown(
+            label: 'Provinsi *',
+            value: _selectedProvinsiDomisili,
+            items: _provinsiList.map((provinsi) {
+              return DropdownMenuItem(
+                value: provinsi['id'].toString(),
+                child: Text(provinsi['nama'] ?? ''),
+              );
+            }).toList(),
+            onChanged: _sameAsKtp ? null : (value) {
+              setState(() {
+                _selectedProvinsiDomisili = value;
+                _selectedKotaDomisili = null;
+                _kotaListDomisili = [];
+              });
+              if (value != null) _loadKota(value, false);
+            },
+            validator: _sameAsKtp ? null : (v) => _selectedProvinsiDomisili == null ? 'Provinsi wajib dipilih' : null,
+          ),
+          const SizedBox(height: 16),
+          _buildDropdown(
+            label: 'Kabupaten/Kota *',
+            value: _selectedKotaDomisili,
+            items: _kotaListDomisili.map((kota) {
+              return DropdownMenuItem(
+                value: kota['id'].toString(),
+                child: Text(kota['nama'] ?? ''),
+              );
+            }).toList(),
+            onChanged: _sameAsKtp ? null : (value) {
+              setState(() => _selectedKotaDomisili = value);
+            },
+            validator: _sameAsKtp ? null : (v) => _selectedKotaDomisili == null ? 'Kabupaten/Kota wajib dipilih' : null,
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: domisiliPostalController,
+            label: 'Kode Pos *',
+            icon: Icons.markunread_mailbox_outlined,
+            keyboardType: TextInputType.number,
+            validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Kode Pos'),
+            enabled: !_sameAsKtp,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ STEP 5: DATA AHLI WARIS
+  Widget _buildDataAhliWarisStep() {
+    return Form(
+      key: _formKeys[4],
+      child: Column(
+        children: [
+          _buildTextField(
+            controller: namaAhliWarisController,
+            label: 'Nama Ahli Waris *',
+            icon: Icons.person_outlined,
+            validator: (v) => _validateRequired(v, 'Nama ahli waris'),
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: tempatLahirAhliWarisController,
+            label: 'Tempat Lahir Ahli Waris *',
+            icon: Icons.place_outlined,
+            validator: (v) => _validateRequired(v, 'Tempat lahir ahli waris'),
+          ),
+          const SizedBox(height: 16),
+          _buildDateField(
+            label: 'Tanggal Lahir Ahli Waris *',
+            value: _selectedTanggalLahirAhliWaris,
+            onTap: () => _selectDate((date) {
+              setState(() => _selectedTanggalLahirAhliWaris = date);
+            }, DateTime.now().subtract(const Duration(days: 365 * 18))),
+            validator: (v) => _selectedTanggalLahirAhliWaris == null ? 'Tanggal lahir ahli waris wajib diisi' : null,
+          ),
+          const SizedBox(height: 16),
+          _buildDropdown(
+            label: 'Hubungan Keluarga *',
+            value: hubunganController.text,
+            items: const [
+              DropdownMenuItem(value: 'Orang Tua', child: Text('Orang Tua')),
+              DropdownMenuItem(value: 'Suami/Istri', child: Text('Suami/Istri')),
+              DropdownMenuItem(value: 'Anak', child: Text('Anak')),
+              DropdownMenuItem(value: 'Saudara Kandung', child: Text('Saudara Kandung')),
+            ],
+            onChanged: (value) {
+              setState(() => hubunganController.text = value!);
+            },
+            validator: (v) => _validateRequired(hubunganController.text, 'Hubungan keluarga'),
+          ),
+        ],
       ),
     );
   }
 
   // ✅ WIDGET BUILDERS
-  Widget _buildSectionHeader(String title) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.green[100],
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          color: Colors.green[900],
-        ),
-      ),
-    );
-  }
-
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
@@ -552,19 +878,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
     TextInputType? keyboardType,
     int maxLines = 1,
     String? Function(String?)? validator,
-    String? hintText,
+    bool enabled = true,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,
+      enabled: enabled,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        hintText: hintText,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
       validator: validator,
     );
@@ -584,14 +908,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
         labelText: label,
         prefixIcon: const Icon(Icons.lock_outline),
         suffixIcon: IconButton(
-          icon: Icon(
-            obscureText ? Icons.visibility_off : Icons.visibility,
-          ),
+          icon: Icon(obscureText ? Icons.visibility_off : Icons.visibility),
           onPressed: onToggle,
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
       validator: validator,
     );
@@ -609,17 +929,167 @@ class _RegisterScreenState extends State<RegisterScreen> {
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: const Icon(Icons.calendar_today_outlined),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         hintText: 'Pilih tanggal',
       ),
       controller: TextEditingController(
-        text: value != null
-            ? '${value.day}/${value.month}/${value.year}'
-            : '',
+        text: value != null ? '${value.day}/${value.month}/${value.year}' : '',
       ),
       validator: validator,
+    );
+  }
+
+  Widget _buildDropdown({
+    required String label,
+    required String? value,
+    required List<DropdownMenuItem<String>> items,
+    required Function(String?)? onChanged,
+    required String? Function(String?)? validator,
+  }) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      items: items,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      validator: validator,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.green[50],
+      appBar: AppBar(
+        title: const Text('Pendaftaran Anggota KSMI'),
+        backgroundColor: Colors.green[800],
+        foregroundColor: Colors.white,
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ✅ STEPPER
+            Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.white,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  for (int i = 0; i < 6; i++) ...[
+                    Expanded(
+                      child: Container(
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: i <= _currentStep ? Colors.green[800] : Colors.grey[300],
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    if (i < 5) const SizedBox(width: 4),
+                  ],
+                ],
+              ),
+            ),
+
+            // ✅ STEP LABELS
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              color: Colors.white,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: const [
+                  Text('Info', style: TextStyle(fontSize: 12)),
+                  Text('Data Umum', style: TextStyle(fontSize: 12)),
+                  Text('Identitas', style: TextStyle(fontSize: 12)),
+                  Text('KTP', style: TextStyle(fontSize: 12)),
+                  Text('Domisili', style: TextStyle(fontSize: 12)),
+                  Text('Ahli Waris', style: TextStyle(fontSize: 12)),
+                ],
+              ),
+            ),
+
+            // ✅ STEP CONTENT
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: _buildStepContent(_currentStep),
+              ),
+            ),
+
+            // ✅ NAVIGATION BUTTONS
+            Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.white,
+              child: Row(
+                children: [
+                  if (_currentStep > 0 && _currentStep != 1) // Jangan tampilkan back di step 1
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          setState(() => _currentStep--);
+                        },
+                        child: const Text('KEMBALI'),
+                      ),
+                    ),
+                  if (_currentStep > 0 && _currentStep != 1) const SizedBox(width: 16),
+                  Expanded(
+                    child: _currentStep == 5
+                        ? ElevatedButton(
+                            onPressed: _isLoading ? null : _handleRegister,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green[800],
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  )
+                                : const Text(
+                                    'DAFTAR SEKARANG',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                          )
+                        : ElevatedButton(
+                            onPressed: () {
+                              if (_formKeys[_currentStep - (_currentStep > 0 ? 1 : 0)].currentState!.validate()) {
+                                setState(() => _currentStep++);
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green[800],
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              _currentStep == 0 ? 'SETUJU & LANJUT' : 'LANJUT',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

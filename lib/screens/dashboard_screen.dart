@@ -67,6 +67,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ✅ BUAT INSTANCE API SERVICE
   final ApiService _apiService = ApiService();
 
+  // ✅ STATE UNTUK DATA SALDO DAN ANGSURAN DARI API
+  Map<String, dynamic> _saldoData = {};
+  Map<String, dynamic> _angsuranData = {};
+  bool _isLoading = true;
+
   @override
   void initState() {
     super.initState();
@@ -74,6 +79,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _activeMenuItems = List.from(_allMenuItems);
     // ✅ Load current user data dari session
     _loadCurrentUser();
+    // ✅ Load data saldo dan angsuran dari API
+    _loadDataFromApi();
   }
 
   @override
@@ -84,28 +91,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ✅ Load current user dari session management
   Future<void> _loadCurrentUser() async {
-    // ✅ FIX: Pakai instance method, bukan static
     final user = await _apiService.getCurrentUser();
     setState(() {
       _currentUser = user ?? widget.user;
     });
   }
 
-  // ✅ Fungsi untuk mendapatkan nilai dari user data berdasarkan key
-  int _getUserValue(String key) {
-    final userData = _currentUser ?? widget.user;
-    final value = (userData[key] as num?)?.toInt() ?? 0;
-    return value;
+  // ✅ LOAD DATA SALDO DAN ANGSURAN DARI API
+  Future<void> _loadDataFromApi() async {
+    try {
+      setState(() => _isLoading = true);
+
+      // ✅ LOAD SALDO DATA DARI API
+      final saldoResult = await _apiService.getAllSaldo();
+      if (saldoResult['success'] == true) {
+        setState(() {
+          _saldoData = saldoResult['data'] ?? {};
+        });
+      } else {
+        print('❌ Gagal load saldo: ${saldoResult['message']}');
+      }
+
+      // ✅ LOAD ANGSURAN DATA DARI API
+      final angsuranResult = await _apiService.getAllAngsuran();
+      if (angsuranResult['success'] == true) {
+        setState(() {
+          _angsuranData = angsuranResult['data'] ?? {};
+        });
+      } else {
+        print('❌ Gagal load angsuran: ${angsuranResult['message']}');
+      }
+
+    } catch (e) {
+      print('❌ Error loading data from API: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
-  // ✅ Calculate total tabungan (semua simpanan kecuali angsuran)
+  // ✅ Fungsi untuk mendapatkan nilai dari API data berdasarkan key
+  int _getApiValue(String key, Map<String, dynamic> data) {
+    try {
+      // Coba berbagai format key yang mungkin
+      if (data[key] != null) {
+        final value = data[key];
+        if (value is num) return value.toInt();
+        if (value is String) return int.tryParse(value) ?? 0;
+      }
+
+      // Coba nested structure
+      if (data['data'] != null && data['data'][key] != null) {
+        final value = data['data'][key];
+        if (value is num) return value.toInt();
+        if (value is String) return int.tryParse(value) ?? 0;
+      }
+
+      return 0;
+    } catch (e) {
+      print('❌ Error getApiValue for $key: $e');
+      return 0;
+    }
+  }
+
+  // ✅ Calculate total tabungan dari API data
   int _calculateTotalTabungan() {
-    return _getUserValue('pokok') +
-        _getUserValue('simpananWajib') +
-        _getUserValue('sukarela') +
-        _getUserValue('siTabung') +
-        _getUserValue('simuna') +
-        _getUserValue('taqsith');
+    return _getApiValue('pokok', _saldoData) +
+        _getApiValue('simpananWajib', _saldoData) +
+        _getApiValue('sukarela', _saldoData) +
+        _getApiValue('siTabung', _saldoData) +
+        _getApiValue('simuna', _saldoData) +
+        _getApiValue('taqsith', _saldoData);
   }
 
   // ✅ LOGOUT FUNCTION dengan session management
@@ -129,7 +184,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ) ?? false;
 
     if (confirm) {
-      // ✅ FIX: Pakai instance method, bukan static
       await _apiService.logout();
       
       // ✅ Navigate ke login screen dengan clear stack
@@ -145,6 +199,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _refreshData() async {
     // Refresh user data dari session
     await _loadCurrentUser();
+    // Refresh data dari API
+    await _loadDataFromApi();
     
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -197,7 +253,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // ✅ SHOW SALDO DETAIL DIALOG
   void _showSaldoDetail(BuildContext context) {
-    final saldo = _getUserValue('saldo');
+    final saldo = _getApiValue('saldo', _saldoData);
     final totalTabungan = _calculateTotalTabungan();
 
     showDialog(
@@ -237,12 +293,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                   ),
                   const SizedBox(height: 6),
-                  _buildTabunganDetailRow('Pokok', _getUserValue('pokok')),
-                  _buildTabunganDetailRow('Wajib', _getUserValue('simpananWajib')),
-                  _buildTabunganDetailRow('Sukarela', _getUserValue('sukarela')),
-                  _buildTabunganDetailRow('SiTabung', _getUserValue('siTabung')),
-                  _buildTabunganDetailRow('Simuna', _getUserValue('simuna')),
-                  _buildTabunganDetailRow('Taqsith', _getUserValue('taqsith')),
+                  _buildTabunganDetailRow('Pokok', _getApiValue('pokok', _saldoData)),
+                  _buildTabunganDetailRow('Wajib', _getApiValue('simpananWajib', _saldoData)),
+                  _buildTabunganDetailRow('Sukarela', _getApiValue('sukarela', _saldoData)),
+                  _buildTabunganDetailRow('SiTabung', _getApiValue('siTabung', _saldoData)),
+                  _buildTabunganDetailRow('Simuna', _getApiValue('simuna', _saldoData)),
+                  _buildTabunganDetailRow('Taqsith', _getApiValue('taqsith', _saldoData)),
                 ],
               ),
             ),
@@ -299,9 +355,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ SAFE CASTING untuk semua nilai
-    final saldo = _getUserValue('saldo');
-    final angsuran = _getUserValue('angsuran');
+    // ✅ DATA DARI API (bukan dari user data)
+    final saldo = _getApiValue('saldo', _saldoData);
+    final angsuran = _getApiValue('angsuran', _angsuranData);
     final totalTabungan = _calculateTotalTabungan();
     final userData = _currentUser ?? widget.user;
 
@@ -357,143 +413,160 @@ class _DashboardScreenState extends State<DashboardScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             child: Column(
               children: [
-                // ✅ LANGSUNG KE TABUNGAN & ANGSURAN SECTION (PROFILE HEADER DIHAPUS)
-                Column(
-                  children: [
-                    // TOTAL TABUNGAN SECTION
-                    InkWell(
-                      onTap: () {
-                        _navigateToRiwayatTabungan(context, _allMenuItems[0], userData);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[50],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.blue[100]!),
+                if (_isLoading) 
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        CircularProgressIndicator(color: Colors.green[700]),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Memuat data...',
+                          style: TextStyle(
+                            color: Colors.green[700],
+                            fontSize: 14,
+                          ),
                         ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.savings, color: Colors.blue[700], size: 24),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Total Tabungan',
-                                    style: TextStyle(
-                                      color: Colors.blue[800],
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
+                      ],
+                    ),
+                  )
+                else 
+                  Column(
+                    children: [
+                      // TOTAL TABUNGAN SECTION
+                      InkWell(
+                        onTap: () {
+                          _navigateToRiwayatTabungan(context, _allMenuItems[0], userData);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.blue[100]!),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.savings, color: Colors.blue[700], size: 24),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Total Tabungan',
+                                      style: TextStyle(
+                                        color: Colors.blue[800],
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Rp ${totalTabungan.toStringAsFixed(0)}',
-                                    style: TextStyle(
-                                      color: Colors.blue[700],
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Rp ${totalTabungan.toStringAsFixed(0)}',
+                                      style: TextStyle(
+                                        color: Colors.blue[700],
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Pokok + Wajib + Sukarela + SiTabung + Simuna + Taqsith',
-                                    style: TextStyle(
-                                      color: Colors.blue[600],
-                                      fontSize: 10,
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Pokok + Wajib + Sukarela + SiTabung + Simuna + Taqsith',
+                                      style: TextStyle(
+                                        color: Colors.blue[600],
+                                        fontSize: 10,
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: totalTabungan > 0 ? Colors.blue[100] : Colors.grey[200],
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                totalTabungan > 0 ? 'Aktif' : 'Kosong',
-                                style: TextStyle(
-                                  color: totalTabungan > 0 ? Colors.blue[800] : Colors.grey[600],
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
+                                  ],
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Icon(Icons.arrow_forward_ios, size: 16, color: Colors.blue[700]),
-                          ],
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: totalTabungan > 0 ? Colors.blue[100] : Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  totalTabungan > 0 ? 'Aktif' : 'Kosong',
+                                  style: TextStyle(
+                                    color: totalTabungan > 0 ? Colors.blue[800] : Colors.grey[600],
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(Icons.arrow_forward_ios, size: 16, color: Colors.blue[700]),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 12),
 
-                    // ANGSURAN SECTION
-                    InkWell(
-                      onTap: () {
-                        _navigateToRiwayatAngsuran(context, userData);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.green[50],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.green[100]!),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.payments, color: Colors.green[700], size: 24),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Total Angsuran',
-                                    style: TextStyle(
-                                      color: Colors.grey[800],
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
+                      // ANGSURAN SECTION
+                      InkWell(
+                        onTap: () {
+                          _navigateToRiwayatAngsuran(context, userData);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.green[50],
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.green[100]!),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.payments, color: Colors.green[700], size: 24),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Total Angsuran',
+                                      style: TextStyle(
+                                        color: Colors.grey[800],
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Rp ${angsuran.toStringAsFixed(0)}',
-                                    style: TextStyle(
-                                      color: Colors.green[700],
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Rp ${angsuran.toStringAsFixed(0)}',
+                                      style: TextStyle(
+                                        color: Colors.green[700],
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: angsuran > 0 ? Colors.green[100] : Colors.grey[200],
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                angsuran > 0 ? 'Aktif' : 'Tidak Ada',
-                                style: TextStyle(
-                                  color: angsuran > 0 ? Colors.green[800] : Colors.grey[600],
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
+                                  ],
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Icon(Icons.arrow_forward_ios, size: 16, color: Colors.green[700]),
-                          ],
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: angsuran > 0 ? Colors.green[100] : Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  angsuran > 0 ? 'Aktif' : 'Tidak Ada',
+                                  style: TextStyle(
+                                    color: angsuran > 0 ? Colors.green[800] : Colors.grey[600],
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Icon(Icons.arrow_forward_ios, size: 16, color: Colors.green[700]),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
                 const SizedBox(height: 20),
 
                 // ✅ MENU UTAMA
@@ -575,7 +648,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         return Expanded(
                                           child: _buildSmallMenuIcon(
                                             menu,
-                                            _getUserValue(menu.key),
+                                            _getApiValue(menu.key, _saldoData),
                                             context,
                                           ),
                                         );
@@ -594,7 +667,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         return Expanded(
                                           child: _buildSmallMenuIcon(
                                             menu,
-                                            _getUserValue(menu.key),
+                                            _getApiValue(menu.key, _saldoData),
                                             context,
                                           ),
                                         );
@@ -605,46 +678,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             );
                           },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // INFO DEMO
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.green[50],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green[100]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.green[700], size: 24),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Koperasi KSMI - Versi Demo',
-                              style: TextStyle(
-                                color: Colors.green[800],
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Aplikasi simulasi untuk demonstrasi fitur koperasi digital',
-                              style: TextStyle(
-                                color: Colors.green[600],
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
                         ),
                       ),
                     ],

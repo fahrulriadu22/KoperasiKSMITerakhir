@@ -6,7 +6,6 @@ import 'profile_screen.dart';
 import 'dashboard_screen.dart';
 import 'riwayat_tabungan_screen.dart';
 import 'riwayat_angsuran_screen.dart';
-// ❌ HAPUS BARIS INI: import 'inbox_screen.dart';
 
 // ✅ CUSTOM SHAPE UNTUK BOTTOM NAV DENGAN ATAS MELENGKUNG FULL WIDTH
 class BottomNavShape extends ContinuousRectangleBorder {
@@ -88,15 +87,23 @@ class _DashboardMainState extends State<DashboardMain> {
     }
   }
 
+  // ✅ PERBAIKAN: Load unread notifications dengan handle response baru
   Future<void> _loadUnreadNotifications() async {
     try {
       final result = await _apiService.getAllInbox();
       if (result['success'] == true) {
         final inboxList = result['data'] ?? [];
-        final unreadCount = inboxList.where((item) => item['is_read'] == '0').length;
+        final unreadCount = inboxList.where((item) {
+          // ✅ Handle berbagai format field is_read
+          final isRead = item['is_read'] ?? item['read'] ?? '0';
+          return isRead == '0' || isRead == 0 || isRead == false;
+        }).length;
+        
         setState(() {
           _unreadNotifications = unreadCount;
         });
+      } else {
+        print('❌ Gagal load inbox: ${result['message']}');
       }
     } catch (e) {
       print('❌ Error loading notifications: $e');
@@ -120,6 +127,8 @@ class _DashboardMainState extends State<DashboardMain> {
         userData = _safeCastMap(currentUser);
       });
     }
+    // ✅ Refresh juga notifikasi
+    await _loadUnreadNotifications();
   }
 
   void _onItemTapped(int index) {
@@ -128,22 +137,50 @@ class _DashboardMainState extends State<DashboardMain> {
 
   // ✅ Method untuk buka notifikasi - DISABLED KARENA INBOX SCREEN TIDAK ADA
   void _openNotifications() {
-    // ❌ HAPUS NAVIGASI KE INBOX SCREEN KARENA SUDAH TIDAK DIPERLUKAN
-    // Navigator.push(
-    //   context,
-    //   MaterialPageRoute(builder: (context) => const InboxScreen()),
-    // ).then((_) {
-    //   // Refresh unread count ketika kembali dari inbox
-    //   _loadUnreadNotifications();
-    // });
-    
-    // ✅ TAMPILKAN SNACKBAR INFORMASI
+    // ✅ TAMPILKAN SNACKBAR INFORMASI dengan data real
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Notifikasi: $_unreadNotifications pesan belum dibaca'),
+        content: Text(
+          _unreadNotifications > 0 
+            ? 'Anda memiliki $_unreadNotifications pesan belum dibaca'
+            : 'Tidak ada pesan baru'
+        ),
         duration: const Duration(seconds: 2),
+        backgroundColor: _unreadNotifications > 0 ? Colors.orange : Colors.green,
       ),
     );
+  }
+
+  // ✅ Method untuk mark all as read
+  Future<void> _markAllAsRead() async {
+    try {
+      final result = await _apiService.getInboxReadAll();
+      if (result['success'] == true) {
+        setState(() {
+          _unreadNotifications = 0;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Semua pesan ditandai sudah dibaca'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Gagal menandai pesan sebagai dibaca'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -185,12 +222,12 @@ class _DashboardMainState extends State<DashboardMain> {
     );
   }
 
-  // ✅ APP BAR DENGAN NOTIFIKASI
+  // ✅ APP BAR DENGAN NOTIFIKASI - DIPERBAIKI
   AppBar _buildAppBar() {
     return AppBar(
       backgroundColor: Colors.green[800],
       foregroundColor: Colors.white,
-      elevation: 0,
+      elevation: 2,
       title: Text(
         _getAppBarTitle(),
         style: const TextStyle(
@@ -199,40 +236,80 @@ class _DashboardMainState extends State<DashboardMain> {
         ),
       ),
       actions: [
-        // ✅ Icon Notifikasi dengan Badge - SEKARANG HANYA INFORMATIF
-        Stack(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.notifications_rounded),
-              onPressed: _openNotifications,
-              tooltip: 'Notifikasi Sistem',
-            ),
-            if (_unreadNotifications > 0)
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  constraints: const BoxConstraints(
-                    minWidth: 16,
-                    minHeight: 16,
-                  ),
-                  child: Text(
-                    _unreadNotifications > 9 ? '9+' : _unreadNotifications.toString(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
+        // ✅ Icon Notifikasi dengan Badge - SEKARANG DENGAN FITUR MARK AS READ
+        if (_unreadNotifications > 0)
+          PopupMenuButton<String>(
+            icon: Stack(
+              children: [
+                const Icon(Icons.notifications_rounded),
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    textAlign: TextAlign.center,
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      _unreadNotifications > 9 ? '9+' : _unreadNotifications.toString(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
+              ],
+            ),
+            onSelected: (value) {
+              if (value == 'mark_read') {
+                _markAllAsRead();
+              } else if (value == 'view') {
+                _openNotifications();
+              }
+            },
+            itemBuilder: (BuildContext context) => [
+              PopupMenuItem<String>(
+                value: 'view',
+                child: Row(
+                  children: [
+                    const Icon(Icons.message, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Text('Lihat Notifikasi ($_unreadNotifications)'),
+                  ],
+                ),
               ),
-          ],
+              PopupMenuItem<String>(
+                value: 'mark_read',
+                child: Row(
+                  children: [
+                    const Icon(Icons.mark_email_read, color: Colors.green),
+                    const SizedBox(width: 8),
+                    const Text('Tandai Semua Dibaca'),
+                  ],
+                ),
+              ),
+            ],
+          )
+        else
+          IconButton(
+            icon: const Icon(Icons.notifications_none_rounded),
+            onPressed: _openNotifications,
+            tooltip: 'Tidak ada notifikasi baru',
+          ),
+        
+        // ✅ Refresh Button
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded),
+          onPressed: _refreshUserData,
+          tooltip: 'Refresh Data',
         ),
       ],
     );
@@ -242,15 +319,15 @@ class _DashboardMainState extends State<DashboardMain> {
   String _getAppBarTitle() {
     switch (_selectedIndex) {
       case 0:
-        return 'Beranda';
+        return 'Beranda KSMI';
       case 1:
         return 'Riwayat Tabungan';
       case 2:
         return 'Riwayat Taqsith';
       case 3:
-        return 'Profil';
+        return 'Profil Saya';
       default:
-        return 'Koperasi Syariah';
+        return 'Koperasi KSMI';
     }
   }
 

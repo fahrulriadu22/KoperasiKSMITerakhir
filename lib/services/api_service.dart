@@ -8,34 +8,43 @@ class ApiService {
   // ✅ BASE URL KSMI REAL
   static const String baseUrl = 'http://demo.bsdeveloper.id/api';
   
-  // ✅ API KEY - UPDATE DENGAN YANG BARU DARI CLIENT
-  static const String apiKey = 'o0gsogwsgg00sgwggw0kgswc444c0wko4440ogsg';
+  // ✅ DUAL API KEY SYSTEM
+  static const String apiKeyMain = 'sw08c0wwg4okcoccgskosckc8ks0c4w8wg8w0wwg'; // Untuk auth, master, transaction
+  static const String apiKeyNotification = 'o0gsogwsgg00sgwggw0kgswc444c0wko4440ogsg'; // Untuk notifikasi/inbox
   
   // ✅ DEVICE INFO
   String? _deviceId;
   String? _deviceToken;
 
-  // ✅ INIT DEVICE INFO
+  // ✅ INIT DEVICE INFO - FIXED VERSION
   Future<void> _initDeviceInfo() async {
     if (_deviceId != null) return;
     
-    final deviceInfo = DeviceInfoPlugin();
+    final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
     
-    if (Platform.isAndroid) {
-      final androidInfo = await deviceInfo.androidInfo;
-      _deviceId = androidInfo.id;
-      _deviceToken = 'android_${androidInfo.id}';
-    } else if (Platform.isIOS) {
-      final iosInfo = await deviceInfo.iosInfo;
-      _deviceId = iosInfo.identifierForVendor;
-      _deviceToken = 'ios_${iosInfo.identifierForVendor}';
-    } else {
-      _deviceId = 'web_${DateTime.now().millisecondsSinceEpoch}';
-      _deviceToken = 'web_token_${DateTime.now().millisecondsSinceEpoch}';
+    try {
+      if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        _deviceId = androidInfo.id;
+        _deviceToken = 'android_${androidInfo.id}';
+      } else if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        _deviceId = iosInfo.identifierForVendor;
+        _deviceToken = 'ios_${iosInfo.identifierForVendor}';
+      } else {
+        _deviceId = '12341231313131';
+        _deviceToken = '12341231313131';
+      }
+    } catch (e) {
+      print('❌ Device info error: $e');
+      _deviceId = '12341231313131';
+      _deviceToken = '12341231313131';
     }
   }
 
-  // ✅ HEADERS FOR AUTH ENDPOINTS
+  // ============ HEADERS ============
+
+  // ✅ HEADERS FOR AUTH ENDPOINTS (Login, Register, Master Data)
   Future<Map<String, String>> getAuthHeaders() async {
     await _initDeviceInfo();
     return {
@@ -45,53 +54,64 @@ class ApiService {
     };
   }
 
-  // ✅ HEADERS FOR PROTECTED ENDPOINTS (with API KEY)
+  // ✅ HEADERS FOR MAIN ENDPOINTS (Saldo, Angsuran, dll) - PAKAI API KEY MAIN
   Future<Map<String, String>> getProtectedHeaders() async {
     await _initDeviceInfo();
     return {
       'DEVICE-ID': _deviceId!,
-      'x-api-key': apiKey,
+      'x-api-key': apiKeyMain,
       'Content-Type': 'application/x-www-form-urlencoded',
     };
+  }
+
+  // ✅ HEADERS FOR NOTIFICATION/INBOX ENDPOINTS - PAKAI API KEY NOTIFICATION
+  Future<Map<String, String>> getInboxHeaders({bool withContentType = true}) async {
+    await _initDeviceInfo();
+    final headers = <String, String>{
+      'DEVICE-ID': _deviceId!,
+      'x-api-key': apiKeyNotification,
+    };
+    if (withContentType) {
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    }
+    return headers;
   }
 
   // ============ AUTH METHODS ============
 
   // ✅ CHECK LOGIN STATUS
-// ✅ CHECK LOGIN STATUS - FIX VERSION
-Future<bool> checkLoginStatus() async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-    final userString = prefs.getString('user');
-    
-    print('🔐 Check Login Status:');
-    print('   - Token exists: ${token != null}');
-    print('   - User data exists: ${userString != null}');
-    
-    // ✅ Return true hanya jika token DAN user data ada
-    if (token != null && userString != null) {
-      final userData = jsonDecode(userString);
-      print('   - User data: $userData');
-      return true;
+  Future<bool> checkLoginStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      final userString = prefs.getString('user');
+      
+      print('🔐 Check Login Status:');
+      print('   - Token exists: ${token != null}');
+      print('   - User data exists: ${userString != null}');
+      
+      if (token != null && userString != null) {
+        final userData = jsonDecode(userString);
+        print('   - User data: $userData');
+        return true;
+      }
+      
+      return false;
+    } catch (e) {
+      print('❌ Check login status error: $e');
+      return false;
     }
-    
-    return false;
-  } catch (e) {
-    print('❌ Check login status error: $e');
-    return false;
   }
-}
 
-  // ✅ LOGIN API - KSMI REAL
-  Future<Map<String, dynamic>?> login(String username, String password) async {
+  // ✅ LOGIN API
+  Future<Map<String, dynamic>> login(String username, String password) async {
     try {
       final headers = await getAuthHeaders();
       
       final response = await http.post(
         Uri.parse('$baseUrl/login/auth'),
         headers: headers,
-        body: 'username=$username&password=$password',
+        body: 'username=${Uri.encodeComponent(username)}&password=${Uri.encodeComponent(password)}',
       );
 
       print('🔐 Login Response: ${response.statusCode}');
@@ -100,28 +120,48 @@ Future<bool> checkLoginStatus() async {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
-        // ✅ SIMPAN TOKEN DAN USER DATA
         if (data['token'] != null) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('token', data['token']);
           await prefs.setString('user', jsonEncode(data['user'] ?? {}));
           
-          return data['user'] ?? {};
+          return {
+            'success': true,
+            'token': data['token'],
+            'user': data['user'] ?? {},
+            'message': 'Login berhasil'
+          };
         } else if (data['data'] != null && data['data']['token'] != null) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('token', data['data']['token']);
           await prefs.setString('user', jsonEncode(data['data']['user'] ?? {}));
           
-          return data['data']['user'] ?? {};
+          return {
+            'success': true,
+            'token': data['data']['token'],
+            'user': data['data']['user'] ?? {},
+            'message': 'Login berhasil'
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Token tidak ditemukan'
+          };
         }
       } else {
-        throw Exception('Login gagal: ${response.statusCode}');
+        final errorData = jsonDecode(response.body);
+        return {
+          'success': false,
+          'message': errorData['message'] ?? 'Login gagal: ${response.statusCode}'
+        };
       }
     } catch (e) {
       print('❌ Login error: $e');
-      throw Exception('Error login: $e');
+      return {
+        'success': false,
+        'message': 'Error: $e'
+      };
     }
-    return null;
   }
 
   // ✅ REGISTER USER
@@ -131,7 +171,6 @@ Future<bool> checkLoginStatus() async {
       
       print('📝 Register Data: $userData');
       
-      // Convert map to form data
       final body = userData.entries
           .map((entry) => '${Uri.encodeComponent(entry.key)}=${Uri.encodeComponent(entry.value.toString())}')
           .join('&');
@@ -151,7 +190,6 @@ Future<bool> checkLoginStatus() async {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
-        // ✅ CHECK DIFFERENT SUCCESS RESPONSE FORMATS
         if (data['success'] == true) {
           return {
             'success': true,
@@ -262,7 +300,6 @@ Future<bool> checkLoginStatus() async {
     try {
       final headers = await getProtectedHeaders();
       
-      // Convert map to form data
       final body = profileData.entries
           .map((entry) => '${entry.key}=${entry.value}')
           .join('&');
@@ -279,7 +316,6 @@ Future<bool> checkLoginStatus() async {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
-        // ✅ CHECK DIFFERENT RESPONSE FORMATS
         if (data['success'] == true) {
           return true;
         } else if (data['status'] == 'success') {
@@ -301,11 +337,9 @@ Future<bool> checkLoginStatus() async {
     try {
       final headers = await getProtectedHeaders();
       
-      // ✅ TAMBAH USERNAME KE DATA
       final dataWithUsername = Map<String, dynamic>.from(profileData);
       dataWithUsername['username'] = username;
       
-      // Convert map to form data
       final body = dataWithUsername.entries
           .map((entry) => '${entry.key}=${entry.value}')
           .join('&');
@@ -344,17 +378,29 @@ Future<bool> checkLoginStatus() async {
       final response = await http.post(
         Uri.parse('$baseUrl/master/get'),
         headers: headers,
-        body: '', // Empty body as per Postman
+        body: '',
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['data'] ?? {};
+        return {
+          'success': true,
+          'data': data['data'] ?? {},
+          'message': 'Success get master data'
+        };
       } else {
-        return {};
+        return {
+          'success': false,
+          'message': 'Gagal mengambil master data',
+          'data': {}
+        };
       }
     } catch (e) {
-      return {};
+      return {
+        'success': false,
+        'message': 'Error: $e',
+        'data': {}
+      };
     }
   }
 
@@ -366,7 +412,7 @@ Future<bool> checkLoginStatus() async {
       final response = await http.post(
         Uri.parse('$baseUrl/master/getProvince'),
         headers: headers,
-        body: '', // Empty body as per Postman
+        body: '',
       );
 
       print('📍 Get Province Response: ${response.statusCode}');
@@ -444,22 +490,32 @@ Future<bool> checkLoginStatus() async {
       final response = await http.post(
         Uri.parse('$baseUrl/transaction/getAllSaldo'),
         headers: headers,
-        body: '', // Empty body as per Postman
+        body: '',
       );
+
+      print('💰 Get All Saldo Response: ${response.statusCode}');
+      print('💰 Get All Saldo Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['data'] ?? {};
+        return {
+          'success': true,
+          'data': data['data'] ?? {},
+          'message': data['message'] ?? 'Success get saldo'
+        };
       } else {
         return {
-          'error': true,
-          'message': 'Gagal mengambil data saldo: ${response.statusCode}'
+          'success': false,
+          'message': 'Gagal mengambil data saldo: ${response.statusCode}',
+          'data': {}
         };
       }
     } catch (e) {
+      print('❌ Get all saldo error: $e');
       return {
-        'error': true,
-        'message': 'Error: $e'
+        'success': false,
+        'message': 'Error: $e',
+        'data': {}
       };
     }
   }
@@ -472,22 +528,32 @@ Future<bool> checkLoginStatus() async {
       final response = await http.post(
         Uri.parse('$baseUrl/transaction/getAllTaqsith'),
         headers: headers,
-        body: '', // Empty body as per Postman
+        body: '',
       );
+
+      print('📊 Get All Angsuran Response: ${response.statusCode}');
+      print('📊 Get All Angsuran Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['data'] ?? {};
+        return {
+          'success': true,
+          'data': data['data'] ?? {},
+          'message': data['message'] ?? 'Success get angsuran'
+        };
       } else {
         return {
-          'error': true,
-          'message': 'Gagal mengambil data angsuran: ${response.statusCode}'
+          'success': false,
+          'message': 'Gagal mengambil data angsuran: ${response.statusCode}',
+          'data': {}
         };
       }
     } catch (e) {
+      print('❌ Get all angsuran error: $e');
       return {
-        'error': true,
-        'message': 'Error: $e'
+        'success': false,
+        'message': 'Error: $e',
+        'data': {}
       };
     }
   }
@@ -538,12 +604,54 @@ Future<bool> checkLoginStatus() async {
     }
   }
 
-  // ============ INBOX METHODS ============
+  // ============ INBOX METHODS - DIPERBAIKI DENGAN API KEY NOTIFICATION ============
 
-  // ✅ GET ALL INBOX
+  // ✅ INSERT INBOX (Send notification) - PAKAI API KEY NOTIFICATION
+  Future<Map<String, dynamic>> insertInbox({
+    required String subject,
+    required String keterangan,
+    required String userId,
+  }) async {
+    try {
+      final headers = await getInboxHeaders(withContentType: true);
+      
+      final body = 'subject=${Uri.encodeComponent(subject)}&keterangan=${Uri.encodeComponent(keterangan)}&user_id=${Uri.encodeComponent(userId)}';
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/transaction/InsertInbox'),
+        headers: headers,
+        body: body,
+      );
+
+      print('📥 Insert Inbox Response: ${response.statusCode}');
+      print('📥 Insert Inbox Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'success': data['success'] == true || data['status'] == 'success',
+          'message': data['message'] ?? 'Notifikasi berhasil dikirim',
+          'data': data['data'] ?? {}
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Gagal mengirim notifikasi: ${response.statusCode}'
+        };
+      }
+    } catch (e) {
+      print('❌ Insert inbox error: $e');
+      return {
+        'success': false,
+        'message': 'Error: $e'
+      };
+    }
+  }
+
+  // ✅ GET ALL INBOX - PAKAI API KEY NOTIFICATION
   Future<Map<String, dynamic>> getAllInbox() async {
     try {
-      final headers = await getProtectedHeaders();
+      final headers = await getInboxHeaders(withContentType: false);
       
       final response = await http.post(
         Uri.parse('$baseUrl/transaction/getAllinbox'),
@@ -577,10 +685,10 @@ Future<bool> checkLoginStatus() async {
     }
   }
 
-  // ✅ GET INBOX READ (Mark as read single)
+  // ✅ GET INBOX READ (Mark as read single) - PAKAI API KEY NOTIFICATION
   Future<Map<String, dynamic>> getInboxRead(String idInbox) async {
     try {
-      final headers = await getProtectedHeaders();
+      final headers = await getInboxHeaders(withContentType: true);
       
       final response = await http.post(
         Uri.parse('$baseUrl/transaction/getInboxRead'),
@@ -612,10 +720,10 @@ Future<bool> checkLoginStatus() async {
     }
   }
 
-  // ✅ GET INBOX READ ALL (Mark all as read)
+  // ✅ GET INBOX READ ALL (Mark all as read) - PAKAI API KEY NOTIFICATION
   Future<Map<String, dynamic>> getInboxReadAll() async {
     try {
-      final headers = await getProtectedHeaders();
+      final headers = await getInboxHeaders(withContentType: false);
       
       final response = await http.post(
         Uri.parse('$baseUrl/transaction/getInboxReadAll'),
@@ -646,10 +754,10 @@ Future<bool> checkLoginStatus() async {
     }
   }
 
-  // ✅ GET INBOX DELETED (Delete single inbox)
+  // ✅ GET INBOX DELETED (Delete single inbox) - PAKAI API KEY NOTIFICATION
   Future<Map<String, dynamic>> getInboxDeleted(String idInbox) async {
     try {
-      final headers = await getProtectedHeaders();
+      final headers = await getInboxHeaders(withContentType: true);
       
       final response = await http.post(
         Uri.parse('$baseUrl/transaction/getInboxDeleted'),
@@ -681,10 +789,10 @@ Future<bool> checkLoginStatus() async {
     }
   }
 
-  // ✅ GET INBOX DELETED ALL (Delete all inbox)
+  // ✅ GET INBOX DELETED ALL (Delete all inbox) - PAKAI API KEY NOTIFICATION
   Future<Map<String, dynamic>> getInboxDeletedAll() async {
     try {
-      final headers = await getProtectedHeaders();
+      final headers = await getInboxHeaders(withContentType: false);
       
       final response = await http.post(
         Uri.parse('$baseUrl/transaction/getInboxDeletedAll'),
@@ -715,47 +823,33 @@ Future<bool> checkLoginStatus() async {
     }
   }
 
-  // ✅ INSERT INBOX (Send notification)
-  Future<Map<String, dynamic>> insertInbox({
-    required String subject,
-    required String keterangan,
-    required String userId,
+  // ============ DOKUMEN METHODS ============
+
+  // ✅ UPLOAD FOTO (KTP, KK, etc)
+  Future<bool> uploadFoto({
+    required String type, // 'foto_ktp', 'foto_kk', 'foto_diri', 'foto_bukti'
+    required String filePath,
   }) async {
     try {
       final headers = await getProtectedHeaders();
+      headers.remove('Content-Type');
       
-      final response = await http.post(
-        Uri.parse('$baseUrl/transaction/InsertInbox'),
-        headers: headers,
-        body: 'subject=${Uri.encodeComponent(subject)}&keterangan=${Uri.encodeComponent(keterangan)}&user_id=$userId',
+      var request = http.MultipartRequest(
+        'POST', 
+        Uri.parse('$baseUrl/users/setPhoto')
       );
+      
+      request.headers.addAll(headers);
+      request.fields[type] = 'uploaded';
+      request.files.add(await http.MultipartFile.fromPath(type, filePath));
 
-      print('📥 Insert Inbox Response: ${response.statusCode}');
-      print('📥 Insert Inbox Body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return {
-          'success': data['success'] == true || data['status'] == 'success',
-          'message': data['message'] ?? 'Inbox inserted successfully',
-          'data': data['data'] ?? {}
-        };
-      } else {
-        return {
-          'success': false,
-          'message': 'Gagal insert inbox: ${response.statusCode}'
-        };
-      }
+      final response = await request.send();
+      return response.statusCode == 200;
     } catch (e) {
-      print('❌ Insert inbox error: $e');
-      return {
-        'success': false,
-        'message': 'Error: $e'
-      };
+      print('❌ Upload $type error: $e');
+      return false;
     }
   }
-
-  // ============ DOKUMEN METHODS ============
 
   // ✅ UPLOAD KTP (ALIAS FOR UPLOAD FOTO)
   Future<bool> updateKTP(String username, String filePath) async {
@@ -765,32 +859,6 @@ Future<bool> checkLoginStatus() async {
   // ✅ UPLOAD KK (ALIAS FOR UPLOAD FOTO)
   Future<bool> updateKK(String username, String filePath) async {
     return await uploadFoto(type: 'foto_kk', filePath: filePath);
-  }
-
-  // ✅ UPLOAD FOTO (KTP, KK, etc)
-  Future<bool> uploadFoto({
-    required String type, // 'foto_ktp', 'foto_kk', 'foto_diri', 'foto_bukti'
-    required String filePath,
-  }) async {
-    try {
-      final headers = await getProtectedHeaders();
-      headers.remove('Content-Type'); // Remove for multipart
-      
-      var request = http.MultipartRequest(
-        'POST', 
-        Uri.parse('$baseUrl/users/setPhoto')
-      );
-      
-      request.headers.addAll(headers);
-      request.fields[type] = 'uploaded'; // Placeholder
-      request.files.add(await http.MultipartFile.fromPath(type, filePath));
-
-      final response = await request.send();
-      return response.statusCode == 200;
-    } catch (e) {
-      print('❌ Upload $type error: $e');
-      return false;
-    }
   }
 
   // ✅ UPLOAD BUKTI PEMBAYARAN
@@ -838,7 +906,6 @@ Future<bool> checkLoginStatus() async {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
-        // ✅ CHECK DIFFERENT RESPONSE FORMATS
         if (data['exists'] == true) {
           return {'exists': true, 'message': data['message'] ?? 'User sudah terdaftar'};
         } else if (data['available'] == true) {
