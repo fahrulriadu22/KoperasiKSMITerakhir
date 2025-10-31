@@ -10,22 +10,22 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        coreLibraryDesugaringEnabled true  // ✅ TAMBAH INI
-        sourceCompatibility = JavaVersion.VERSION_1_8  // ✅ UBAH 11 → 1_8
-        targetCompatibility = JavaVersion.VERSION_1_8  // ✅ UBAH 11 → 1_8
+        isCoreLibraryDesugaringEnabled = true  // ✅ PAKE "is" DI DEPAN
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
 
     kotlinOptions {
-        jvmTarget = "1.8"  // ✅ UBAH VERSION_11 → "1.8"
+        jvmTarget = "1.8"
     }
 
     defaultConfig {
         applicationId = "com.example.koperasi_fresh"
         minSdk = flutter.minSdkVersion.toInt()
         targetSdk = flutter.targetSdkVersion.toInt()
-        versionCode = flutter.versionCode.toInteger()
+        versionCode = flutter.versionCode.toInt()  // ✅ toInt() BUKAN toInteger()
         versionName = flutter.versionName
-        multiDexEnabled = true  // ✅ TAMBAH INI
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -40,5 +40,5 @@ flutter {
 }
 
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")  // ✅ TAMBAH INI
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
