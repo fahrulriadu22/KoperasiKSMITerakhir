@@ -8,15 +8,29 @@ import 'services/firebase_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // ✅ Initialize Firebase
-  await Firebase.initializeApp();
+  try {
+    // ✅ Initialize Firebase
+    await Firebase.initializeApp();
+    print('✅ Firebase initialized successfully');
+    
+    // ✅ Initialize Firebase Messaging
+    await FirebaseNotificationService.initialize();
+    print('✅ Firebase Messaging initialized successfully');
+  } catch (e) {
+    print('❌ Firebase initialization error: $e');
+    // Tetap lanjut meski Firebase error
+  }
   
-  // ✅ Initialize Firebase Messaging
-  await FirebaseNotificationService.initialize();
-  
-  // ✅ Check login status
-  final apiService = ApiService();
-  final bool isLoggedIn = await apiService.checkLoginStatus();
+  // ✅ Check login status dengan try-catch
+  bool isLoggedIn = false;
+  try {
+    final apiService = ApiService();
+    isLoggedIn = await apiService.checkLoginStatus();
+    print('🔐 Auto-login status: $isLoggedIn');
+  } catch (e) {
+    print('❌ Auto-login check error: $e');
+    isLoggedIn = false;
+  }
   
   runApp(KoperasiKSMIApp(isLoggedIn: isLoggedIn));
 }
@@ -42,11 +56,7 @@ class KoperasiKSMIApp extends StatelessWidget {
         ),
       ),
       // ✅ AUTO-LOGIN: Langsung ke dashboard jika sudah login
-      home: isLoggedIn ? DashboardScreen(user: {}) : LoginScreen(),
-      routes: {
-        '/login': (context) => LoginScreen(),
-        '/dashboard': (context) => DashboardScreen(user: {}),
-      },
+      home: isLoggedIn ? const DashboardScreen(user: {}) : const LoginScreen(),
     );
   }
 }

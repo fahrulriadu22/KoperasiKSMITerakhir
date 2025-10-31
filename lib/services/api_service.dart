@@ -58,9 +58,30 @@ class ApiService {
   // ============ AUTH METHODS ============
 
   // ✅ CHECK LOGIN STATUS
-  Future<bool> checkLoginStatus() async {
-    return await isLoggedIn();
+// ✅ CHECK LOGIN STATUS - FIX VERSION
+Future<bool> checkLoginStatus() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    final userString = prefs.getString('user');
+    
+    print('🔐 Check Login Status:');
+    print('   - Token exists: ${token != null}');
+    print('   - User data exists: ${userString != null}');
+    
+    // ✅ Return true hanya jika token DAN user data ada
+    if (token != null && userString != null) {
+      final userData = jsonDecode(userString);
+      print('   - User data: $userData');
+      return true;
+    }
+    
+    return false;
+  } catch (e) {
+    print('❌ Check login status error: $e');
+    return false;
   }
+}
 
   // ✅ LOGIN API - KSMI REAL
   Future<Map<String, dynamic>?> login(String username, String password) async {
