@@ -17,7 +17,7 @@ dependencies:
   device_info_plus: ^9.0.0
   firebase_core: ^2.24.0
   firebase_messaging: ^14.7.0
-  flutter_local_notifications: ^16.3.0
+  flutter_local_notifications: ^19.0.0  # ✅ UPGRADE KE VERSI TERBARU
   permission_handler: ^11.0.0
   cupertino_icons: ^1.0.8
 
