@@ -44,38 +44,63 @@ class ApiService {
 
   // ============ HEADERS ============
 
-  // ✅ HEADERS FOR AUTH ENDPOINTS (Login, Register, Master Data)
-  Future<Map<String, String>> getAuthHeaders() async {
-    await _initDeviceInfo();
-    return {
-      'DEVICE-ID': _deviceId!,
-      'DEVICE-TOKEN': _deviceToken!,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    };
-  }
+// ============ HEADERS ============
 
-  // ✅ HEADERS FOR MAIN ENDPOINTS (Saldo, Angsuran, dll) - PAKAI API KEY MAIN
-  Future<Map<String, String>> getProtectedHeaders() async {
-    await _initDeviceInfo();
-    return {
-      'DEVICE-ID': _deviceId!,
-      'x-api-key': apiKeyMain,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    };
-  }
+// ✅ HEADERS FOR AUTH ENDPOINTS (Login, Register, Master Data)
+Future<Map<String, String>> getAuthHeaders() async {
+  await _initDeviceInfo();
+  return {
+    'DEVICE-ID': _deviceId!,
+    'DEVICE-TOKEN': _deviceToken!,
+    'Content-Type': 'application/x-www-form-urlencoded',
+  };
+}
 
-  // ✅ HEADERS FOR NOTIFICATION/INBOX ENDPOINTS - PAKAI API KEY NOTIFICATION
-  Future<Map<String, String>> getInboxHeaders({bool withContentType = true}) async {
-    await _initDeviceInfo();
-    final headers = <String, String>{
-      'DEVICE-ID': _deviceId!,
-      'x-api-key': apiKeyNotification,
-    };
-    if (withContentType) {
-      headers['Content-Type'] = 'application/x-www-form-urlencoded';
-    }
-    return headers;
+// ✅ HEADERS FOR MAIN ENDPOINTS (Saldo, Angsuran, dll) - PAKAI API KEY MAIN + USER_KEY
+Future<Map<String, String>> getProtectedHeaders() async {
+  await _initDeviceInfo();
+  
+  // Ambil user_key dari SharedPreferences (disimpan sebagai token)
+  final prefs = await SharedPreferences.getInstance();
+  final userKey = prefs.getString('token'); // user_key disimpan sebagai token
+  
+  final headers = <String, String>{
+    'DEVICE-ID': _deviceId!,
+    'x-api-key': apiKeyMain,
+    'Content-Type': 'application/x-www-form-urlencoded',
+  };
+  
+  // Tambahkan user-key header jika ada
+  if (userKey != null && userKey.isNotEmpty) {
+    headers['user-key'] = userKey;
   }
+  
+  return headers;
+}
+
+// ✅ HEADERS FOR NOTIFICATION/INBOX ENDPOINTS - PAKAI API KEY NOTIFICATION + USER_KEY
+Future<Map<String, String>> getInboxHeaders({bool withContentType = true}) async {
+  await _initDeviceInfo();
+  
+  // Ambil user_key dari SharedPreferences
+  final prefs = await SharedPreferences.getInstance();
+  final userKey = prefs.getString('token');
+  
+  final headers = <String, String>{
+    'DEVICE-ID': _deviceId!,
+    'x-api-key': apiKeyNotification,
+  };
+  
+  // Tambahkan user-key header jika ada
+  if (userKey != null && userKey.isNotEmpty) {
+    headers['user-key'] = userKey;
+  }
+  
+  if (withContentType) {
+    headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  }
+  return headers;
+}
 
   // ============ AUTH METHODS ============
 
@@ -103,66 +128,98 @@ class ApiService {
     }
   }
 
-  // ✅ LOGIN API
-  Future<Map<String, dynamic>> login(String username, String password) async {
-    try {
-      final headers = await getAuthHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/login/auth'),
-        headers: headers,
-        body: 'username=${Uri.encodeComponent(username)}&password=${Uri.encodeComponent(password)}',
-      );
+// ✅ LOGIN API - FIXED FOR REAL API STRUCTURE
+Future<Map<String, dynamic>> login(String username, String password) async {
+  try {
+    final headers = await getAuthHeaders();
+    
+    print('🔐 Login Attempt:');
+    print('   - Username: $username');
+    print('   - Password: $password');
+    print('   - URL: $baseUrl/login/auth');
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/login/auth'),
+      headers: headers,
+      body: 'username=${Uri.encodeComponent(username)}&password=${Uri.encodeComponent(password)}',
+    );
 
-      print('🔐 Login Response: ${response.statusCode}');
-      print('🔐 Login Body: ${response.body}');
+    print('🔐 Login Response Status: ${response.statusCode}');
+    print('🔐 Login Response Body: ${response.body}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      print('🔐 Parsed Data: $data');
+
+      // ✅ HANDLE RESPONSE STRUCTURE YANG SEBENARNYA
+      if (data['status'] == true) {
+        // Format response: menggunakan user_key bukan token
+        final userKey = data['user_key'].toString();
+        final userData = {
+          'user_id': data['user_id'],
+          'user_name': data['user_name'],
+          'nama': data['nama'],
+          'email': data['email'],
+          'status_user': data['status_user'],
+          'user_key': userKey,
+          'user_key_expired': data['user_key_expired'],
+        };
+
+        // ✅ SIMPAN USER_KEY SEBAGAI TOKEN (karena API tidak pakai token)
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('token', userKey); // Simpan user_key sebagai token
+        await prefs.setString('user', jsonEncode(userData));
         
-        if (data['token'] != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('token', data['token']);
-          await prefs.setString('user', jsonEncode(data['user'] ?? {}));
-          
-          return {
-            'success': true,
-            'token': data['token'],
-            'user': data['user'] ?? {},
-            'message': 'Login berhasil'
-          };
-        } else if (data['data'] != null && data['data']['token'] != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('token', data['data']['token']);
-          await prefs.setString('user', jsonEncode(data['data']['user'] ?? {}));
-          
-          return {
-            'success': true,
-            'token': data['data']['token'],
-            'user': data['data']['user'] ?? {},
-            'message': 'Login berhasil'
-          };
-        } else {
-          return {
-            'success': false,
-            'message': data['message'] ?? 'Token tidak ditemukan'
-          };
-        }
-      } else {
+        print('✅ Login Success!');
+        print('   - User Key: ${userKey.length > 20 ? '${userKey.substring(0, 20)}...' : userKey}');
+        print('   - User ID: ${data['user_id']}');
+        print('   - User Name: ${data['user_name']}');
+        
+        return {
+          'success': true,
+          'token': userKey, // Return user_key sebagai token
+          'user': userData,
+          'message': 'Login berhasil'
+        };
+      } 
+      // Handle login gagal
+      else if (data['status'] == false) {
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Login gagal'
+        };
+      }
+      // Format tidak dikenali
+      else {
+        return {
+          'success': false,
+          'message': 'Format response tidak dikenali'
+        };
+      }
+    } 
+    // Handle error status codes
+    else {
+      try {
         final errorData = jsonDecode(response.body);
         return {
           'success': false,
           'message': errorData['message'] ?? 'Login gagal: ${response.statusCode}'
         };
+      } catch (e) {
+        return {
+          'success': false,
+          'message': 'Login gagal: ${response.statusCode}'
+        };
       }
-    } catch (e) {
-      print('❌ Login error: $e');
-      return {
-        'success': false,
-        'message': 'Error: $e'
-      };
     }
+  } catch (e) {
+    print('❌ Login error: $e');
+    return {
+      'success': false,
+      'message': 'Error: $e'
+    };
   }
+}
 
   // ✅ REGISTER USER
   Future<Map<String, dynamic>> register(Map<String, dynamic> userData) async {
@@ -230,107 +287,108 @@ class ApiService {
   // ============ PUSH NOTIFICATION METHODS ============
 
   // ✅ SAVE DEVICE TOKEN TO SERVER
-  Future<bool> saveDeviceToken(String deviceToken) async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/users/saveDeviceToken'),
-        headers: headers,
-        body: 'device_token=${Uri.encodeComponent(deviceToken)}&device_type=${Platform.isAndroid ? 'android' : 'ios'}',
-      );
+// ✅ SAVE DEVICE TOKEN TO SERVER
+Future<bool> saveDeviceToken(String deviceToken) async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/users/saveDeviceToken'),
+      headers: headers,
+      body: 'device_token=${Uri.encodeComponent(deviceToken)}&device_type=${Platform.isAndroid ? 'android' : 'ios'}',
+    );
 
-      print('📱 Save Device Token Response: ${response.statusCode}');
-      print('📱 Save Device Token Body: ${response.body}');
+    print('📱 Save Device Token Response: ${response.statusCode}');
+    print('📱 Save Device Token Body: ${response.body}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['success'] == true || data['status'] == 'success';
-      }
-      return false;
-    } catch (e) {
-      print('❌ Save device token error: $e');
-      return false;
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['success'] == true || data['status'] == 'success';
     }
+    return false;
+  } catch (e) {
+    print('❌ Save device token error: $e');
+    return false;
   }
+}
 
   // ✅ SEND PUSH NOTIFICATION (ADMIN SIDE)
-  Future<Map<String, dynamic>> sendPushNotification({
-    required String title,
-    required String message,
-    required String userId,
-  }) async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/notification/send'),
-        headers: headers,
-        body: 'title=${Uri.encodeComponent(title)}&message=${Uri.encodeComponent(message)}&user_id=$userId',
-      );
+ // ✅ SEND PUSH NOTIFICATION (ADMIN SIDE)
+Future<Map<String, dynamic>> sendPushNotification({
+  required String title,
+  required String message,
+  required String userId,
+}) async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/notification/send'),
+      headers: headers,
+      body: 'title=${Uri.encodeComponent(title)}&message=${Uri.encodeComponent(message)}&user_id=$userId',
+    );
 
-      print('📤 Send Push Notification Response: ${response.statusCode}');
-      print('📤 Send Push Notification Body: ${response.body}');
+    print('📤 Send Push Notification Response: ${response.statusCode}');
+    print('📤 Send Push Notification Body: ${response.body}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return {
-          'success': data['success'] == true || data['status'] == 'success',
-          'message': data['message'] ?? 'Notification sent successfully'
-        };
-      } else {
-        return {
-          'success': false,
-          'message': 'Failed to send notification: ${response.statusCode}'
-        };
-      }
-    } catch (e) {
-      print('❌ Send push notification error: $e');
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return {
+        'success': data['success'] == true || data['status'] == 'success',
+        'message': data['message'] ?? 'Notification sent successfully'
+      };
+    } else {
       return {
         'success': false,
-        'message': 'Error: $e'
+        'message': 'Failed to send notification: ${response.statusCode}'
       };
     }
+  } catch (e) {
+    print('❌ Send push notification error: $e');
+    return {
+      'success': false,
+      'message': 'Error: $e'
+    };
   }
+}
 
   // ============ PROFILE METHODS ============
 
-  // ✅ UPDATE USER PROFILE
-  Future<bool> updateUserProfile(Map<String, dynamic> profileData) async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final body = profileData.entries
-          .map((entry) => '${entry.key}=${entry.value}')
-          .join('&');
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/users/updateProfile'),
-        headers: headers,
-        body: body,
-      );
+Future<bool> updateUserProfile(Map<String, dynamic> profileData) async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    final body = profileData.entries
+        .map((entry) => '${entry.key}=${entry.value}')
+        .join('&');
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/users/updateProfile'),
+      headers: headers,
+      body: body,
+    );
 
-      print('🔧 Update Profile Response: ${response.statusCode}');
-      print('🔧 Update Profile Body: ${response.body}');
+    print('🔧 Update Profile Response: ${response.statusCode}');
+    print('🔧 Update Profile Body: ${response.body}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        
-        if (data['success'] == true) {
-          return true;
-        } else if (data['status'] == 'success') {
-          return true;
-        } else if (data['message'] != null && data['message'].contains('berhasil')) {
-          return true;
-        }
-        
-        return data['success'] == true || data['status'] == 'success';
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      
+      if (data['success'] == true) {
+        return true;
+      } else if (data['status'] == 'success') {
+        return true;
+      } else if (data['message'] != null && data['message'].contains('berhasil')) {
+        return true;
       }
-    } catch (e) {
-      print('❌ Update profile error: $e');
+      
+      return data['success'] == true || data['status'] == 'success';
     }
-    return false;
+  } catch (e) {
+    print('❌ Update profile error: $e');
   }
+  return false;
+}
 
   // ✅ METHOD OVERLOAD JIKA PERLU DENGAN USERNAME
   Future<bool> updateUserProfileWithUsername(String username, Map<String, dynamic> profileData) async {
@@ -482,208 +540,213 @@ class ApiService {
 
   // ============ TRANSACTION METHODS ============
 
-  // ✅ GET ALL SALDO (TABUNGAN DATA)
-  Future<Map<String, dynamic>> getAllSaldo() async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/transaction/getAllSaldo'),
-        headers: headers,
-        body: '',
-      );
+Future<Map<String, dynamic>> getAllSaldo() async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/transaction/getAllSaldo'),
+      headers: headers,
+      body: '',
+    );
 
-      print('💰 Get All Saldo Response: ${response.statusCode}');
-      print('💰 Get All Saldo Body: ${response.body}');
+    print('💰 Get All Saldo Response: ${response.statusCode}');
+    print('💰 Get All Saldo Body: ${response.body}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return {
-          'success': true,
-          'data': data['data'] ?? {},
-          'message': data['message'] ?? 'Success get saldo'
-        };
-      } else {
-        return {
-          'success': false,
-          'message': 'Gagal mengambil data saldo: ${response.statusCode}',
-          'data': {}
-        };
-      }
-    } catch (e) {
-      print('❌ Get all saldo error: $e');
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return {
+        'success': true,
+        'data': data['data'] ?? {},
+        'message': data['message'] ?? 'Success get saldo'
+      };
+    } else {
       return {
         'success': false,
-        'message': 'Error: $e',
+        'message': 'Gagal mengambil data saldo: ${response.statusCode}',
         'data': {}
       };
     }
+  } catch (e) {
+    print('❌ Get all saldo error: $e');
+    return {
+      'success': false,
+      'message': 'Error: $e',
+      'data': {}
+    };
   }
+}
 
-  // ✅ GET ALL ANGSURAN (TAQSITH DATA)
-  Future<Map<String, dynamic>> getAllAngsuran() async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/transaction/getAllTaqsith'),
-        headers: headers,
-        body: '',
-      );
+Future<Map<String, dynamic>> getAllAngsuran() async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/transaction/getAllTaqsith'),
+      headers: headers,
+      body: '',
+    );
 
-      print('📊 Get All Angsuran Response: ${response.statusCode}');
-      print('📊 Get All Angsuran Body: ${response.body}');
+    print('📊 Get All Angsuran Response: ${response.statusCode}');
+    print('📊 Get All Angsuran Body: ${response.body}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return {
-          'success': true,
-          'data': data['data'] ?? {},
-          'message': data['message'] ?? 'Success get angsuran'
-        };
-      } else {
-        return {
-          'success': false,
-          'message': 'Gagal mengambil data angsuran: ${response.statusCode}',
-          'data': {}
-        };
-      }
-    } catch (e) {
-      print('❌ Get all angsuran error: $e');
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return {
+        'success': true,
+        'data': data['data'] ?? {},
+        'message': data['message'] ?? 'Success get angsuran'
+      };
+    } else {
       return {
         'success': false,
-        'message': 'Error: $e',
+        'message': 'Gagal mengambil data angsuran: ${response.statusCode}',
         'data': {}
       };
     }
+  } catch (e) {
+    print('❌ Get all angsuran error: $e');
+    return {
+      'success': false,
+      'message': 'Error: $e',
+      'data': {}
+    };
   }
+}
 
-  // ✅ GET RIWAYAT TABUNGAN
-  Future<List<dynamic>> getRiwayatTabungan() async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/transaction/getRiwayatTabungan'),
-        headers: headers,
-        body: '',
-      );
+Future<List<dynamic>> getRiwayatTabungan() async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/transaction/getRiwayatTabungan'),
+      headers: headers,
+      body: '',
+    );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['data'] ?? [];
-      } else {
-        return [];
-      }
-    } catch (e) {
-      print('❌ Get riwayat tabungan error: $e');
+    print('📈 Get Riwayat Tabungan Response: ${response.statusCode}');
+    print('📈 Get Riwayat Tabungan Body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['data'] ?? [];
+    } else {
+      print('❌ Get riwayat tabungan failed: ${response.statusCode}');
       return [];
     }
+  } catch (e) {
+    print('❌ Get riwayat tabungan error: $e');
+    return [];
   }
+}
 
   // ✅ GET RIWAYAT ANGSURAN
-  Future<List<dynamic>> getRiwayatAngsuran() async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/transaction/getRiwayatAngsuran'),
-        headers: headers,
-        body: '',
-      );
+Future<List<dynamic>> getRiwayatAngsuran() async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/transaction/getRiwayatAngsuran'),
+      headers: headers,
+      body: '',
+    );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['data'] ?? [];
-      } else {
-        return [];
-      }
-    } catch (e) {
-      print('❌ Get riwayat angsuran error: $e');
+    print('📊 Get Riwayat Angsuran Response: ${response.statusCode}');
+    print('📊 Get Riwayat Angsuran Body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['data'] ?? [];
+    } else {
+      print('❌ Get riwayat angsuran failed: ${response.statusCode}');
       return [];
     }
+  } catch (e) {
+    print('❌ Get riwayat angsuran error: $e');
+    return [];
   }
+}
 
   // ============ INBOX METHODS - DIPERBAIKI DENGAN API KEY NOTIFICATION ============
 
   // ✅ INSERT INBOX (Send notification) - PAKAI API KEY NOTIFICATION
-  Future<Map<String, dynamic>> insertInbox({
-    required String subject,
-    required String keterangan,
-    required String userId,
-  }) async {
-    try {
-      final headers = await getInboxHeaders(withContentType: true);
-      
-      final body = 'subject=${Uri.encodeComponent(subject)}&keterangan=${Uri.encodeComponent(keterangan)}&user_id=${Uri.encodeComponent(userId)}';
+Future<Map<String, dynamic>> insertInbox({
+  required String subject,
+  required String keterangan,
+  required String userId,
+}) async {
+  try {
+    final headers = await getInboxHeaders(withContentType: true);
+    
+    final body = 'subject=${Uri.encodeComponent(subject)}&keterangan=${Uri.encodeComponent(keterangan)}&user_id=${Uri.encodeComponent(userId)}';
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/transaction/InsertInbox'),
-        headers: headers,
-        body: body,
-      );
+    final response = await http.post(
+      Uri.parse('$baseUrl/transaction/InsertInbox'),
+      headers: headers,
+      body: body,
+    );
 
-      print('📥 Insert Inbox Response: ${response.statusCode}');
-      print('📥 Insert Inbox Body: ${response.body}');
+    print('📥 Insert Inbox Response: ${response.statusCode}');
+    print('📥 Insert Inbox Body: ${response.body}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return {
-          'success': data['success'] == true || data['status'] == 'success',
-          'message': data['message'] ?? 'Notifikasi berhasil dikirim',
-          'data': data['data'] ?? {}
-        };
-      } else {
-        return {
-          'success': false,
-          'message': 'Gagal mengirim notifikasi: ${response.statusCode}'
-        };
-      }
-    } catch (e) {
-      print('❌ Insert inbox error: $e');
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return {
+        'success': data['success'] == true || data['status'] == 'success',
+        'message': data['message'] ?? 'Notifikasi berhasil dikirim',
+        'data': data['data'] ?? {}
+      };
+    } else {
       return {
         'success': false,
-        'message': 'Error: $e'
+        'message': 'Gagal mengirim notifikasi: ${response.statusCode}'
       };
     }
+  } catch (e) {
+    print('❌ Insert inbox error: $e');
+    return {
+      'success': false,
+      'message': 'Error: $e'
+    };
   }
+}
 
   // ✅ GET ALL INBOX - PAKAI API KEY NOTIFICATION
-  Future<Map<String, dynamic>> getAllInbox() async {
-    try {
-      final headers = await getInboxHeaders(withContentType: false);
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/transaction/getAllinbox'),
-        headers: headers,
-      );
+Future<Map<String, dynamic>> getAllInbox() async {
+  try {
+    final headers = await getInboxHeaders(withContentType: false);
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/transaction/getAllinbox'),
+      headers: headers,
+    );
 
-      print('📥 Get All Inbox Response: ${response.statusCode}');
-      print('📥 Get All Inbox Body: ${response.body}');
+    print('📥 Get All Inbox Response: ${response.statusCode}');
+    print('📥 Get All Inbox Body: ${response.body}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return {
-          'success': true,
-          'data': data['data'] ?? [],
-          'message': data['message'] ?? 'Success get inbox'
-        };
-      } else {
-        return {
-          'success': false,
-          'message': 'Gagal mengambil data inbox: ${response.statusCode}',
-          'data': []
-        };
-      }
-    } catch (e) {
-      print('❌ Get all inbox error: $e');
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return {
+        'success': true,
+        'data': data['data'] ?? [],
+        'message': data['message'] ?? 'Success get inbox'
+      };
+    } else {
       return {
         'success': false,
-        'message': 'Error: $e',
+        'message': 'Gagal mengambil data inbox: ${response.statusCode}',
         'data': []
       };
     }
+  } catch (e) {
+    print('❌ Get all inbox error: $e');
+    return {
+      'success': false,
+      'message': 'Error: $e',
+      'data': []
+    };
   }
+}
 
   // ✅ GET INBOX READ (Mark as read single) - PAKAI API KEY NOTIFICATION
   Future<Map<String, dynamic>> getInboxRead(String idInbox) async {
@@ -826,30 +889,41 @@ class ApiService {
   // ============ DOKUMEN METHODS ============
 
   // ✅ UPLOAD FOTO (KTP, KK, etc)
-  Future<bool> uploadFoto({
-    required String type, // 'foto_ktp', 'foto_kk', 'foto_diri', 'foto_bukti'
-    required String filePath,
-  }) async {
-    try {
-      final headers = await getProtectedHeaders();
-      headers.remove('Content-Type');
-      
-      var request = http.MultipartRequest(
-        'POST', 
-        Uri.parse('$baseUrl/users/setPhoto')
-      );
-      
-      request.headers.addAll(headers);
-      request.fields[type] = 'uploaded';
-      request.files.add(await http.MultipartFile.fromPath(type, filePath));
+Future<bool> uploadFoto({
+  required String type, // 'foto_ktp', 'foto_kk', 'foto_diri', 'foto_bukti'
+  required String filePath,
+}) async {
+  try {
+    final headers = await getProtectedHeaders();
+    headers.remove('Content-Type');
+    
+    var request = http.MultipartRequest(
+      'POST', 
+      Uri.parse('$baseUrl/users/setPhoto')
+    );
+    
+    request.headers.addAll(headers);
+    request.fields[type] = 'uploaded';
+    request.files.add(await http.MultipartFile.fromPath(type, filePath));
 
-      final response = await request.send();
-      return response.statusCode == 200;
-    } catch (e) {
-      print('❌ Upload $type error: $e');
-      return false;
+    final response = await request.send();
+    
+    print('📤 Upload $type Response: ${response.statusCode}');
+    
+    if (response.statusCode == 200) {
+      final responseBody = await response.stream.bytesToString();
+      print('📤 Upload $type Body: $responseBody');
+      
+      final data = jsonDecode(responseBody);
+      return data['success'] == true || data['status'] == 'success';
     }
+    
+    return false;
+  } catch (e) {
+    print('❌ Upload $type error: $e');
+    return false;
   }
+}
 
   // ✅ UPLOAD KTP (ALIAS FOR UPLOAD FOTO)
   Future<bool> updateKTP(String username, String filePath) async {
@@ -869,25 +943,28 @@ class ApiService {
   // ============ UTILITY METHODS ============
 
   // ✅ CHANGE PASSWORD
-  Future<bool> changePassword(String oldPass, String newPass, String newPassConf) async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/users/changePass'),
-        headers: headers,
-        body: 'old_pass=$oldPass&new_pass=$newPass&new_pass_conf=$newPassConf',
-      );
+Future<bool> changePassword(String oldPass, String newPass, String newPassConf) async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/users/changePass'),
+      headers: headers,
+      body: 'old_pass=$oldPass&new_pass=$newPass&new_pass_conf=$newPassConf',
+    );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['success'] == true;
-      }
-    } catch (e) {
-      print('❌ Change password error: $e');
+    print('🔑 Change Password Response: ${response.statusCode}');
+    print('🔑 Change Password Body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['success'] == true || data['status'] == 'success';
     }
-    return false;
+  } catch (e) {
+    print('❌ Change password error: $e');
   }
+  return false;
+}
 
   // ✅ CHECK USER EXIST
   Future<Map<String, dynamic>> checkUserExist(String username, String email) async {

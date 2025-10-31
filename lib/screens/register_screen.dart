@@ -85,6 +85,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
   bool _obscureText = true;
   bool _obscureConfirmText = true;
+  bool _agreedToTerms = false; // ✅ FIX: Tambah state untuk persetujuan
 
   @override
   void initState() {
@@ -92,15 +93,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _loadMasterData();
   }
 
-  // ✅ LOAD DATA PROVINSI, AGAMA, CABANG DARI API
+  // ✅ LOAD DATA PROVINSI, AGAMA, CABANG DARI API - FIXED
   Future<void> _loadMasterData() async {
     try {
+      setState(() => _isLoading = true);
+      
       // Load provinsi
       final provinsiResult = await _apiService.getProvince();
       if (provinsiResult['success'] == true) {
         setState(() {
           _provinsiList = provinsiResult['data'] ?? [];
         });
+      } else {
+        print('❌ Failed to load provinsi: ${provinsiResult['message']}');
       }
 
       // Load master data untuk agama dan cabang
@@ -110,13 +115,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
           _agamaList = masterResult['data']['agama'] ?? [];
           _cabangList = masterResult['data']['cabang'] ?? [];
         });
+      } else {
+        print('❌ Failed to load master data: ${masterResult['message']}');
       }
     } catch (e) {
-      print('Error loading master data: $e');
+      print('❌ Error loading master data: $e');
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
-  // ✅ LOAD KOTA BERDASARKAN PROVINSI
+  // ✅ LOAD KOTA BERDASARKAN PROVINSI - FIXED
   Future<void> _loadKota(String idProvinsi, bool forKtp) async {
     try {
       final result = await _apiService.getRegency(idProvinsi);
@@ -128,13 +137,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _kotaListDomisili = result['data'] ?? [];
           }
         });
+      } else {
+        print('❌ Failed to load kota: ${result['message']}');
       }
     } catch (e) {
-      print('Error loading kota: $e');
+      print('❌ Error loading kota: $e');
     }
   }
 
-  // ✅ HANDLE REGISTER
+  // ✅ HANDLE REGISTER - FIXED
   void _handleRegister() async {
     if (!_validateAllForms()) return;
 
@@ -212,7 +223,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
 
       if (result['success'] == true) {
-        _showSuccessDialog(result['message']);
+        _showSuccessDialog(result['message'] ?? 'Pendaftaran berhasil!');
       } else {
         _showErrorDialog(result['message'] ?? 'Registrasi gagal. Silakan coba lagi.');
       }
@@ -225,7 +236,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _validateAllForms() {
     for (int i = 0; i < _formKeys.length; i++) {
       if (!_formKeys[i].currentState!.validate()) {
-        setState(() => _currentStep = i);
+        setState(() => _currentStep = i + (_currentStep == 0 ? 0 : 0)); // Adjust step logic
         return false;
       }
     }
@@ -350,7 +361,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  // ✅ STEP 0: INFORMASI KOPERASI
+  // ✅ STEP 0: INFORMASI KOPERASI - FIXED
   Widget _buildInfoStep() {
     return SingleChildScrollView(
       child: Column(
@@ -370,7 +381,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const SizedBox(height: 16),
           _buildInfoCard(
             'Misi',
-            '1. Memberikan layanan keuangan yang terjangkau\n2. Meningkatkan kapasitas usaha anggota\n3. Mengembangkan jaringan kemitraan yang strategis\n4. Menerapkan prinsip tata kelola yang baik',
+            '• Memberikan layanan keuangan yang terjangkau\n• Meningkatkan kapasitas usaha anggota\n• Mengembangkan jaringan kemitraan yang strategis\n• Menerapkan prinsip tata kelola yang baik',
             Icons.flag,
           ),
           const SizedBox(height: 16),
@@ -386,18 +397,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
             Icons.people,
           ),
           const SizedBox(height: 24),
-          CheckboxListTile(
-            title: const Text(
-              'Saya telah membaca dan menyetujui semua ketentuan yang berlaku',
-              style: TextStyle(fontSize: 14),
+          Card(
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  CheckboxListTile(
+                    title: const Text(
+                      'Saya telah membaca dan menyetujui semua ketentuan yang berlaku',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                    value: _agreedToTerms,
+                    onChanged: (value) {
+                      setState(() => _agreedToTerms = value ?? false);
+                    },
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                  if (!_agreedToTerms)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16, top: 8),
+                      child: Text(
+                        'Anda harus menyetujui ketentuan untuk melanjutkan',
+                        style: TextStyle(
+                          color: Colors.red[600],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-            value: _currentStep > 0, // Auto set true setelah step 0
-            onChanged: (value) {
-              if (value == true) {
-                setState(() => _currentStep = 1);
-              }
-            },
-            controlAffinity: ListTileControlAffinity.leading,
           ),
         ],
       ),
@@ -437,435 +467,552 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ✅ STEP 1: DATA UMUM
+  // ✅ STEP 1: DATA UMUM - FIXED OVERFLOW
   Widget _buildDataUmumStep() {
     return Form(
       key: _formKeys[0],
-      child: Column(
-        children: [
-          _buildTextField(
-            controller: usernameController,
-            label: 'Username *',
-            icon: Icons.person_outline,
-            validator: (v) => _validateRequired(v, 'Username'),
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: emailController,
-            label: 'Email *',
-            icon: Icons.email_outlined,
-            keyboardType: TextInputType.emailAddress,
-            validator: _validateEmail,
-          ),
-          const SizedBox(height: 16),
-          _buildPasswordField(
-            controller: passwordController,
-            label: 'Password *',
-            obscureText: _obscureText,
-            onToggle: () => setState(() => _obscureText = !_obscureText),
-            validator: _validatePassword,
-          ),
-          const SizedBox(height: 16),
-          _buildPasswordField(
-            controller: confirmPasswordController,
-            label: 'Konfirmasi Password *',
-            obscureText: _obscureConfirmText,
-            onToggle: () => setState(() => _obscureConfirmText = !_obscureConfirmText),
-            validator: _validateConfirmPassword,
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: fullnameController,
-            label: 'Nama Lengkap *',
-            icon: Icons.badge_outlined,
-            validator: (v) => _validateRequired(v, 'Nama lengkap'),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildTextField(
-                  controller: birthPlaceController,
-                  label: 'Tempat Lahir *',
-                  icon: Icons.place_outlined,
-                  validator: (v) => _validateRequired(v, 'Tempat lahir'),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildDateField(
-                  label: 'Tanggal Lahir *',
-                  value: _selectedBirthDate,
-                  onTap: () => _selectDate((date) {
-                    setState(() => _selectedBirthDate = date);
-                  }, DateTime.now().subtract(const Duration(days: 365 * 18))),
-                  validator: (v) => _selectedBirthDate == null ? 'Tanggal lahir wajib diisi' : null,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: phoneController,
-            label: 'No. Telepon *',
-            icon: Icons.phone_outlined,
-            keyboardType: TextInputType.phone,
-            validator: _validatePhone,
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: jobController,
-            label: 'Pekerjaan *',
-            icon: Icons.work_outline,
-            validator: (v) => _validateRequired(v, 'Pekerjaan'),
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: faxController,
-            label: 'No. Fax',
-            icon: Icons.fax_outlined,
-            keyboardType: TextInputType.phone,
-          ),
-        ],
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            _buildTextField(
+              controller: usernameController,
+              label: 'Username *',
+              icon: Icons.person_outline,
+              validator: (v) => _validateRequired(v, 'Username'),
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: emailController,
+              label: 'Email *',
+              icon: Icons.email_outlined,
+              keyboardType: TextInputType.emailAddress,
+              validator: _validateEmail,
+            ),
+            const SizedBox(height: 16),
+            _buildPasswordField(
+              controller: passwordController,
+              label: 'Password *',
+              obscureText: _obscureText,
+              onToggle: () => setState(() => _obscureText = !_obscureText),
+              validator: _validatePassword,
+            ),
+            const SizedBox(height: 16),
+            _buildPasswordField(
+              controller: confirmPasswordController,
+              label: 'Konfirmasi Password *',
+              obscureText: _obscureConfirmText,
+              onToggle: () => setState(() => _obscureConfirmText = !_obscureConfirmText),
+              validator: _validateConfirmPassword,
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: fullnameController,
+              label: 'Nama Lengkap *',
+              icon: Icons.badge_outlined,
+              validator: (v) => _validateRequired(v, 'Nama lengkap'),
+            ),
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth > 600) {
+                  // Desktop/Tablet layout
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller: birthPlaceController,
+                          label: 'Tempat Lahir *',
+                          icon: Icons.place_outlined,
+                          validator: (v) => _validateRequired(v, 'Tempat lahir'),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildDateField(
+                          label: 'Tanggal Lahir *',
+                          value: _selectedBirthDate,
+                          onTap: () => _selectDate((date) {
+                            setState(() => _selectedBirthDate = date);
+                          }, DateTime.now().subtract(const Duration(days: 365 * 18))),
+                          validator: (v) => _selectedBirthDate == null ? 'Tanggal lahir wajib diisi' : null,
+                        ),
+                      ),
+                    ],
+                  );
+                } else {
+                  // Mobile layout
+                  return Column(
+                    children: [
+                      _buildTextField(
+                        controller: birthPlaceController,
+                        label: 'Tempat Lahir *',
+                        icon: Icons.place_outlined,
+                        validator: (v) => _validateRequired(v, 'Tempat lahir'),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildDateField(
+                        label: 'Tanggal Lahir *',
+                        value: _selectedBirthDate,
+                        onTap: () => _selectDate((date) {
+                          setState(() => _selectedBirthDate = date);
+                        }, DateTime.now().subtract(const Duration(days: 365 * 18))),
+                        validator: (v) => _selectedBirthDate == null ? 'Tanggal lahir wajib diisi' : null,
+                      ),
+                    ],
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: phoneController,
+              label: 'No. Telepon *',
+              icon: Icons.phone_outlined,
+              keyboardType: TextInputType.phone,
+              validator: _validatePhone,
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: jobController,
+              label: 'Pekerjaan *',
+              icon: Icons.work_outline,
+              validator: (v) => _validateRequired(v, 'Pekerjaan'),
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: faxController,
+              label: 'No. Fax',
+              icon: Icons.fax_outlined,
+              keyboardType: TextInputType.phone,
+            ),
+            const SizedBox(height: 16), // Extra space for scrolling
+          ],
+        ),
       ),
     );
   }
 
-  // ✅ STEP 2: IDENTITAS
+  // ✅ STEP 2: IDENTITAS - FIXED DROPDOWN
   Widget _buildIdentitasStep() {
     return Form(
       key: _formKeys[1],
-      child: Column(
-        children: [
-          _buildDropdown(
-            label: 'Agama *',
-            value: agamaIdController.text.isEmpty ? null : agamaIdController.text,
-            items: _agamaList.map((agama) {
-              return DropdownMenuItem(
-                value: agama['id'].toString(),
-                child: Text(agama['nama'] ?? ''),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() => agamaIdController.text = value!);
-            },
-            validator: (v) => _validateRequired(agamaIdController.text, 'Agama'),
-          ),
-          const SizedBox(height: 16),
-          _buildDropdown(
-            label: 'Cabang *',
-            value: cabangIdController.text.isEmpty ? null : cabangIdController.text,
-            items: _cabangList.map((cabang) {
-              return DropdownMenuItem(
-                value: cabang['id'].toString(),
-                child: Text(cabang['nama'] ?? ''),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() => cabangIdController.text = value!);
-            },
-            validator: (v) => _validateRequired(cabangIdController.text, 'Cabang'),
-          ),
-          const SizedBox(height: 16),
-          _buildDropdown(
-            label: 'Jenis Identitas *',
-            value: jenisIdentitasController.text,
-            items: const [
-              DropdownMenuItem(value: 'KTP', child: Text('KTP')),
-              DropdownMenuItem(value: 'SIM', child: Text('SIM')),
-              DropdownMenuItem(value: 'Passport', child: Text('Passport')),
-            ],
-            onChanged: (value) {
-              setState(() => jenisIdentitasController.text = value!);
-            },
-            validator: (v) => _validateRequired(jenisIdentitasController.text, 'Jenis identitas'),
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: nomorIdentitasController,
-            label: 'Nomor Identitas *',
-            icon: Icons.credit_card_outlined,
-            keyboardType: TextInputType.number,
-            validator: (v) => _validateRequired(v, 'Nomor identitas'),
-          ),
-          const SizedBox(height: 16),
-          _buildDateField(
-            label: 'Tanggal Berlaku Identitas',
-            value: _selectedTanggalBerlaku,
-            onTap: () => _selectDate((date) {
-              setState(() => _selectedTanggalBerlaku = date);
-            }, DateTime.now().add(const Duration(days: 365 * 5))),
-          ),
-          const SizedBox(height: 16),
-          _buildDropdown(
-            label: 'Dari mana Anda mengetahui kami? *',
-            value: sumberInformasiController.text.isEmpty ? null : sumberInformasiController.text,
-            items: _sumberInfoList.map((sumber) {
-              return DropdownMenuItem(
-                value: sumber['id'].toString(),
-                child: Text(sumber['nama']),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() => sumberInformasiController.text = value!);
-            },
-            validator: (v) => _validateRequired(sumberInformasiController.text, 'Sumber informasi'),
-          ),
-        ],
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            _buildDropdown(
+              label: 'Agama *',
+              value: agamaIdController.text.isEmpty ? null : agamaIdController.text,
+              items: _agamaList.isNotEmpty 
+                  ? _agamaList.map((agama) {
+                      return DropdownMenuItem(
+                        value: agama['id'].toString(),
+                        child: Text(agama['nama']?.toString() ?? 'Unknown'),
+                      );
+                    }).toList()
+                  : [const DropdownMenuItem(value: 'loading', child: Text('Loading...'))],
+              onChanged: _agamaList.isNotEmpty ? (value) {
+                setState(() => agamaIdController.text = value!);
+              } : null,
+              validator: (v) => _validateRequired(agamaIdController.text, 'Agama'),
+            ),
+            const SizedBox(height: 16),
+            _buildDropdown(
+              label: 'Cabang *',
+              value: cabangIdController.text.isEmpty ? null : cabangIdController.text,
+              items: _cabangList.isNotEmpty
+                  ? _cabangList.map((cabang) {
+                      return DropdownMenuItem(
+                        value: cabang['id'].toString(),
+                        child: Text(cabang['nama']?.toString() ?? 'Unknown'),
+                      );
+                    }).toList()
+                  : [const DropdownMenuItem(value: 'loading', child: Text('Loading...'))],
+              onChanged: _cabangList.isNotEmpty ? (value) {
+                setState(() => cabangIdController.text = value!);
+              } : null,
+              validator: (v) => _validateRequired(cabangIdController.text, 'Cabang'),
+            ),
+            const SizedBox(height: 16),
+            _buildDropdown(
+              label: 'Jenis Identitas *',
+              value: jenisIdentitasController.text,
+              items: const [
+                DropdownMenuItem(value: 'KTP', child: Text('KTP')),
+                DropdownMenuItem(value: 'SIM', child: Text('SIM')),
+                DropdownMenuItem(value: 'Passport', child: Text('Passport')),
+              ],
+              onChanged: (value) {
+                setState(() => jenisIdentitasController.text = value!);
+              },
+              validator: (v) => _validateRequired(jenisIdentitasController.text, 'Jenis identitas'),
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: nomorIdentitasController,
+              label: 'Nomor Identitas *',
+              icon: Icons.credit_card_outlined,
+              keyboardType: TextInputType.number,
+              validator: (v) => _validateRequired(v, 'Nomor identitas'),
+            ),
+            const SizedBox(height: 16),
+            _buildDateField(
+              label: 'Tanggal Berlaku Identitas',
+              value: _selectedTanggalBerlaku,
+              onTap: () => _selectDate((date) {
+                setState(() => _selectedTanggalBerlaku = date);
+              }, DateTime.now().add(const Duration(days: 365 * 5))),
+            ),
+            const SizedBox(height: 16),
+            _buildDropdown(
+              label: 'Dari mana Anda mengetahui kami? *',
+              value: sumberInformasiController.text.isEmpty ? null : sumberInformasiController.text,
+              items: _sumberInfoList.map((sumber) {
+                return DropdownMenuItem(
+                  value: sumber['id'].toString(),
+                  child: Text(sumber['nama']),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() => sumberInformasiController.text = value!);
+              },
+              validator: (v) => _validateRequired(sumberInformasiController.text, 'Sumber informasi'),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
 
-  // ✅ STEP 3: DATA KTP
+  // ✅ STEP 3: DATA KTP - FIXED DROPDOWN
   Widget _buildDataKtpStep() {
     return Form(
       key: _formKeys[2],
-      child: Column(
-        children: [
-          _buildTextField(
-            controller: ktpAlamatController,
-            label: 'Alamat Sesuai KTP *',
-            icon: Icons.home_outlined,
-            maxLines: 2,
-            validator: (v) => _validateRequired(v, 'Alamat KTP'),
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: ktpNoController,
-            label: 'No. Rumah *',
-            icon: Icons.house_outlined,
-            validator: (v) => _validateRequired(v, 'No. Rumah'),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildTextField(
-                  controller: ktpRtController,
-                  label: 'RT *',
-                  icon: Icons.numbers_outlined,
-                  keyboardType: TextInputType.number,
-                  validator: (v) => _validateRequired(v, 'RT'),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildTextField(
-                  controller: ktpRwController,
-                  label: 'RW *',
-                  icon: Icons.numbers_outlined,
-                  keyboardType: TextInputType.number,
-                  validator: (v) => _validateRequired(v, 'RW'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildDropdown(
-            label: 'Provinsi *',
-            value: _selectedProvinsiKtp,
-            items: _provinsiList.map((provinsi) {
-              return DropdownMenuItem(
-                value: provinsi['id'].toString(),
-                child: Text(provinsi['nama'] ?? ''),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() {
-                _selectedProvinsiKtp = value;
-                _selectedKotaKtp = null;
-                _kotaListKtp = [];
-              });
-              if (value != null) _loadKota(value, true);
-            },
-            validator: (v) => _selectedProvinsiKtp == null ? 'Provinsi wajib dipilih' : null,
-          ),
-          const SizedBox(height: 16),
-          _buildDropdown(
-            label: 'Kabupaten/Kota *',
-            value: _selectedKotaKtp,
-            items: _kotaListKtp.map((kota) {
-              return DropdownMenuItem(
-                value: kota['id'].toString(),
-                child: Text(kota['nama'] ?? ''),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() => _selectedKotaKtp = value);
-            },
-            validator: (v) => _selectedKotaKtp == null ? 'Kabupaten/Kota wajib dipilih' : null,
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: ktpPostalController,
-            label: 'Kode Pos *',
-            icon: Icons.markunread_mailbox_outlined,
-            keyboardType: TextInputType.number,
-            validator: (v) => _validateRequired(v, 'Kode Pos'),
-          ),
-        ],
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            _buildTextField(
+              controller: ktpAlamatController,
+              label: 'Alamat Sesuai KTP *',
+              icon: Icons.home_outlined,
+              maxLines: 2,
+              validator: (v) => _validateRequired(v, 'Alamat KTP'),
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: ktpNoController,
+              label: 'No. Rumah *',
+              icon: Icons.house_outlined,
+              validator: (v) => _validateRequired(v, 'No. Rumah'),
+            ),
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth > 600) {
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller: ktpRtController,
+                          label: 'RT *',
+                          icon: Icons.numbers_outlined,
+                          keyboardType: TextInputType.number,
+                          validator: (v) => _validateRequired(v, 'RT'),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildTextField(
+                          controller: ktpRwController,
+                          label: 'RW *',
+                          icon: Icons.numbers_outlined,
+                          keyboardType: TextInputType.number,
+                          validator: (v) => _validateRequired(v, 'RW'),
+                        ),
+                      ),
+                    ],
+                  );
+                } else {
+                  return Column(
+                    children: [
+                      _buildTextField(
+                        controller: ktpRtController,
+                        label: 'RT *',
+                        icon: Icons.numbers_outlined,
+                        keyboardType: TextInputType.number,
+                        validator: (v) => _validateRequired(v, 'RT'),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildTextField(
+                        controller: ktpRwController,
+                        label: 'RW *',
+                        icon: Icons.numbers_outlined,
+                        keyboardType: TextInputType.number,
+                        validator: (v) => _validateRequired(v, 'RW'),
+                      ),
+                    ],
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+            _buildDropdown(
+              label: 'Provinsi *',
+              value: _selectedProvinsiKtp,
+              items: _provinsiList.isNotEmpty
+                  ? _provinsiList.map((provinsi) {
+                      return DropdownMenuItem(
+                        value: provinsi['id'].toString(),
+                        child: Text(provinsi['nama']?.toString() ?? 'Unknown'),
+                      );
+                    }).toList()
+                  : [const DropdownMenuItem(value: 'loading', child: Text('Loading...'))],
+              onChanged: _provinsiList.isNotEmpty ? (value) {
+                setState(() {
+                  _selectedProvinsiKtp = value;
+                  _selectedKotaKtp = null;
+                  _kotaListKtp = [];
+                });
+                if (value != null) _loadKota(value, true);
+              } : null,
+              validator: (v) => _selectedProvinsiKtp == null ? 'Provinsi wajib dipilih' : null,
+            ),
+            const SizedBox(height: 16),
+            _buildDropdown(
+              label: 'Kabupaten/Kota *',
+              value: _selectedKotaKtp,
+              items: _kotaListKtp.isNotEmpty
+                  ? _kotaListKtp.map((kota) {
+                      return DropdownMenuItem(
+                        value: kota['id'].toString(),
+                        child: Text(kota['nama']?.toString() ?? 'Unknown'),
+                      );
+                    }).toList()
+                  : [const DropdownMenuItem(value: 'empty', child: Text('Pilih provinsi dulu'))],
+              onChanged: _kotaListKtp.isNotEmpty ? (value) {
+                setState(() => _selectedKotaKtp = value);
+              } : null,
+              validator: (v) => _selectedKotaKtp == null ? 'Kabupaten/Kota wajib dipilih' : null,
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: ktpPostalController,
+              label: 'Kode Pos *',
+              icon: Icons.markunread_mailbox_outlined,
+              keyboardType: TextInputType.number,
+              validator: (v) => _validateRequired(v, 'Kode Pos'),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
 
-  // ✅ STEP 4: DATA DOMISILI
+  // ✅ STEP 4: DATA DOMISILI - FIXED
   Widget _buildDataDomisiliStep() {
     return Form(
       key: _formKeys[3],
-      child: Column(
-        children: [
-          CheckboxListTile(
-            title: const Text('Sama dengan alamat KTP'),
-            value: _sameAsKtp,
-            onChanged: (value) {
-              setState(() => _sameAsKtp = value!);
-              if (value!) {
-                domisiliAlamatController.text = ktpAlamatController.text;
-                domisiliNoController.text = ktpNoController.text;
-                domisiliRtController.text = ktpRtController.text;
-                domisiliRwController.text = ktpRwController.text;
-                domisiliPostalController.text = ktpPostalController.text;
-                _selectedProvinsiDomisili = _selectedProvinsiKtp;
-                _selectedKotaDomisili = _selectedKotaKtp;
-              }
-            },
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: domisiliAlamatController,
-            label: 'Alamat Saat Ini *',
-            icon: Icons.home_outlined,
-            maxLines: 2,
-            validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Alamat domisili'),
-            enabled: !_sameAsKtp,
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: domisiliNoController,
-            label: 'No. Rumah *',
-            icon: Icons.house_outlined,
-            validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'No. Rumah'),
-            enabled: !_sameAsKtp,
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildTextField(
-                  controller: domisiliRtController,
-                  label: 'RT *',
-                  icon: Icons.numbers_outlined,
-                  keyboardType: TextInputType.number,
-                  validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RT'),
-                  enabled: !_sameAsKtp,
-                ),
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            Card(
+              child: CheckboxListTile(
+                title: const Text('Sama dengan alamat KTP'),
+                value: _sameAsKtp,
+                onChanged: (value) {
+                  setState(() => _sameAsKtp = value!);
+                  if (value!) {
+                    domisiliAlamatController.text = ktpAlamatController.text;
+                    domisiliNoController.text = ktpNoController.text;
+                    domisiliRtController.text = ktpRtController.text;
+                    domisiliRwController.text = ktpRwController.text;
+                    domisiliPostalController.text = ktpPostalController.text;
+                    _selectedProvinsiDomisili = _selectedProvinsiKtp;
+                    _selectedKotaDomisili = _selectedKotaKtp;
+                  }
+                },
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildTextField(
-                  controller: domisiliRwController,
-                  label: 'RW *',
-                  icon: Icons.numbers_outlined,
-                  keyboardType: TextInputType.number,
-                  validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RW'),
-                  enabled: !_sameAsKtp,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildDropdown(
-            label: 'Provinsi *',
-            value: _selectedProvinsiDomisili,
-            items: _provinsiList.map((provinsi) {
-              return DropdownMenuItem(
-                value: provinsi['id'].toString(),
-                child: Text(provinsi['nama'] ?? ''),
-              );
-            }).toList(),
-            onChanged: _sameAsKtp ? null : (value) {
-              setState(() {
-                _selectedProvinsiDomisili = value;
-                _selectedKotaDomisili = null;
-                _kotaListDomisili = [];
-              });
-              if (value != null) _loadKota(value, false);
-            },
-            validator: _sameAsKtp ? null : (v) => _selectedProvinsiDomisili == null ? 'Provinsi wajib dipilih' : null,
-          ),
-          const SizedBox(height: 16),
-          _buildDropdown(
-            label: 'Kabupaten/Kota *',
-            value: _selectedKotaDomisili,
-            items: _kotaListDomisili.map((kota) {
-              return DropdownMenuItem(
-                value: kota['id'].toString(),
-                child: Text(kota['nama'] ?? ''),
-              );
-            }).toList(),
-            onChanged: _sameAsKtp ? null : (value) {
-              setState(() => _selectedKotaDomisili = value);
-            },
-            validator: _sameAsKtp ? null : (v) => _selectedKotaDomisili == null ? 'Kabupaten/Kota wajib dipilih' : null,
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: domisiliPostalController,
-            label: 'Kode Pos *',
-            icon: Icons.markunread_mailbox_outlined,
-            keyboardType: TextInputType.number,
-            validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Kode Pos'),
-            enabled: !_sameAsKtp,
-          ),
-        ],
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: domisiliAlamatController,
+              label: 'Alamat Saat Ini *',
+              icon: Icons.home_outlined,
+              maxLines: 2,
+              validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Alamat domisili'),
+              enabled: !_sameAsKtp,
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: domisiliNoController,
+              label: 'No. Rumah *',
+              icon: Icons.house_outlined,
+              validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'No. Rumah'),
+              enabled: !_sameAsKtp,
+            ),
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth > 600) {
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller: domisiliRtController,
+                          label: 'RT *',
+                          icon: Icons.numbers_outlined,
+                          keyboardType: TextInputType.number,
+                          validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RT'),
+                          enabled: !_sameAsKtp,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildTextField(
+                          controller: domisiliRwController,
+                          label: 'RW *',
+                          icon: Icons.numbers_outlined,
+                          keyboardType: TextInputType.number,
+                          validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RW'),
+                          enabled: !_sameAsKtp,
+                        ),
+                      ),
+                    ],
+                  );
+                } else {
+                  return Column(
+                    children: [
+                      _buildTextField(
+                        controller: domisiliRtController,
+                        label: 'RT *',
+                        icon: Icons.numbers_outlined,
+                        keyboardType: TextInputType.number,
+                        validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RT'),
+                        enabled: !_sameAsKtp,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildTextField(
+                        controller: domisiliRwController,
+                        label: 'RW *',
+                        icon: Icons.numbers_outlined,
+                        keyboardType: TextInputType.number,
+                        validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RW'),
+                        enabled: !_sameAsKtp,
+                      ),
+                    ],
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+            _buildDropdown(
+              label: 'Provinsi *',
+              value: _selectedProvinsiDomisili,
+              items: _provinsiList.isNotEmpty
+                  ? _provinsiList.map((provinsi) {
+                      return DropdownMenuItem(
+                        value: provinsi['id'].toString(),
+                        child: Text(provinsi['nama']?.toString() ?? 'Unknown'),
+                      );
+                    }).toList()
+                  : [const DropdownMenuItem(value: 'loading', child: Text('Loading...'))],
+              onChanged: _sameAsKtp || _provinsiList.isEmpty ? null : (value) {
+                setState(() {
+                  _selectedProvinsiDomisili = value;
+                  _selectedKotaDomisili = null;
+                  _kotaListDomisili = [];
+                });
+                if (value != null) _loadKota(value, false);
+              },
+              validator: _sameAsKtp ? null : (v) => _selectedProvinsiDomisili == null ? 'Provinsi wajib dipilih' : null,
+            ),
+            const SizedBox(height: 16),
+            // ✅ PERBAIKAN: Di bagian _buildDataKtpStep()
+            _buildDropdown(
+              label: 'Kabupaten/Kota *',
+              value: _selectedKotaKtp,
+              items: _kotaListKtp.isNotEmpty
+                  ? _kotaListKtp.map((kota) {
+                      return DropdownMenuItem(
+                        value: kota['id'].toString(),
+                        child: Text(kota['nama']?.toString() ?? 'Unknown'),
+                      );
+                    }).toList()
+                  : [
+                      DropdownMenuItem( // ✅ HAPUS CONST DI SINI
+                        value: 'empty',
+                        child: Text('Pilih provinsi dulu'), // ✅ HAPUS TERNARY OPERATOR
+                      )
+                    ],
+              onChanged: _kotaListKtp.isNotEmpty ? (value) {
+                setState(() => _selectedKotaKtp = value);
+              } : null,
+              validator: (v) => _selectedKotaKtp == null ? 'Kabupaten/Kota wajib dipilih' : null,
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: domisiliPostalController,
+              label: 'Kode Pos *',
+              icon: Icons.markunread_mailbox_outlined,
+              keyboardType: TextInputType.number,
+              validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Kode Pos'),
+              enabled: !_sameAsKtp,
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
 
-  // ✅ STEP 5: DATA AHLI WARIS
+  // ✅ STEP 5: DATA AHLI WARIS - FIXED
   Widget _buildDataAhliWarisStep() {
     return Form(
       key: _formKeys[4],
-      child: Column(
-        children: [
-          _buildTextField(
-            controller: namaAhliWarisController,
-            label: 'Nama Ahli Waris *',
-            icon: Icons.person_outlined,
-            validator: (v) => _validateRequired(v, 'Nama ahli waris'),
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: tempatLahirAhliWarisController,
-            label: 'Tempat Lahir Ahli Waris *',
-            icon: Icons.place_outlined,
-            validator: (v) => _validateRequired(v, 'Tempat lahir ahli waris'),
-          ),
-          const SizedBox(height: 16),
-          _buildDateField(
-            label: 'Tanggal Lahir Ahli Waris *',
-            value: _selectedTanggalLahirAhliWaris,
-            onTap: () => _selectDate((date) {
-              setState(() => _selectedTanggalLahirAhliWaris = date);
-            }, DateTime.now().subtract(const Duration(days: 365 * 18))),
-            validator: (v) => _selectedTanggalLahirAhliWaris == null ? 'Tanggal lahir ahli waris wajib diisi' : null,
-          ),
-          const SizedBox(height: 16),
-          _buildDropdown(
-            label: 'Hubungan Keluarga *',
-            value: hubunganController.text,
-            items: const [
-              DropdownMenuItem(value: 'Orang Tua', child: Text('Orang Tua')),
-              DropdownMenuItem(value: 'Suami/Istri', child: Text('Suami/Istri')),
-              DropdownMenuItem(value: 'Anak', child: Text('Anak')),
-              DropdownMenuItem(value: 'Saudara Kandung', child: Text('Saudara Kandung')),
-            ],
-            onChanged: (value) {
-              setState(() => hubunganController.text = value!);
-            },
-            validator: (v) => _validateRequired(hubunganController.text, 'Hubungan keluarga'),
-          ),
-        ],
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            _buildTextField(
+              controller: namaAhliWarisController,
+              label: 'Nama Ahli Waris *',
+              icon: Icons.person_outlined,
+              validator: (v) => _validateRequired(v, 'Nama ahli waris'),
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: tempatLahirAhliWarisController,
+              label: 'Tempat Lahir Ahli Waris *',
+              icon: Icons.place_outlined,
+              validator: (v) => _validateRequired(v, 'Tempat lahir ahli waris'),
+            ),
+            const SizedBox(height: 16),
+            _buildDateField(
+              label: 'Tanggal Lahir Ahli Waris *',
+              value: _selectedTanggalLahirAhliWaris,
+              onTap: () => _selectDate((date) {
+                setState(() => _selectedTanggalLahirAhliWaris = date);
+              }, DateTime.now().subtract(const Duration(days: 365 * 18))),
+              validator: (v) => _selectedTanggalLahirAhliWaris == null ? 'Tanggal lahir ahli waris wajib diisi' : null,
+            ),
+            const SizedBox(height: 16),
+            _buildDropdown(
+              label: 'Hubungan Keluarga *',
+              value: hubunganController.text,
+              items: const [
+                DropdownMenuItem(value: 'Orang Tua', child: Text('Orang Tua')),
+                DropdownMenuItem(value: 'Suami/Istri', child: Text('Suami/Istri')),
+                DropdownMenuItem(value: 'Anak', child: Text('Anak')),
+                DropdownMenuItem(value: 'Saudara Kandung', child: Text('Saudara Kandung')),
+              ],
+              onChanged: (value) {
+                setState(() => hubunganController.text = value!);
+              },
+              validator: (v) => _validateRequired(hubunganController.text, 'Hubungan keluarga'),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
@@ -889,6 +1036,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         labelText: label,
         prefixIcon: Icon(icon),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        filled: true,
+        fillColor: enabled ? Colors.white : Colors.grey[100],
       ),
       validator: validator,
     );
@@ -912,6 +1061,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           onPressed: onToggle,
         ),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        filled: true,
+        fillColor: Colors.white,
       ),
       validator: validator,
     );
@@ -931,6 +1082,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         prefixIcon: const Icon(Icons.calendar_today_outlined),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         hintText: 'Pilih tanggal',
+        filled: true,
+        fillColor: Colors.white,
       ),
       controller: TextEditingController(
         text: value != null ? '${value.day}/${value.month}/${value.year}' : '',
@@ -953,8 +1106,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       decoration: InputDecoration(
         labelText: label,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        filled: true,
+        fillColor: Colors.white,
       ),
       validator: validator,
+      isExpanded: true,
     );
   }
 
@@ -967,129 +1123,137 @@ class _RegisterScreenState extends State<RegisterScreen> {
         backgroundColor: Colors.green[800],
         foregroundColor: Colors.white,
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ✅ STEPPER
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.white,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: _isLoading && _provinsiList.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : SafeArea(
+              child: Column(
                 children: [
-                  for (int i = 0; i < 6; i++) ...[
-                    Expanded(
-                      child: Container(
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: i <= _currentStep ? Colors.green[800] : Colors.grey[300],
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    if (i < 5) const SizedBox(width: 4),
-                  ],
-                ],
-              ),
-            ),
-
-            // ✅ STEP LABELS
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-              color: Colors.white,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: const [
-                  Text('Info', style: TextStyle(fontSize: 12)),
-                  Text('Data Umum', style: TextStyle(fontSize: 12)),
-                  Text('Identitas', style: TextStyle(fontSize: 12)),
-                  Text('KTP', style: TextStyle(fontSize: 12)),
-                  Text('Domisili', style: TextStyle(fontSize: 12)),
-                  Text('Ahli Waris', style: TextStyle(fontSize: 12)),
-                ],
-              ),
-            ),
-
-            // ✅ STEP CONTENT
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: _buildStepContent(_currentStep),
-              ),
-            ),
-
-            // ✅ NAVIGATION BUTTONS
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.white,
-              child: Row(
-                children: [
-                  if (_currentStep > 0 && _currentStep != 1) // Jangan tampilkan back di step 1
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          setState(() => _currentStep--);
-                        },
-                        child: const Text('KEMBALI'),
-                      ),
-                    ),
-                  if (_currentStep > 0 && _currentStep != 1) const SizedBox(width: 16),
-                  Expanded(
-                    child: _currentStep == 5
-                        ? ElevatedButton(
-                            onPressed: _isLoading ? null : _handleRegister,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green[800],
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                  // ✅ STEPPER
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    color: Colors.white,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        for (int i = 0; i < 6; i++) ...[
+                          Expanded(
+                            child: Container(
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: i <= _currentStep ? Colors.green[800] : Colors.grey[300],
+                                borderRadius: BorderRadius.circular(2),
                               ),
                             ),
-                            child: _isLoading
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                          if (i < 5) const SizedBox(width: 4),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // ✅ STEP LABELS
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                    color: Colors.white,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: const [
+                        Text('Info', style: TextStyle(fontSize: 12)),
+                        Text('Data Umum', style: TextStyle(fontSize: 12)),
+                        Text('Identitas', style: TextStyle(fontSize: 12)),
+                        Text('KTP', style: TextStyle(fontSize: 12)),
+                        Text('Domisili', style: TextStyle(fontSize: 12)),
+                        Text('Ahli Waris', style: TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+
+                  // ✅ STEP CONTENT
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: _buildStepContent(_currentStep),
+                    ),
+                  ),
+
+                  // ✅ NAVIGATION BUTTONS - FIXED LOGIC
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    color: Colors.white,
+                    child: Row(
+                      children: [
+                        if (_currentStep > 0)
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
+                                setState(() => _currentStep--);
+                              },
+                              child: const Text('KEMBALI'),
+                            ),
+                          ),
+                        if (_currentStep > 0) const SizedBox(width: 16),
+                        Expanded(
+                          child: _currentStep == 5
+                              ? ElevatedButton(
+                                  onPressed: _isLoading ? null : _handleRegister,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green[800],
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
-                                  )
-                                : const Text(
-                                    'DAFTAR SEKARANG',
-                                    style: TextStyle(
+                                  ),
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          ),
+                                        )
+                                      : const Text(
+                                          'DAFTAR SEKARANG',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                )
+                              : ElevatedButton(
+                                  onPressed: () {
+                                    if (_currentStep == 0) {
+                                      if (_agreedToTerms) {
+                                        setState(() => _currentStep++);
+                                      }
+                                    } else {
+                                      if (_formKeys[_currentStep - 1].currentState!.validate()) {
+                                        setState(() => _currentStep++);
+                                      }
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green[800],
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _currentStep == 0 ? 'SETUJU & LANJUT' : 'LANJUT',
+                                    style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.white,
                                     ),
                                   ),
-                          )
-                        : ElevatedButton(
-                            onPressed: () {
-                              if (_formKeys[_currentStep - (_currentStep > 0 ? 1 : 0)].currentState!.validate()) {
-                                setState(() => _currentStep++);
-                              }
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green[800],
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: Text(
-                              _currentStep == 0 ? 'SETUJU & LANJUT' : 'LANJUT',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
+                                ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 }
