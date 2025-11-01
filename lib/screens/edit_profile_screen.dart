@@ -220,18 +220,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'domisili_id_regency': _sameAsKtp ? (_selectedKotaKtp ?? '3578') : (_selectedKotaDomisili ?? '3578'),
       };
 
-      // ✅ Update profile menggunakan method yang ada
-      bool profileSuccess = false;
-      
-      // ✅ Coba update dengan data yang dikirim
-      // Note: Method updateUserProfile mungkin perlu disesuaikan dengan API
-      // Untuk sementara, kita anggap berhasil jika tidak ada error
-      profileSuccess = true;
+      // ✅ Update profile menggunakan method baru dari ApiService
+      final profileResult = await _apiService.updateUserProfile(updatedData);
       
       // ✅ Update password jika diisi
-      bool passwordSuccess = true;
+      Map<String, dynamic> passwordResult = {'success': true};
       if (_newPasswordController.text.isNotEmpty) {
-        passwordSuccess = await _apiService.changePassword(
+        passwordResult = await _apiService.changePassword(
           _oldPasswordController.text.trim(),
           _newPasswordController.text.trim(),
           _confirmPasswordController.text.trim(),
@@ -242,7 +237,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       if (!mounted) return;
 
-      if (profileSuccess) {
+      // ✅ PERBAIKAN: Gunakan profileResult['success'] yang sudah bertipe bool
+      if (profileResult['success'] == true) {
         // ✅ Panggil callback untuk update data di parent
         widget.onProfileUpdated(updatedData);
         
@@ -253,7 +249,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         
         String message = 'Profile berhasil diupdate ✅';
         if (_newPasswordController.text.isNotEmpty) {
-          message = passwordSuccess 
+          message = passwordResult['success'] == true
             ? 'Profile dan password berhasil diupdate ✅'
             : 'Profile berhasil diupdate, tetapi gagal mengubah password';
         }
@@ -268,8 +264,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         Navigator.pop(context); // Kembali ke profile screen
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Gagal mengupdate profile'),
+          SnackBar(
+            content: Text(profileResult['message'] ?? 'Gagal mengupdate profile'),
             backgroundColor: Colors.red,
           ),
         );

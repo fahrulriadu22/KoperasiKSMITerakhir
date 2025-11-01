@@ -51,24 +51,25 @@ class _DashboardMainState extends State<DashboardMain> {
   
   // ✅ FIX: PERSIST SELECTED INDEX DENGAN PAGESTORAGE
   int get _selectedIndex {
-    return PageStorage.of(context)?.readState(context, identifier: ValueKey('nav_index')) as int? ?? 0;
+    return PageStorage.of(context)?.readState(context, identifier: const ValueKey('nav_index')) as int? ?? 0;
   }
   
   set _selectedIndex(int value) {
-    PageStorage.of(context)?.writeState(context, value, identifier: ValueKey('nav_index'));
+    PageStorage.of(context)?.writeState(context, value, identifier: const ValueKey('nav_index'));
     if (mounted) setState(() {});
   }
 
   late Map<String, dynamic> userData;
   final ApiService _apiService = ApiService();
-  int _unreadNotifications = 0; // ✅ Untuk badge notifikasi
+  int _unreadNotifications = 0;
+  bool _isLoading = true;
+  String _errorMessage = '';
 
   @override
   void initState() {
     super.initState();
     userData = _safeCastMap(widget.user);
-    _loadCurrentUser();
-    _loadUnreadNotifications();
+    _initializeData();
   }
 
   // ✅ Platform Detection Helper
@@ -78,12 +79,46 @@ class _DashboardMainState extends State<DashboardMain> {
   bool get _isLinux => !kIsWeb && Platform.isLinux;
   bool get _isMobile => _isAndroid || _isIOS;
 
-  Future<void> _loadCurrentUser() async {
-    final currentUser = await _apiService.getCurrentUser();
-    if (currentUser != null) {
+  // ✅ INITIALIZE DATA DENGAN ERROR HANDLING
+  Future<void> _initializeData() async {
+    try {
       setState(() {
-        userData = _safeCastMap(currentUser);
+        _isLoading = true;
+        _errorMessage = '';
       });
+
+      await Future.wait([
+        _loadCurrentUser(),
+        _loadUnreadNotifications(),
+      ], eagerError: true);
+
+    } catch (e) {
+      print('❌ Error initializing dashboard data: $e');
+      setState(() {
+        _errorMessage = 'Gagal memuat data dashboard. Silakan coba lagi.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadCurrentUser() async {
+    try {
+      final currentUser = await _apiService.getCurrentUser();
+      if (currentUser != null && currentUser is Map<String, dynamic>) {
+        setState(() {
+          userData = _safeCastMap(currentUser);
+        });
+      } else {
+        throw Exception('Data user tidak valid');
+      }
+    } catch (e) {
+      print('❌ Error loading current user: $e');
+      rethrow;
     }
   }
 
@@ -91,11 +126,12 @@ class _DashboardMainState extends State<DashboardMain> {
   Future<void> _loadUnreadNotifications() async {
     try {
       final result = await _apiService.getAllInbox();
+      
       if (result['success'] == true) {
         final data = result['data'] ?? {};
         final inboxList = data['inbox'] ?? [];
+        
         final unreadCount = inboxList.where((item) {
-          // ✅ Handle berbagai format field read_status
           final readStatus = item['read_status'] ?? item['is_read'] ?? '0';
           return readStatus == '0' || readStatus == 0 || readStatus == false;
         }).length;
@@ -105,9 +141,11 @@ class _DashboardMainState extends State<DashboardMain> {
         });
       } else {
         print('❌ Gagal load inbox: ${result['message']}');
+        throw Exception(result['message'] ?? 'Gagal memuat notifikasi');
       }
     } catch (e) {
       print('❌ Error loading notifications: $e');
+      rethrow;
     }
   }
 
@@ -121,44 +159,161 @@ class _DashboardMainState extends State<DashboardMain> {
     }
   }
 
+  // ✅ REFRESH DATA DENGAN PULL TO REFRESH SUPPORT
   Future<void> _refreshUserData() async {
-    final currentUser = await _apiService.getCurrentUser();
-    if (currentUser != null) {
-      setState(() {
-        userData = _safeCastMap(currentUser);
-      });
+    try {
+      await Future.wait([
+        _loadCurrentUser(),
+        _loadUnreadNotifications(),
+      ]);
+      
+      // ✅ Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Data berhasil diperbarui'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal memperbarui data: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
-    // ✅ Refresh juga notifikasi
-    await _loadUnreadNotifications();
   }
 
   void _onItemTapped(int index) {
     setState(() => _selectedIndex = index);
   }
 
-  // ✅ Method untuk buka notifikasi - SIMPLE VERSION
+  // ✅ Method untuk buka notifikasi - IMPROVED VERSION
   void _openNotifications() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Notifikasi'),
         content: Text(
           _unreadNotifications > 0 
             ? 'Anda memiliki $_unreadNotifications pesan belum dibaca'
             : 'Tidak ada pesan baru'
         ),
-        duration: const Duration(seconds: 2),
-        backgroundColor: _unreadNotifications > 0 ? Colors.orange : Colors.green,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tutup'),
+          ),
+          if (_unreadNotifications > 0)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                // TODO: Navigate to notifications screen
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Membuka halaman notifikasi...'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              child: const Text('Lihat'),
+            ),
+        ],
       ),
     );
   }
 
+  // ✅ BUILD METHOD WITH ERROR HANDLING
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return _buildLoadingScreen();
+    }
+
+    if (_errorMessage.isNotEmpty) {
+      return _buildErrorScreen();
+    }
+
+    return _buildMainScreen();
+  }
+
+  Widget _buildLoadingScreen() {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Memuat Dashboard...',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorScreen() {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 64,
+                color: Colors.red[300],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage,
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Colors.red,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _initializeData,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+                ),
+                child: const Text('Coba Lagi'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMainScreen() {
     // ✅ FIX: GUNAKAN PAGESTORAGE BUCKET UNTUK SEMUA SCREEN
     final List<Widget> pages = [
       PageStorage(
         bucket: _storageBucket,
         key: const ValueKey('beranda'),
-        child: DashboardScreen(user: userData),
+        child: RefreshIndicator(
+          onRefresh: _refreshUserData,
+          child: DashboardScreen(
+            user: userData,
+            onRefresh: _refreshUserData,
+          ),
+        ),
       ),
       PageStorage(
         bucket: _storageBucket,
@@ -173,14 +328,16 @@ class _DashboardMainState extends State<DashboardMain> {
       PageStorage(
         bucket: _storageBucket,
         key: const ValueKey('profil'),
-        child: ProfileScreen(user: userData),
+        child: ProfileScreen(
+          user: userData,
+          onProfileUpdated: _refreshUserData,
+        ),
       ),
     ];
 
     return PageStorage(
       bucket: _storageBucket,
       child: Scaffold(
-        // ✅ DIHAPUS: AppBar dihapus sesuai permintaan
         body: IndexedStack(
           index: _selectedIndex,
           children: pages,
@@ -481,6 +638,7 @@ class _DashboardMainState extends State<DashboardMain> {
     );
   }
 
+  // ✅ PUBLIC METHODS UNTUK EXTERNAL ACCESS
   void refreshUserData() {
     _refreshUserData();
   }
@@ -492,4 +650,9 @@ class _DashboardMainState extends State<DashboardMain> {
       });
     }
   }
+
+  // ✅ GETTERS UNTUK ACCESS DATA
+  Map<String, dynamic> get currentUser => userData;
+  int get unreadNotificationsCount => _unreadNotifications;
+  bool get isLoading => _isLoading;
 }

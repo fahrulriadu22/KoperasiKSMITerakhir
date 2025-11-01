@@ -1,80 +1,109 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import 'dashboard_main.dart';
+import 'register_screen.dart';
+import 'upload_dokumen_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  final Function(Map<String, dynamic>)? onLoginSuccess;
-  
-  const LoginScreen({super.key, this.onLoginSuccess});
-  
+  final Function(Map<String, dynamic>)? onLoginSuccess; // ✅ TAMBAHKAN INI
+
+  const LoginScreen({
+    Key? key,
+    this.onLoginSuccess, // ✅ TAMBAHKAN INI
+  }) : super(key: key);
+
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final ApiService _apiService = ApiService();
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController inputController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+  final ApiService _authService = ApiService();
   bool _isLoading = false;
   bool _obscureText = true;
   String _errorMessage = '';
 
-  @override
-  void initState() {
-    super.initState();
-    // Set default values for testing
-    _usernameController.text = 'sonik';
-    _passwordController.text = 'sonik';
-  }
-
-  Future<void> _handleLogin() async {
-    if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
-      setState(() {
-        _errorMessage = 'Username dan password harus diisi';
-      });
-      return;
-    }
+  void _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
 
     setState(() {
       _isLoading = true;
       _errorMessage = '';
     });
 
-    try {
-      final result = await _apiService.login(
-        _usernameController.text.trim(),
-        _passwordController.text.trim(),
-      );
+    final input = inputController.text.trim();
+    final pass = passwordController.text.trim();
 
-      setState(() {
-        _isLoading = false;
-      });
+    try {
+      final result = await _authService.login(input, pass);
 
       if (result['success'] == true) {
-        final userData = result['user'];
-        print('✅ Login berhasil: ${userData['user_name']}');
+        if (!mounted) return;
         
-        // Call callback jika ada
+        final user = result['user'];
+        
+        // ✅ PERBAIKAN: CEK APAKAH ADA CALLBACK onLoginSuccess
         if (widget.onLoginSuccess != null) {
-          widget.onLoginSuccess!(userData);
+          // Jika ada callback, panggil callback
+          widget.onLoginSuccess!(user!);
+        } else {
+          // Jika tidak ada callback, handle navigation sendiri
+          _checkDokumenStatusAndNavigate(user!);
         }
+        
       } else {
         setState(() {
-          _errorMessage = result['message'] ?? 'Login gagal';
+          _errorMessage = result['message'] ?? 'Login gagal. Silakan coba lagi.';
         });
       }
     } catch (e) {
       setState(() {
-        _isLoading = false;
-        _errorMessage = 'Terjadi kesalahan: $e';
+        _errorMessage = 'Terjadi kesalahan saat login: $e';
       });
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _togglePasswordVisibility() {
-    setState(() {
-      _obscureText = !_obscureText;
-    });
+  // ✅ PERBAIKAN: Method untuk cek status dokumen dan navigasi
+  void _checkDokumenStatusAndNavigate(Map<String, dynamic> user) {
+    final bool hasKTP = user['foto_ktp'] != null && 
+                        user['foto_ktp'].toString().isNotEmpty && 
+                        user['foto_ktp'] != 'uploaded';
+    
+    final bool hasKK = user['foto_kk'] != null && 
+                       user['foto_kk'].toString().isNotEmpty && 
+                       user['foto_kk'] != 'uploaded';
+    
+    final bool hasFotoDiri = user['foto_diri'] != null && 
+                             user['foto_diri'].toString().isNotEmpty && 
+                             user['foto_diri'] != 'uploaded';
+    
+    final bool allDokumenUploaded = hasKTP && hasKK && hasFotoDiri;
+    
+    if (!allDokumenUploaded) {
+      // ✅ Navigasi ke UploadDokumenScreen jika dokumen belum lengkap
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => UploadDokumenScreen(user: user)),
+      );
+    } else {
+      // ✅ Langsung ke dashboard jika dokumen sudah lengkap
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => DashboardMain(user: user)),
+      );
+    }
+  }
+
+  // ✅ TEST LOGIN FUNCTION (untuk debugging)
+  void _testLogin() async {
+    // Test dengan credential default
+    inputController.text = 'sonik';
+    passwordController.text = 'sonik';
+    _handleLogin();
   }
 
   @override
@@ -82,196 +111,278 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: Colors.green[50],
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            children: [
-              // Header Section
-              const SizedBox(height: 40),
-              Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  color: Colors.green[800],
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Icon(
-                  Icons.account_balance_wallet,
-                  color: Colors.white,
-                  size: 60,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Koperasi KSMI',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green[800],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Selamat datang kembali',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.green[600],
-                ),
-              ),
-              const SizedBox(height: 40),
-
-              // Login Form
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.green.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // ✅ LOGO KSMI
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    // Error Message
-                    if (_errorMessage.isNotEmpty)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.red[50],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.red[200]!),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.error_outline, color: Colors.red[700], size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _errorMessage,
-                                style: TextStyle(
-                                  color: Colors.red[700],
-                                  fontSize: 14,
-                                ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Image.asset(
+                        'assets/images/KSMI_LOGO.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: Colors.green[800],
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            alignment: Alignment.center,
+                            child: Icon(
+                              Icons.account_balance_wallet_rounded,
+                              color: Colors.white,
+                              size: 60,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // ✅ TITLE
+                  Text(
+                    'Koperasi KSMI',
+                    style: TextStyle(
+                      fontSize: 28, 
+                      fontWeight: FontWeight.bold, 
+                      color: Colors.green[800],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Selamat Datang Kembali',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.green[600],
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+
+                  // ✅ ERROR MESSAGE
+                  if (_errorMessage.isNotEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.error_outline, color: Colors.red[700], size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _errorMessage,
+                              style: TextStyle(
+                                color: Colors.red[700],
+                                fontSize: 14,
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    if (_errorMessage.isNotEmpty) const SizedBox(height: 16),
-
-                    // Username Field
-                    TextFormField(
-                      controller: _usernameController,
-                      decoration: InputDecoration(
-                        labelText: 'Username',
-                        prefixIcon: Icon(Icons.person, color: Colors.green[700]),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        filled: true,
-                        fillColor: Colors.green[50],
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 16),
 
-                    // Password Field
-                    TextFormField(
-                      controller: _passwordController,
+                  // ✅ INPUT FIELD
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.green[100]!,
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: TextFormField(
+                      controller: inputController,
+                      decoration: InputDecoration(
+                        labelText: 'Username / Email',
+                        labelStyle: TextStyle(color: Colors.grey[700]),
+                        prefixIcon: Icon(Icons.person_outline, color: Colors.green[700]),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      ),
+                      validator: (val) => val == null || val.isEmpty ? 'Harap isi username/email' : null,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ✅ PASSWORD FIELD
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.green[100]!,
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: TextFormField(
+                      controller: passwordController,
                       obscureText: _obscureText,
                       decoration: InputDecoration(
                         labelText: 'Password',
-                        prefixIcon: Icon(Icons.lock, color: Colors.green[700]),
+                        labelStyle: TextStyle(color: Colors.grey[700]),
+                        prefixIcon: Icon(Icons.lock_outline, color: Colors.green[700]),
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscureText ? Icons.visibility : Icons.visibility_off,
+                            _obscureText ? Icons.visibility_off : Icons.visibility,
                             color: Colors.green[700],
                           ),
-                          onPressed: _togglePasswordVisibility,
+                          onPressed: () => setState(() => _obscureText = !_obscureText),
                         ),
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
                         ),
                         filled: true,
-                        fillColor: Colors.green[50],
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                       ),
+                      validator: (val) => val == null || val.isEmpty ? 'Harap isi password' : null,
                     ),
-                    const SizedBox(height: 24),
+                  ),
+                  const SizedBox(height: 24),
 
-                    // Login Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _handleLogin,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green[700],
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          elevation: 2,
-                        ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text(
-                                'MASUK',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                  // ✅ TOMBOL LOGIN
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _handleLogin,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 4,
+                        shadowColor: Colors.green[300],
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white, 
+                                strokeWidth: 2
                               ),
-                      ),
+                            )
+                          : const Text(
+                              'Login', 
+                              style: TextStyle(
+                                fontSize: 16, 
+                                fontWeight: FontWeight.w600
+                              ),
+                            ),
                     ),
+                  ),
 
-                    // Register Link
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                  // ✅ TOMBOL TEST LOGIN (Hanya untuk development)
+                  if (true) // Set false untuk production
+                    Column(
                       children: [
-                        Text(
-                          'Belum punya akun?',
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            // Navigate to register screen
-                          },
-                          child: Text(
-                            'Daftar di sini',
-                            style: TextStyle(
-                              color: Colors.green[700],
-                              fontWeight: FontWeight.bold,
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 40,
+                          child: OutlinedButton(
+                            onPressed: _isLoading ? null : _testLogin,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.green[700],
+                              side: BorderSide(color: Colors.green[700]!),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: const Text(
+                              'Test Login (sonik/sonik)',
+                              style: TextStyle(fontSize: 14),
                             ),
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
+                  const SizedBox(height: 16),
 
-              // Footer
-              const SizedBox(height: 40),
-              Text(
-                'Versi 1.0.0',
-                style: TextStyle(
-                  color: Colors.grey[500],
-                  fontSize: 12,
-                ),
+                  // ✅ TOMBOL REGISTER
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Belum punya akun? ',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context, 
+                            MaterialPageRoute(builder: (_) => const RegisterScreen())
+                          );
+                        },
+                        child: Text(
+                          'Daftar',
+                          style: TextStyle(
+                            color: Colors.green[700],
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // ✅ INFO TAMBAHAN
+                  const SizedBox(height: 32),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green[100],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.green[700], size: 24),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Setelah login, Anda akan diminta untuk melengkapi dokumen KTP, KK, dan Foto Diri',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.green[800],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -280,8 +391,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _usernameController.dispose();
-    _passwordController.dispose();
+    inputController.dispose();
+    passwordController.dispose();
     super.dispose();
   }
 }

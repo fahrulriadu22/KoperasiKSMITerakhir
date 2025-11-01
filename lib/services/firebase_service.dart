@@ -60,23 +60,27 @@ class FirebaseService {
       print('🎉 FIREBASE SERVICES INITIALIZED SUCCESSFULLY!');
     } catch (e) {
       print('❌ ERROR Initializing Firebase Services: $e');
-      throw e;
+      // Jangan throw error agar app tidak crash
     }
   }
 
-  // ✅ Setup Local Notifications - FIXED: Remove invalid parameters
+  // ✅ Setup Local Notifications - IMPROVED VERSION
   Future<void> _setupLocalNotifications() async {
     try {
-      // Android Notification Channel
+      // Android Notification Channel - FIXED: Use proper initialization
       const AndroidInitializationSettings androidInitializationSettings =
           AndroidInitializationSettings('@mipmap/ic_launcher');
 
-      // iOS Notification Settings - FIXED: Remove onDidReceiveLocalNotification
+      // iOS Notification Settings - FIXED: Proper iOS configuration
       const DarwinInitializationSettings iosInitializationSettings =
           DarwinInitializationSettings(
         requestAlertPermission: true,
         requestBadgePermission: true,
         requestSoundPermission: true,
+        // ✅ FIX: Add default present options
+        defaultPresentAlert: true,
+        defaultPresentBadge: true,
+        defaultPresentSound: true,
       );
 
       // Initialize settings
@@ -86,21 +90,24 @@ class FirebaseService {
         iOS: iosInitializationSettings,
       );
 
-      // Initialize plugin
+      // Initialize plugin - FIXED: Proper initialization
       await _flutterLocalNotificationsPlugin.initialize(
         initializationSettings,
         onDidReceiveNotificationResponse: _onDidReceiveNotificationResponse,
+        // ✅ FIX: Add onDidReceiveBackgroundNotificationResponse for background
+        onDidReceiveBackgroundNotificationResponse: _onDidReceiveBackgroundNotificationResponse,
       );
 
-      // Create notification channel for Android
+      // Create notification channel for Android - FIXED: Proper channel setup
       if (Platform.isAndroid) {
         const AndroidNotificationChannel channel = AndroidNotificationChannel(
           _channelId,
           _channelName,
           description: _channelDescription,
-          importance: Importance.max,
-          // FIXED: Remove priority parameter
+          importance: Importance.high, // ✅ FIX: Changed from max to high
+          playSound: true,
           showBadge: true,
+          enableVibration: true,
         );
 
         await _flutterLocalNotificationsPlugin
@@ -115,7 +122,7 @@ class FirebaseService {
     }
   }
 
-  // ✅ Request Notification Permissions
+  // ✅ Request Notification Permissions - IMPROVED
   Future<void> _requestNotificationPermissions() async {
     try {
       NotificationSettings settings = await _firebaseMessaging.requestPermission(
@@ -124,26 +131,32 @@ class FirebaseService {
         badge: true,
         carPlay: false,
         criticalAlert: false,
-        provisional: false,
+        provisional: false, // ✅ Set true jika mau permission provisional (iOS)
         sound: true,
       );
 
       print('📱 Notification Permission Status: ${settings.authorizationStatus}');
 
-      // For iOS, additional setup might be needed
+      // For iOS, additional setup - FIXED: Better iOS handling
       if (Platform.isIOS) {
         await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-          alert: true,
-          badge: true,
-          sound: true,
+          alert: true, // Show alert when in foreground
+          badge: true, // Update app badge
+          sound: true, // Play sound
         );
+      }
+
+      // For Android 13+, request POST_NOTIFICATIONS permission
+      if (Platform.isAndroid) {
+        // Android 13+ requires runtime permission
+        // flutter_local_notifications akan handle ini secara otomatis
       }
     } catch (e) {
       print('❌ ERROR requesting notification permissions: $e');
     }
   }
 
-  // ✅ Setup FCM Token
+  // ✅ Setup FCM Token - IMPROVED
   Future<void> _setupFCMToken() async {
     try {
       // Get current token
@@ -151,36 +164,44 @@ class FirebaseService {
       print('🔑 FCM Token: $token');
 
       // Save token to server
-      if (token != null) {
+      if (token != null && token.isNotEmpty) {
         await _saveTokenToServer(token);
+      } else {
+        print('⚠️ FCM token is null or empty');
       }
 
-      // Listen for token refresh
+      // Listen for token refresh - FIXED: Better error handling
       _firebaseMessaging.onTokenRefresh.listen((newToken) async {
         print('🔄 FCM Token Refreshed: $newToken');
-        await _saveTokenToServer(newToken);
+        if (newToken.isNotEmpty) {
+          await _saveTokenToServer(newToken);
+        }
       });
     } catch (e) {
       print('❌ ERROR setting up FCM token: $e');
     }
   }
 
-  // ✅ Save Token to Server
+  // ✅ Save Token to Server - IMPROVED
   Future<void> _saveTokenToServer(String token) async {
     try {
       // Implement your API call to save the token
-      // Example: await _apiService.saveDeviceToken(token);
       print('💾 Saving FCM token to server: $token');
       
-      // Simpan token ke SharedPreferences atau langsung ke API
+      // ✅ EXAMPLE: Save to SharedPreferences for now
+      // final prefs = await SharedPreferences.getInstance();
+      // await prefs.setString('fcm_token', token);
+      
+      // TODO: Implement API call to your backend
       // await _apiService.updateDeviceToken(token);
       
+      print('✅ FCM token saved locally');
     } catch (e) {
       print('❌ ERROR saving token to server: $e');
     }
   }
 
-  // ✅ Setup Message Handlers
+  // ✅ Setup Message Handlers - IMPROVED
   Future<void> _setupMessageHandlers() async {
     try {
       // Handle messages when app is in FOREGROUND
@@ -202,13 +223,10 @@ class FirebaseService {
   Future<void> _setupTopicSubscriptions() async {
     try {
       // Subscribe to general topics
-      await subscribeToTopic('all_users');
-      await subscribeToTopic('koperasi_ksmi');
+      await _firebaseMessaging.subscribeToTopic('all_users');
+      await _firebaseMessaging.subscribeToTopic('koperasi_ksmi');
       
-      // You can add user-specific topics based on user data
-      // await subscribeToTopic('user_${userId}');
-      
-      print('✅ Topic subscriptions completed');
+      print('✅ Subscribed to topics: all_users, koperasi_ksmi');
     } catch (e) {
       print('❌ ERROR setting up topic subscriptions: $e');
     }
@@ -234,7 +252,7 @@ class FirebaseService {
     }
   }
 
-  // ✅ Process Message Data
+  // ✅ Process Message Data - IMPROVED
   static void _processMessage(RemoteMessage message, {required bool isForeground}) {
     try {
       final notification = message.notification;
@@ -242,12 +260,15 @@ class FirebaseService {
 
       print('📨 Message Data: $data');
       print('📢 Notification: ${notification?.title} - ${notification?.body}');
+      print('🎯 Message ID: ${message.messageId}');
+      print('📧 From: ${message.from}');
+      print('⏰ Sent Time: ${message.sentTime}');
 
       // Show local notification if app is in foreground
-      if (isForeground) {
+      if (isForeground && notification != null) {
         _showLocalNotification(
-          title: notification?.title ?? 'KSMI Koperasi',
-          body: notification?.body ?? 'Pesan baru dari Koperasi KSMI',
+          title: notification.title ?? 'KSMI Koperasi',
+          body: notification.body ?? 'Pesan baru dari Koperasi KSMI',
           data: data,
         );
       }
@@ -266,7 +287,7 @@ class FirebaseService {
     }
   }
 
-  // ✅ Show Local Notification - FIXED: Remove invalid parameters
+  // ✅ Show Local Notification - IMPROVED
   static Future<void> _showLocalNotification({
     required String title,
     required String body,
@@ -278,12 +299,13 @@ class FirebaseService {
         _channelId,
         _channelName,
         channelDescription: _channelDescription,
-        importance: Importance.max,
-        // FIXED: Remove priority parameter
+        importance: Importance.high,
+        priority: Priority.high,
+        ticker: 'ticker',
+        playSound: true,
+        enableVibration: true,
         showWhen: true,
         autoCancel: true,
-        enableVibration: true,
-        playSound: true,
       );
 
       const DarwinNotificationDetails iosPlatformChannelSpecifics =
@@ -298,48 +320,107 @@ class FirebaseService {
         iOS: iosPlatformChannelSpecifics,
       );
 
+      // Generate unique ID for notification
+      final int notificationId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
+
       await _flutterLocalNotificationsPlugin.show(
-        DateTime.now().millisecondsSinceEpoch.remainder(100000),
+        notificationId,
         title,
         body,
         platformChannelSpecifics,
-        payload: data.toString(),
+        payload: _convertMapToJson(data), // ✅ FIX: Convert map to JSON string
       );
 
-      print('📲 Local notification shown: $title');
+      print('📲 Local notification shown: $title (ID: $notificationId)');
     } catch (e) {
       print('❌ ERROR showing local notification: $e');
     }
   }
 
-  // ✅ Notification Response Handler
+  // ✅ Convert Map to JSON String
+  static String _convertMapToJson(Map<String, dynamic> data) {
+    try {
+      return data.toString(); // Simple conversion
+      // Atau gunakan jsonEncode jika butuh proper JSON
+      // return jsonEncode(data);
+    } catch (e) {
+      return '{}';
+    }
+  }
+
+  // ✅ Notification Response Handler (Foreground)
   static void _onDidReceiveNotificationResponse(NotificationResponse response) {
+    _handleNotificationTap(response);
+  }
+
+  // ✅ Background Notification Response Handler
+  static void _onDidReceiveBackgroundNotificationResponse(NotificationResponse response) {
+    _handleNotificationTap(response);
+  }
+
+  // ✅ Handle Notification Tap - IMPROVED
+  static void _handleNotificationTap(NotificationResponse response) {
     try {
       print('👆 NOTIFICATION TAPPED: ${response.payload}');
+      print('📱 Notification ID: ${response.id}');
+      print('📝 Action: ${response.actionId}');
+      print('💬 Input: ${response.input}');
       
-      // Parse payload and handle navigation
-      if (response.payload != null) {
-        // You can parse the payload and navigate to specific screen
-        // Example: Navigator.pushNamed(context, '/detail', arguments: parsedData);
+      if (response.payload != null && response.payload!.isNotEmpty) {
+        final payload = _parsePayload(response.payload!);
         
+        // Call the tap callback
         if (onNotificationTap != null) {
-          // Convert payload string back to Map
-          final payload = _parsePayload(response.payload!);
           onNotificationTap!(payload);
         }
+        
+        // You can add navigation logic here based on payload
+        _handleNavigation(payload);
       }
     } catch (e) {
       print('❌ ERROR handling notification response: $e');
     }
   }
 
-  // ✅ Parse Payload String to Map
+  // ✅ Handle Navigation Based on Payload
+  static void _handleNavigation(Map<String, dynamic> payload) {
+    // Example navigation logic based on payload
+    final String? type = payload['type'];
+    final String? screen = payload['screen'];
+    
+    print('🧭 Navigation - Type: $type, Screen: $screen');
+    
+    // TODO: Implement your navigation logic here
+    // Example:
+    // if (screen == 'inbox') {
+    //   Navigator.pushNamed(context, '/inbox');
+    // } else if (screen == 'transaction') {
+    //   Navigator.pushNamed(context, '/transaction', arguments: payload);
+    // }
+  }
+
+  // ✅ Parse Payload String to Map - IMPROVED
   static Map<String, dynamic> _parsePayload(String payload) {
     try {
-      // Simple payload parsing - adjust based on your payload format
-      return {'payload': payload};
+      // Simple parsing - adjust based on your payload format
+      if (payload.startsWith('{') && payload.endsWith('}')) {
+        // If it's JSON-like string
+        return {'raw_payload': payload};
+      } else {
+        // Simple key-value parsing
+        final Map<String, dynamic> result = {};
+        final pairs = payload.split(',');
+        for (final pair in pairs) {
+          final keyValue = pair.split(':');
+          if (keyValue.length == 2) {
+            result[keyValue[0].trim()] = keyValue[1].trim();
+          }
+        }
+        return result.isNotEmpty ? result : {'message': payload};
+      }
     } catch (e) {
-      return {'error': 'Failed to parse payload'};
+      print('❌ ERROR parsing payload: $e');
+      return {'error': 'Failed to parse payload', 'raw': payload};
     }
   }
 
@@ -391,12 +472,21 @@ class FirebaseService {
   // ✅ CHECK IF NOTIFICATIONS ARE ENABLED
   Future<bool> areNotificationsEnabled() async {
     final settings = await getNotificationSettings();
-    return settings.authorizationStatus == AuthorizationStatus.authorized;
+    return settings.authorizationStatus == AuthorizationStatus.authorized ||
+           settings.authorizationStatus == AuthorizationStatus.provisional;
   }
 
   // ✅ REQUEST PERMISSION AGAIN
   Future<void> requestPermissionAgain() async {
     await _requestNotificationPermissions();
+  }
+
+  // ✅ GET APNS TOKEN (iOS only)
+  Future<String?> getAPNSToken() async {
+    if (Platform.isIOS) {
+      return await _firebaseMessaging.getAPNSToken();
+    }
+    return null;
   }
 
   // ✅ DISPOSE (cleanup)

@@ -88,9 +88,6 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
       // ✅ PERBAIKAN: Gunakan method getAllSaldo dari ApiService
       final result = await _apiService.getAllSaldo();
       
-      print('📊 Response getAllSaldo: ${result['success']}');
-      print('📊 Response data: ${result['data']}');
-      
       if (mounted) {
         setState(() {
           // ✅ PERBAIKAN: Handle response dari getAllSaldo dengan benar
@@ -100,7 +97,6 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
             if (data is Map<String, dynamic>) {
               // ✅ FIX: Data saldo berupa Map, konversi ke format riwayat
               _riwayatTabungan = _convertSaldoToRiwayat(data);
-              print('✅ Berhasil konversi data saldo: ${_riwayatTabungan.length} items');
             } else if (data is List) {
               // Jika data sudah berupa list (untuk riwayat transaksi)
               _riwayatTabungan = data.map((item) {
@@ -112,22 +108,18 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
                   return _createDefaultTransaction();
                 }
               }).toList();
-              print('✅ Data berupa list: ${_riwayatTabungan.length} items');
             } else {
               _riwayatTabungan = [];
-              print('⚠️ Data format tidak dikenali');
             }
           } else {
             _riwayatTabungan = [];
             _hasError = true;
             _errorMessage = result['message'] ?? 'Gagal memuat data tabungan';
-            print('❌ Gagal load data: ${result['message']}');
           }
           _isLoading = false;
         });
       }
     } catch (e) {
-      print('❌ Error loading riwayat tabungan: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -142,8 +134,6 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
   // ✅ PERBAIKAN: Konversi data saldo ke format riwayat transaksi
   List<Map<String, dynamic>> _convertSaldoToRiwayat(Map<String, dynamic> saldoData) {
     final List<Map<String, dynamic>> riwayat = [];
-    
-    print('🔍 Processing saldo data: $saldoData');
     
     try {
       // ✅ FIX: Handle berbagai kemungkinan format field saldo
@@ -164,8 +154,6 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
           }
         }
       }
-      
-      print('🔍 Processed saldo data: $processedData');
       
       // Tambahkan data untuk setiap jenis tabungan yang ada saldonya
       for (var type in _tabunganTypes) {
@@ -198,7 +186,6 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
       
       // ✅ FIX: Jika tidak ada data saldo, buat data dummy untuk demo
       if (riwayat.isEmpty) {
-        print('⚠️ Tidak ada data saldo, menggunakan data demo');
         riwayat.addAll([
           {
             'id': 'pokok-demo',
@@ -237,12 +224,10 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
       }
       
     } catch (e) {
-      print('❌ Error processing saldo data: $e');
       // Fallback ke data demo jika ada error
       riwayat.addAll(_getDemoData());
     }
     
-    print('✅ Converted ${riwayat.length} saldo items');
     return riwayat;
   }
 
@@ -317,7 +302,6 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         return sum + jumlah;
       });
     } catch (e) {
-      print('Error calculating total: $e');
       return 0;
     }
   }
@@ -393,7 +377,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         _showUploadingDialog('Mengupload Bukti Pembayaran...');
 
         // ✅ PERBAIKAN: Gunakan method uploadFoto dari ApiService
-        final success = await _apiService.uploadFoto(
+        final result = await _apiService.uploadFoto(
           type: 'bukti_pembayaran',
           filePath: pickedFile.path,
         );
@@ -401,7 +385,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         if (!mounted) return;
         Navigator.pop(context); // Close dialog
 
-        if (success) {
+        if (result['success'] == true) {
           // Update local data dengan path bukti
           if (mounted) {
             setState(() {
@@ -419,16 +403,15 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Gagal upload bukti pembayaran'),
+            SnackBar(
+              content: Text('Gagal upload bukti pembayaran: ${result['message']}'),
               backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
+              duration: const Duration(seconds: 3),
             ),
           );
         }
       }
     } catch (e) {
-      print('❌ Error uploading bukti: $e');
       if (!mounted) return;
       Navigator.pop(context);
       
@@ -449,7 +432,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         const SnackBar(
           content: Text('Bukti pembayaran belum diupload'),
           backgroundColor: Colors.orange,
-          duration: Duration(seconds: 2),
+          duration: const Duration(seconds: 2),
         ),
       );
       return;
@@ -462,7 +445,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         const SnackBar(
           content: Text('File bukti tidak ditemukan'),
           backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
+          duration: const Duration(seconds: 2),
         ),
       );
       return;

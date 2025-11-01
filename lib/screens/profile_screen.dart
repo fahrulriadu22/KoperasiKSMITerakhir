@@ -36,8 +36,13 @@ class NotchedAppBarShape extends ContinuousRectangleBorder {
 
 class ProfileScreen extends StatefulWidget {
   final Map<String, dynamic> user;
+  final VoidCallback? onProfileUpdated;
 
-  const ProfileScreen({super.key, required this.user});
+  const ProfileScreen({
+    super.key, 
+    required this.user,
+    this.onProfileUpdated,
+  });
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -93,7 +98,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         print('📸 File size: ${File(pickedFile.path).lengthSync()} bytes');
 
         // ✅ GUNAKAN METHOD UPLOAD FOTO YANG BARU
-        final result = await _apiService.uploadFotoFixed(
+        final result = await _apiService.uploadFoto(
           type: type,
           filePath: pickedFile.path,
         );
@@ -106,6 +111,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (result['success'] == true) {
           // ✅ Refresh user data untuk mendapatkan update terbaru
           await _loadCurrentUser();
+          
+          // ✅ Panggil callback jika ada
+          widget.onProfileUpdated?.call();
           
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -159,7 +167,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         print('📸 Taken photo: ${pickedFile.path}');
 
         // ✅ GUNAKAN METHOD UPLOAD FOTO YANG BARU
-        final result = await _apiService.uploadFotoFixed(
+        final result = await _apiService.uploadFoto(
           type: type,
           filePath: pickedFile.path,
         );
@@ -172,6 +180,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (result['success'] == true) {
           // ✅ Refresh user data untuk mendapatkan update terbaru
           await _loadCurrentUser();
+          
+          // ✅ Panggil callback jika ada
+          widget.onProfileUpdated?.call();
           
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -359,6 +370,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ✅ REFRESH PROFILE DATA - COMPATIBLE
   Future<void> _refreshProfile() async {
     await _loadCurrentUser();
+    
+    // ✅ Panggil callback jika ada
+    widget.onProfileUpdated?.call();
     
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -738,6 +752,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               setState(() {
                                 _currentUser = {..._currentUser, ...updatedData};
                               });
+                              // ✅ Panggil callback untuk update di parent
+                              widget.onProfileUpdated?.call();
                             },
                           ),
                         ),

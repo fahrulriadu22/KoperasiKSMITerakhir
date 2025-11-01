@@ -60,7 +60,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
         print('📤 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
         
         // ✅ PERBAIKAN: Gunakan uploadFotoFixed untuk response yang lebih detail
-        final result = await _apiService.uploadFotoFixed(
+        final result = await _apiService.uploadFoto(
           type: type,
           filePath: pickedFile.path,
         );
@@ -299,7 +299,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
         final file = File(pickedFile.path);
         print('📸 Taking photo for $type: ${file.path}');
         
-        final result = await _apiService.uploadFotoFixed(
+        final result = await _apiService.uploadFoto(
           type: type,
           filePath: pickedFile.path,
         );

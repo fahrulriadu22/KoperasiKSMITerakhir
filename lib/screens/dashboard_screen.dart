@@ -35,8 +35,13 @@ class NotchedAppBarShape extends ContinuousRectangleBorder {
 
 class DashboardScreen extends StatefulWidget {
   final Map<String, dynamic> user;
+  final VoidCallback? onRefresh;
 
-  const DashboardScreen({super.key, required this.user});
+  const DashboardScreen({
+    super.key, 
+    required this.user,
+    this.onRefresh,
+  });
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -71,6 +76,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic> _saldoData = {};
   Map<String, dynamic> _angsuranData = {};
   bool _isLoading = true;
+  int _unreadNotifications = 0;
 
   @override
   void initState() {
@@ -81,6 +87,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadCurrentUser();
     // ✅ Load data saldo dan angsuran dari API
     _loadDataFromApi();
+    // ✅ Load unread notifications
+    _loadUnreadNotifications();
   }
 
   @override
@@ -95,6 +103,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _currentUser = user ?? widget.user;
     });
+  }
+
+  // ✅ LOAD UNREAD NOTIFICATIONS
+  Future<void> _loadUnreadNotifications() async {
+    try {
+      final result = await _apiService.getAllInbox();
+      if (result['success'] == true) {
+        final data = result['data'] ?? {};
+        final inboxList = data['inbox'] ?? [];
+        
+        final unreadCount = inboxList.where((item) {
+          final readStatus = item['read_status'] ?? item['is_read'] ?? '0';
+          return readStatus == '0' || readStatus == 0 || readStatus == false;
+        }).length;
+        
+        setState(() {
+          _unreadNotifications = unreadCount;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading notifications: $e');
+    }
   }
 
   // ✅ LOAD DATA SALDO DAN ANGSURAN DARI API - COMPATIBLE VERSION
@@ -163,6 +193,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _getApiValue('taqsith', _saldoData);
   }
 
+  // ✅ SHOW NOTIFICATIONS DIALOG
+  void _showNotifications() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.notifications),
+            SizedBox(width: 8),
+            Text('Notifikasi'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_unreadNotifications > 0)
+              Text(
+                'Anda memiliki $_unreadNotifications pesan belum dibaca',
+                style: TextStyle(
+                  color: Colors.orange[700],
+                  fontWeight: FontWeight.bold,
+                ),
+              )
+            else
+              const Text('Tidak ada pesan baru'),
+            const SizedBox(height: 16),
+            const Text(
+              'Fitur notifikasi lengkap akan segera hadir!',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tutup'),
+          ),
+          if (_unreadNotifications > 0)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                // TODO: Navigate to notifications screen
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Membuka halaman notifikasi...'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              child: const Text('Lihat Semua'),
+            ),
+        ],
+      ),
+    );
+  }
+
   // ✅ LOGOUT FUNCTION dengan session management - COMPATIBLE
   Future<void> _logout() async {
     bool confirm = await showDialog(
@@ -201,6 +288,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _loadCurrentUser();
     // Refresh data dari API
     await _loadDataFromApi();
+    // Refresh notifications
+    await _loadUnreadNotifications();
+    
+    // ✅ Panggil callback jika ada
+    widget.onRefresh?.call();
     
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -383,6 +475,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
           automaticallyImplyLeading: false,
           centerTitle: true,
           actions: [
+            // ✅ NOTIFICATION BUTTON WITH BADGE
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
+              child: Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications),
+                    onPressed: _showNotifications,
+                    tooltip: 'Notifikasi',
+                  ),
+                  if (_unreadNotifications > 0)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 16,
+                        ),
+                        child: Text(
+                          _unreadNotifications > 9 ? '9+' : _unreadNotifications.toString(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
             // ✅ REFRESH BUTTON
             Padding(
               padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
