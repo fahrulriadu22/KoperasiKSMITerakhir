@@ -3,6 +3,7 @@ name: Build APK Koperasi KSMI
 on: 
   push:
     branches: [ main, master ]
+  workflow_dispatch: # ✅ Tambah manual trigger
 
 jobs:
   build:
@@ -29,8 +30,31 @@ jobs:
     - name: Build APK Release
       run: flutter build apk --release
       
-    - name: Upload APK Debug
+    - name: List build files
+      run: |
+        echo "📱 Listing all APK files:"
+        find build/app/outputs -name "*.apk" -type f
+        ls -la build/app/outputs/flutter-apk/
+      
+    - name: Upload APK Release
+      uses: actions/upload-artifact@v4
+      with:
+        name: koperasi-ksmi-release
+        path: build/app/outputs/flutter-apk/app-release.apk
+        retention-days: 30
+        
+    - name: Upload APK Debug (if exists)
       uses: actions/upload-artifact@v4
       with:
         name: koperasi-ksmi-debug
         path: build/app/outputs/flutter-apk/app-debug.apk
+        if-no-files-found: ignore
+        retention-days: 30
+        
+    - name: Upload App Bundle
+      uses: actions/upload-artifact@v4
+      with:
+        name: koperasi-ksmi-bundle
+        path: build/app/outputs/bundle/
+        if-no-files-found: ignore
+        retention-days: 30
