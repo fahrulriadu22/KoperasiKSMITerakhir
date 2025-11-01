@@ -51,9 +51,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ✅ List menu yang bisa ditampilkan dengan navigation target
   final List<MenuIcon> _allMenuItems = [
     MenuIcon('Pokok', Icons.account_balance, Colors.green, 'pokok', MenuType.tabungan),
-    MenuIcon('Wajib', Icons.savings, Colors.orange, 'simpananWajib', MenuType.tabungan),
+    MenuIcon('Wajib', Icons.savings, Colors.orange, 'wajib', MenuType.tabungan),
     MenuIcon('Sukarela', Icons.volunteer_activism, Colors.red, 'sukarela', MenuType.tabungan),
-    MenuIcon('SiTabung', Icons.account_balance_wallet, Colors.blue, 'siTabung', MenuType.tabungan),
+    MenuIcon('SiTabung', Icons.account_balance_wallet, Colors.blue, 'sita', MenuType.tabungan),
     MenuIcon('Simuna', Icons.money, Colors.teal, 'simuna', MenuType.tabungan),
     MenuIcon('Taqsith', Icons.handshake, Colors.purple, 'taqsith', MenuType.tabungan),
     MenuIcon('Angsuran', Icons.payments, Colors.amber, 'angsuran', MenuType.angsuran),
@@ -127,70 +127,192 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ✅ LOAD DATA SALDO DAN ANGSURAN DARI API - COMPATIBLE VERSION
+  // ✅ PERBAIKAN: LOAD DATA SALDO DAN ANGSURAN DENGAN STRUKTUR DATA YANG BENAR
   Future<void> _loadDataFromApi() async {
     try {
       setState(() => _isLoading = true);
 
-      // ✅ LOAD SALDO DATA DARI API
+      // ✅ LOAD SALDO DATA DARI API - DENGAN HANDLING STRUCTURE YANG BERBEDA
       final saldoResult = await _apiService.getAllSaldo();
       if (saldoResult['success'] == true) {
+        print('✅ Saldo API Response: ${saldoResult['data']}');
         setState(() {
           _saldoData = saldoResult['data'] ?? {};
         });
       } else {
         print('❌ Gagal load saldo: ${saldoResult['message']}');
+        // Set default data jika gagal
+        setState(() {
+          _saldoData = {
+            'pokok': 0,
+            'wajib': 0,
+            'sukarela': 0,
+            'sita': 0,
+            'simuna': 0,
+            'taqsith': 0,
+            'saldo': 0,
+          };
+        });
       }
 
-      // ✅ LOAD ANGSURAN DATA DARI API
+      // ✅ LOAD ANGSURAN DATA DARI API - DENGAN HANDLING STRUCTURE YANG BERBEDA
       final angsuranResult = await _apiService.getAllAngsuran();
       if (angsuranResult['success'] == true) {
+        print('✅ Angsuran API Response: ${angsuranResult['data']}');
         setState(() {
           _angsuranData = angsuranResult['data'] ?? {};
         });
       } else {
         print('❌ Gagal load angsuran: ${angsuranResult['message']}');
+        // Set default data jika gagal
+        setState(() {
+          _angsuranData = {'angsuran': 0};
+        });
       }
 
     } catch (e) {
       print('❌ Error loading data from API: $e');
+      // Set default data jika error
+      setState(() {
+        _saldoData = {
+          'pokok': 0,
+          'wajib': 0,
+          'sukarela': 0,
+          'sita': 0,
+          'simuna': 0,
+          'taqsith': 0,
+          'saldo': 0,
+        };
+        _angsuranData = {'angsuran': 0};
+      });
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  // ✅ Fungsi untuk mendapatkan nilai dari API data berdasarkan key
+  // ✅ PERBAIKAN: FUNGSI UNTUK MENDAPATKAN NILAI DARI API DATA DENGAN STRUCTURE YANG FLEKSIBEL
   int _getApiValue(String key, Map<String, dynamic> data) {
     try {
-      // Coba berbagai format key yang mungkin
-      if (data[key] != null) {
+      print('🔍 Mencari key: $key dalam data: $data');
+      
+      // Cek berbagai kemungkinan struktur data
+      
+      // 1. Cek langsung di root
+      if (data.containsKey(key)) {
         final value = data[key];
-        if (value is num) return value.toInt();
-        if (value is String) return int.tryParse(value) ?? 0;
+        print('✅ Found $key in root: $value');
+        return _parseValue(value);
       }
-
-      // Coba nested structure
-      if (data['data'] != null && data['data'][key] != null) {
-        final value = data['data'][key];
-        if (value is num) return value.toInt();
-        if (value is String) return int.tryParse(value) ?? 0;
+      
+      // 2. Cek dalam nested 'data' object
+      if (data.containsKey('data') && data['data'] is Map) {
+        final nestedData = data['data'];
+        if (nestedData.containsKey(key)) {
+          final value = nestedData[key];
+          print('✅ Found $key in data object: $value');
+          return _parseValue(value);
+        }
       }
-
+      
+      // 3. Cek dalam berbagai kemungkinan key naming convention
+      final possibleKeys = _getPossibleKeys(key);
+      for (final possibleKey in possibleKeys) {
+        if (data.containsKey(possibleKey)) {
+          final value = data[possibleKey];
+          print('✅ Found $key as $possibleKey: $value');
+          return _parseValue(value);
+        }
+        
+        // Cek dalam nested data juga
+        if (data.containsKey('data') && data['data'] is Map) {
+          final nestedData = data['data'];
+          if (nestedData.containsKey(possibleKey)) {
+            final value = nestedData[possibleKey];
+            print('✅ Found $key as $possibleKey in data object: $value');
+            return _parseValue(value);
+          }
+        }
+      }
+      
+      // 4. Jika tidak ditemukan, return 0
+      print('❌ Key $key not found in data structure');
       return 0;
+      
     } catch (e) {
       print('❌ Error getApiValue for $key: $e');
       return 0;
     }
   }
 
-  // ✅ Calculate total tabungan dari API data
+  // ✅ FUNGSI UNTUK MENDAPATKAN BERBAGAI KEMUNGKINAN KEY NAMING
+  List<String> _getPossibleKeys(String baseKey) {
+    switch (baseKey) {
+      case 'pokok':
+        return ['pokok', 'simpananPokok', 'pokok_simpanan', 'simpanan_pokok'];
+      case 'wajib':
+        return ['wajib', 'simpananWajib', 'wajib_simpanan', 'simpanan_wajib'];
+      case 'sukarela':
+        return ['sukarela', 'simpananSukarela', 'sukarela_simpanan', 'simpanan_sukarela'];
+      case 'sita':
+        return ['sita', 'siTabung', 'sitabung', 'sita_bung'];
+      case 'simuna':
+        return ['simuna', 'simpananMuna', 'simuna_simpanan'];
+      case 'taqsith':
+        return ['taqsith', 'taqshith', 'taqsiith'];
+      case 'saldo':
+        return ['saldo', 'balance', 'total_saldo'];
+      case 'angsuran':
+        return ['angsuran', 'installment', 'total_angsuran', 'taqsith_total'];
+      default:
+        return [baseKey];
+    }
+  }
+
+  // ✅ FUNGSI UNTUK PARSE VALUE DARI BERBAGAI TIPE DATA
+  int _parseValue(dynamic value) {
+    if (value == null) return 0;
+    
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) {
+      // Remove any non-numeric characters except decimal point
+      final cleaned = value.replaceAll(RegExp(r'[^\d.]'), '');
+      return double.tryParse(cleaned)?.toInt() ?? 0;
+    }
+    
+    return 0;
+  }
+
+  // ✅ PERBAIKAN: CALCULATE TOTAL TABUNGAN DARI API DATA
   int _calculateTotalTabungan() {
-    return _getApiValue('pokok', _saldoData) +
-        _getApiValue('simpananWajib', _saldoData) +
-        _getApiValue('sukarela', _saldoData) +
-        _getApiValue('siTabung', _saldoData) +
-        _getApiValue('simuna', _saldoData) +
-        _getApiValue('taqsith', _saldoData);
+    final pokok = _getApiValue('pokok', _saldoData);
+    final wajib = _getApiValue('wajib', _saldoData);
+    final sukarela = _getApiValue('sukarela', _saldoData);
+    final sita = _getApiValue('sita', _saldoData);
+    final simuna = _getApiValue('simuna', _saldoData);
+    final taqsith = _getApiValue('taqsith', _saldoData);
+
+    print('''
+    📊 Total Tabungan Calculation:
+    - Pokok: $pokok
+    - Wajib: $wajib  
+    - Sukarela: $sukarela
+    - SiTabung: $sita
+    - Simuna: $simuna
+    - Taqsith: $taqsith
+    TOTAL: ${pokok + wajib + sukarela + sita + simuna + taqsith}
+    ''');
+
+    return pokok + wajib + sukarela + sita + simuna + taqsith;
+  }
+
+  // ✅ PERBAIKAN: GET SALDO VALUE DENGAN FALLBACK
+  int _getSaldoValue() {
+    final saldo = _getApiValue('saldo', _saldoData);
+    if (saldo > 0) return saldo;
+    
+    // Jika saldo = 0, coba hitung dari total tabungan
+    return _calculateTotalTabungan();
   }
 
   // ✅ SHOW NOTIFICATIONS DIALOG
@@ -271,14 +393,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ) ?? false;
 
     if (confirm) {
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
       await _apiService.logout();
       
-      // ✅ Navigate ke login screen dengan clear stack
-      Navigator.pushNamedAndRemoveUntil(
-        context, 
-        '/login', 
-        (route) => false
-      );
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context, 
+          '/login', 
+          (route) => false
+        );
+      }
     }
   }
 
@@ -294,13 +426,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // ✅ Panggil callback jika ada
     widget.onRefresh?.call();
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Data berhasil diperbarui'),
-        backgroundColor: Colors.green[700],
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Data berhasil diperbarui'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   // ✅ FUNGSI UNTUK HANDLE TAP PADA MENU ICON
@@ -327,7 +461,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       MaterialPageRoute(
         builder: (context) => RiwayatTabunganScreen(
           user: userData,
-          initialTabunganType: menu.key == 'siTabung' ? 'sita' : menu.key,
+          initialTabunganType: menu.key,
         ),
       ),
     );
@@ -343,10 +477,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ✅ SHOW SALDO DETAIL DIALOG
+  // ✅ PERBAIKAN: SHOW SALDO DETAIL DIALOG DENGAN DATA REAL
   void _showSaldoDetail(BuildContext context) {
-    final saldo = _getApiValue('saldo', _saldoData);
+    final saldo = _getSaldoValue();
     final totalTabungan = _calculateTotalTabungan();
+    final pokok = _getApiValue('pokok', _saldoData);
+    final wajib = _getApiValue('wajib', _saldoData);
+    final sukarela = _getApiValue('sukarela', _saldoData);
+    final sita = _getApiValue('sita', _saldoData);
+    final simuna = _getApiValue('simuna', _saldoData);
+    final taqsith = _getApiValue('taqsith', _saldoData);
 
     showDialog(
       context: context,
@@ -358,7 +498,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Icon(Icons.account_balance_wallet, color: Colors.green[700]),
             const SizedBox(width: 8),
             const Text(
-              'Detail Saldo',
+              'Detail Saldo & Tabungan',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ],
@@ -385,14 +525,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                   ),
                   const SizedBox(height: 6),
-                  _buildTabunganDetailRow('Pokok', _getApiValue('pokok', _saldoData)),
-                  _buildTabunganDetailRow('Wajib', _getApiValue('simpananWajib', _saldoData)),
-                  _buildTabunganDetailRow('Sukarela', _getApiValue('sukarela', _saldoData)),
-                  _buildTabunganDetailRow('SiTabung', _getApiValue('siTabung', _saldoData)),
-                  _buildTabunganDetailRow('Simuna', _getApiValue('simuna', _saldoData)),
-                  _buildTabunganDetailRow('Taqsith', _getApiValue('taqsith', _saldoData)),
+                  _buildTabunganDetailRow('Pokok', pokok),
+                  _buildTabunganDetailRow('Wajib', wajib),
+                  _buildTabunganDetailRow('Sukarela', sukarela),
+                  _buildTabunganDetailRow('SiTabung', sita),
+                  _buildTabunganDetailRow('Simuna', simuna),
+                  _buildTabunganDetailRow('Taqsith', taqsith),
                 ],
               ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Data diperbarui: ${DateTime.now().toString().substring(0, 16)}',
+              style: const TextStyle(fontSize: 10, color: Colors.grey),
             ),
           ],
         ),
@@ -400,6 +545,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Tutup'),
+          ),
+          TextButton(
+            onPressed: _refreshData,
+            child: const Text('Refresh'),
           ),
         ],
       ),
@@ -415,7 +564,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           style: const TextStyle(fontWeight: FontWeight.w500),
         ),
         Text(
-          'Rp ${value.toStringAsFixed(0)}',
+          'Rp ${value.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: color,
@@ -437,7 +586,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             style: const TextStyle(fontSize: 11, color: Colors.grey),
           ),
           Text(
-            'Rp ${value.toStringAsFixed(0)}',
+            'Rp ${value.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}',
             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
           ),
         ],
@@ -445,10 +594,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  // ✅ PERBAIKAN: FORMAT CURRENCY UNTUK DISPLAY
+  String _formatCurrency(int value) {
+    return 'Rp ${value.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     // ✅ DATA DARI API (bukan dari user data)
-    final saldo = _getApiValue('saldo', _saldoData);
+    final saldo = _getSaldoValue();
     final angsuran = _getApiValue('angsuran', _angsuranData);
     final totalTabungan = _calculateTotalTabungan();
     final userData = _currentUser ?? widget.user;
@@ -593,7 +747,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      'Rp ${totalTabungan.toStringAsFixed(0)}',
+                                      _formatCurrency(totalTabungan),
                                       style: TextStyle(
                                         color: Colors.blue[700],
                                         fontSize: 16,
@@ -664,7 +818,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      'Rp ${angsuran.toStringAsFixed(0)}',
+                                      _formatCurrency(angsuran),
                                       style: TextStyle(
                                         color: Colors.green[700],
                                         fontSize: 16,
@@ -855,10 +1009,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(height: 2),
             Text(
-              'Rp ${value.toStringAsFixed(0)}',
+              _formatCurrency(value),
               style: TextStyle(
                 fontSize: 8,
-                color: Colors.green[700],
+                color: value > 0 ? Colors.green[700] : Colors.grey[600],
                 fontWeight: FontWeight.bold,
               ),
               textAlign: TextAlign.center,

@@ -54,6 +54,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final ImagePicker _imagePicker = ImagePicker();
   bool _isLoading = true;
   bool _isUploading = false;
+  String? _uploadError;
 
   @override
   void initState() {
@@ -78,26 +79,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ✅ PERBAIKAN: FITUR UPLOAD FOTO DENGAN HANDLE ERROR YANG LEBIH BAIK
+  // ✅ PERBAIKAN: FITUR UPLOAD FOTO DENGAN ERROR HANDLING YANG LEBIH BAIK
   Future<void> _uploadPhoto(String type, String typeName) async {
     if (_isUploading) return;
     
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 800,
+        maxWidth: 1200,
         maxHeight: 800,
-        imageQuality: 80,
+        imageQuality: 85,
       );
 
       if (pickedFile != null) {
-        setState(() => _isUploading = true);
+        setState(() {
+          _isUploading = true;
+          _uploadError = null;
+        });
+        
         _showUploadingDialog('Mengupload $typeName...');
 
-        print('📸 Selected file: ${pickedFile.path}');
-        print('📸 File size: ${File(pickedFile.path).lengthSync()} bytes');
+        final file = File(pickedFile.path);
+        print('📤 Uploading $type: ${file.path}');
+        print('📤 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
 
-        // ✅ GUNAKAN METHOD UPLOAD FOTO YANG BARU
+        // ✅ PERBAIKAN: Validasi file sebelum upload
+        if (!await file.exists()) {
+          throw Exception('File tidak ditemukan');
+        }
+
+        // ✅ PERBAIKAN: Check file size (max 5MB)
+        final fileSize = file.lengthSync();
+        if (fileSize > 5 * 1024 * 1024) {
+          throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
+        }
+
+        // ✅ GUNAKAN METHOD UPLOAD FOTO
         final result = await _apiService.uploadFoto(
           type: type,
           filePath: pickedFile.path,
@@ -107,6 +124,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         
         Navigator.pop(context); // Tutup dialog
         setState(() => _isUploading = false);
+
+        print('📤 Upload result for $type: $result');
 
         if (result['success'] == true) {
           // ✅ Refresh user data untuk mendapatkan update terbaru
@@ -123,11 +142,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           );
         } else {
+          final errorMessage = result['message'] ?? 'Gagal upload $typeName';
+          
+          // ✅ PERBAIKAN: Handle specific error messages
+          String userMessage = errorMessage;
+          if (errorMessage.contains('400') || errorMessage.contains('did not select a file')) {
+            userMessage = 'File tidak terpilih atau format tidak didukung';
+          } else if (errorMessage.contains('404')) {
+            userMessage = 'Endpoint upload tidak ditemukan';
+          } else if (errorMessage.contains('413')) {
+            userMessage = 'Ukuran file terlalu besar';
+          }
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Gagal upload $typeName: ${result['message']}'),
+              content: Text(userMessage),
               backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
+              duration: const Duration(seconds: 4),
             ),
           );
         }
@@ -136,13 +167,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       
       Navigator.pop(context); // Tutup dialog
-      setState(() => _isUploading = false);
+      setState(() {
+        _isUploading = false;
+        _uploadError = 'Error upload $typeName: $e';
+      });
+      
+      print('❌ Error upload: $e');
+      
+      // ✅ PERBAIKAN: User-friendly error messages
+      String userMessage = 'Terjadi kesalahan saat upload';
+      if (e.toString().contains('File tidak ditemukan')) {
+        userMessage = 'File tidak ditemukan';
+      } else if (e.toString().contains('Ukuran file terlalu besar')) {
+        userMessage = 'Ukuran file terlalu besar. Maksimal 5MB.';
+      } else if (e.toString().contains('timeout')) {
+        userMessage = 'Upload timeout, coba lagi';
+      } else if (e.toString().contains('permission')) {
+        userMessage = 'Izin akses galeri ditolak';
+      }
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error saat upload $typeName: $e'),
+          content: Text('$userMessage ($typeName)'),
           backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
+          duration: const Duration(seconds: 4),
         ),
       );
     }
@@ -155,18 +203,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
         source: ImageSource.camera,
-        maxWidth: 800,
+        maxWidth: 1200,
         maxHeight: 800,
-        imageQuality: 80,
+        imageQuality: 85,
       );
 
       if (pickedFile != null) {
-        setState(() => _isUploading = true);
-        _showUploadingDialog('Mengupload $typeName...');
+        setState(() {
+          _isUploading = true;
+          _uploadError = null;
+        });
+        
+        _showUploadingDialog('Mengambil $typeName...');
 
-        print('📸 Taken photo: ${pickedFile.path}');
+        final file = File(pickedFile.path);
+        print('📸 Taking photo for $type: ${file.path}');
 
-        // ✅ GUNAKAN METHOD UPLOAD FOTO YANG BARU
+        // ✅ PERBAIKAN: Validasi file sebelum upload
+        if (!await file.exists()) {
+          throw Exception('File tidak ditemukan');
+        }
+
         final result = await _apiService.uploadFoto(
           type: type,
           filePath: pickedFile.path,
@@ -176,6 +233,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         
         Navigator.pop(context); // Tutup dialog
         setState(() => _isUploading = false);
+
+        print('📸 Camera result for $type: $result');
 
         if (result['success'] == true) {
           // ✅ Refresh user data untuk mendapatkan update terbaru
@@ -192,11 +251,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           );
         } else {
+          final errorMessage = result['message'] ?? 'Gagal menyimpan $typeName';
+          
+          // ✅ PERBAIKAN: Handle specific error messages
+          String userMessage = errorMessage;
+          if (errorMessage.contains('400') || errorMessage.contains('did not select a file')) {
+            userMessage = 'File tidak terpilih atau format tidak didukung';
+          }
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Gagal menyimpan $typeName: ${result['message']}'),
+              content: Text(userMessage),
               backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
+              duration: const Duration(seconds: 4),
             ),
           );
         }
@@ -205,13 +272,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (!mounted) return;
       
       Navigator.pop(context); // Tutup dialog
-      setState(() => _isUploading = false);
+      setState(() {
+        _isUploading = false;
+        _uploadError = 'Error mengambil $typeName: $e';
+      });
+      
+      print('❌ Error take photo: $e');
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error saat mengambil $typeName: $e'),
+          content: Text('Error mengambil $typeName: ${e.toString()}'),
           backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
+          duration: const Duration(seconds: 4),
         ),
       );
     }
@@ -248,6 +320,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // ✅ PERBAIKAN: SHOW PHOTO OPTIONS DENGAN KAMERA & GALERI
   void _showPhotoOptions() {
     showModalBottomSheet(
       context: context,
@@ -292,6 +365,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  // ✅ PERBAIKAN: SHOW DOCUMENT OPTIONS DENGAN KAMERA & GALERI
   void _showDocumentOptions() {
     showModalBottomSheet(
       context: context,
@@ -309,21 +383,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            ListTile(
-              leading: Icon(Icons.credit_card, color: Colors.blue[700]),
-              title: const Text('Upload KTP'),
-              onTap: () {
-                Navigator.pop(context);
-                _uploadPhoto('foto_ktp', 'Foto KTP');
-              },
+            // KTP Options
+            Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: Icon(Icons.credit_card, color: Colors.blue[700]),
+                    title: const Text('Upload KTP'),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isUploading ? null : () {
+                              Navigator.pop(context);
+                              _uploadPhoto('foto_ktp', 'Foto KTP');
+                            },
+                            icon: const Icon(Icons.photo_library, size: 16),
+                            label: const Text('Galeri'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isUploading ? null : () {
+                              Navigator.pop(context);
+                              _takePhoto('foto_ktp', 'Foto KTP');
+                            },
+                            icon: const Icon(Icons.camera_alt, size: 16),
+                            label: const Text('Kamera'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            ListTile(
-              leading: Icon(Icons.family_restroom, color: Colors.green[700]),
-              title: const Text('Upload Kartu Keluarga'),
-              onTap: () {
-                Navigator.pop(context);
-                _uploadPhoto('foto_kk', 'Foto KK');
-              },
+            const SizedBox(height: 8),
+            // KK Options
+            Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: Icon(Icons.family_restroom, color: Colors.green[700]),
+                    title: const Text('Upload Kartu Keluarga'),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isUploading ? null : () {
+                              Navigator.pop(context);
+                              _uploadPhoto('foto_kk', 'Foto KK');
+                            },
+                            icon: const Icon(Icons.photo_library, size: 16),
+                            label: const Text('Galeri'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isUploading ? null : () {
+                              Navigator.pop(context);
+                              _takePhoto('foto_kk', 'Foto KK');
+                            },
+                            icon: const Icon(Icons.camera_alt, size: 16),
+                            label: const Text('Kamera'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 8),
             TextButton(
@@ -336,34 +473,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ✅ LOGOUT FUNCTION - COMPATIBLE
+  // ✅ PERBAIKAN: LOGOUT FUNCTION YANG LEBIH ROBUST
   Future<void> _logout() async {
     bool confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Konfirmasi Logout'),
-        content: const Text('Apakah Anda yakin ingin logout?'),
+        content: const Text('Apakah Anda yakin ingin logout dari aplikasi?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Batal'),
+            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Logout'),
+            child: const Text('Logout', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     ) ?? false;
 
-    if (confirm) {
-      await _apiService.logout();
-      
-      Navigator.pushNamedAndRemoveUntil(
-        context, 
-        '/login', 
-        (route) => false
+    if (confirm && mounted) {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Sedang logout...'),
+            ],
+          ),
+        ),
       );
+
+      try {
+        // Call API logout
+        await _apiService.logout();
+        
+        if (mounted) {
+          Navigator.pushNamedAndRemoveUntil(
+            context, 
+            '/login', 
+            (route) => false
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          Navigator.pop(context); // Close loading dialog
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error saat logout: $e'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -374,12 +543,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // ✅ Panggil callback jika ada
     widget.onProfileUpdated?.call();
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Profile berhasil diperbarui'),
-        backgroundColor: Colors.green,
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profile berhasil diperbarui'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   @override
@@ -432,6 +604,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // ✅ ERROR MESSAGE
+            if (_uploadError != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.red[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.red[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _uploadError!,
+                        style: TextStyle(
+                          color: Colors.red[700],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.close, color: Colors.red[700], size: 16),
+                      onPressed: () => setState(() => _uploadError = null),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             // ✅ PROFILE HEADER
             Center(
               child: Column(
@@ -562,6 +767,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _buildDocumentStatus('KTP', _currentUser['foto_ktp']),
                     _buildDocumentStatus('Kartu Keluarga', _currentUser['foto_kk']),
                     _buildDocumentStatus('Foto Diri', _currentUser['foto_diri']),
+                    const SizedBox(height: 12),
+                    // ✅ PERBAIKAN: TROUBLESHOOTING INFO
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue[200]!),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.info_outline, color: Colors.blue[700], size: 16),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Tips Upload:',
+                                style: TextStyle(
+                                  color: Colors.blue[700],
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '• Pastikan file JPG/PNG\n• Ukuran maksimal 5MB\n• Foto harus jelas dan terbaca\n• Jika gagal, coba foto ulang dengan pencahayaan baik',
+                            style: TextStyle(
+                              color: Colors.blue[700],
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,

@@ -39,7 +39,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     print('   - Foto Diri: ${widget.user['foto_diri']}');
   }
 
-  // ✅ GENERIC UPLOAD METHOD
+  // ✅ PERBAIKAN: UPLOAD METHOD YANG LEBIH ROBUST
   Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool) setLoading) async {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
@@ -59,13 +59,26 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
         print('📤 Uploading $type: ${file.path}');
         print('📤 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
         
-        // ✅ PERBAIKAN: Gunakan uploadFotoFixed untuk response yang lebih detail
+        // ✅ PERBAIKAN: Validasi file sebelum upload
+        if (!await file.exists()) {
+          throw Exception('File tidak ditemukan');
+        }
+
+        // ✅ PERBAIKAN: Check file size (max 5MB)
+        final fileSize = file.lengthSync();
+        if (fileSize > 5 * 1024 * 1024) {
+          throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
+        }
+
+        // ✅ PERBAIKAN: Upload dengan error handling yang lebih baik
         final result = await _apiService.uploadFoto(
           type: type,
           filePath: pickedFile.path,
         );
 
         setState(() => setLoading(false));
+
+        print('📤 Upload result for $type: $result');
 
         if (result['success'] == true) {
           setState(() => setFile(file));
@@ -81,11 +94,21 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
           setState(() => setFile(null));
           final errorMessage = result['message'] ?? 'Gagal upload ${_getDocumentName(type)}';
           
+          // ✅ PERBAIKAN: Handle specific error messages
+          String userMessage = errorMessage;
+          if (errorMessage.contains('400') || errorMessage.contains('did not select a file')) {
+            userMessage = 'File tidak terpilih atau format tidak didukung';
+          } else if (errorMessage.contains('404')) {
+            userMessage = 'Endpoint upload tidak ditemukan';
+          } else if (errorMessage.contains('413')) {
+            userMessage = 'Ukuran file terlalu besar';
+          }
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(errorMessage),
+              content: Text(userMessage),
               backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
+              duration: const Duration(seconds: 4),
             ),
           );
         }
@@ -99,11 +122,23 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
       
       print('❌ Error upload $type: $e');
       
+      // ✅ PERBAIKAN: User-friendly error messages
+      String userMessage = 'Terjadi kesalahan saat upload';
+      if (e.toString().contains('File tidak ditemukan')) {
+        userMessage = 'File tidak ditemukan';
+      } else if (e.toString().contains('Ukuran file terlalu besar')) {
+        userMessage = 'Ukuran file terlalu besar. Maksimal 5MB.';
+      } else if (e.toString().contains('timeout')) {
+        userMessage = 'Upload timeout, coba lagi';
+      } else if (e.toString().contains('permission')) {
+        userMessage = 'Izin akses galeri ditolak';
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error upload ${_getDocumentName(type)}: $e'),
+          content: Text('$userMessage (${_getDocumentName(type)})'),
           backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
+          duration: const Duration(seconds: 4),
         ),
       );
     }
@@ -299,12 +334,19 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
         final file = File(pickedFile.path);
         print('📸 Taking photo for $type: ${file.path}');
         
+        // ✅ PERBAIKAN: Validasi file sebelum upload
+        if (!await file.exists()) {
+          throw Exception('File tidak ditemukan');
+        }
+
         final result = await _apiService.uploadFoto(
           type: type,
           filePath: pickedFile.path,
         );
 
         setState(() => setLoading(false));
+
+        print('📸 Camera result for $type: $result');
 
         if (result['success'] == true) {
           setState(() => setFile(file));
@@ -320,11 +362,17 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
           setState(() => setFile(null));
           final errorMessage = result['message'] ?? 'Gagal mengambil ${_getDocumentName(type)}';
           
+          // ✅ PERBAIKAN: Handle specific error messages
+          String userMessage = errorMessage;
+          if (errorMessage.contains('400') || errorMessage.contains('did not select a file')) {
+            userMessage = 'File tidak terpilih atau format tidak didukung';
+          }
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(errorMessage),
+              content: Text(userMessage),
               backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
+              duration: const Duration(seconds: 4),
             ),
           );
         }
@@ -340,9 +388,9 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error mengambil ${_getDocumentName(type)}: $e'),
+          content: Text('Error mengambil ${_getDocumentName(type)}: ${e.toString()}'),
           backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
+          duration: const Duration(seconds: 4),
         ),
       );
     }
@@ -479,7 +527,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                     // KTP CARD
                     _buildDokumenCard(
                       title: 'KTP (Kartu Tanda Penduduk)',
-                      description: 'Upload foto KTP yang jelas dan terbaca\n• Pastikan foto tidak blur\n• Semua informasi terbaca jelas\n• Format JPG/PNG',
+                      description: 'Upload foto KTP yang jelas dan terbaca\n• Pastikan foto tidak blur\n• Semua informasi terbaca jelas\n• Format JPG/PNG (max 5MB)',
                       icon: Icons.credit_card,
                       color: Colors.blue,
                       isUploaded: isKTPUploaded,
@@ -491,7 +539,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                     // KK CARD
                     _buildDokumenCard(
                       title: 'Kartu Keluarga (KK)',
-                      description: 'Upload foto KK yang jelas dan terbaca\n• Pastikan foto tidak blur\n• Semua halaman penting terbaca\n• Format JPG/PNG',
+                      description: 'Upload foto KK yang jelas dan terbaca\n• Pastikan foto tidak blur\n• Semua halaman penting terbaca\n• Format JPG/PNG (max 5MB)',
                       icon: Icons.family_restroom,
                       color: Colors.green,
                       isUploaded: isKKUploaded,
@@ -503,7 +551,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                     // FOTO DIRI CARD
                     _buildDokumenCard(
                       title: 'Foto Diri Terbaru',
-                      description: 'Upload pas foto terbaru\n• Latar belakang polos\n• Wajah terlihat jelas\n• Ekspresi netral\n• Format JPG/PNG',
+                      description: 'Upload pas foto terbaru\n• Latar belakang polos\n• Wajah terlihat jelas\n• Ekspresi netral\n• Format JPG/PNG (max 5MB)',
                       icon: Icons.person,
                       color: Colors.orange,
                       isUploaded: isFotoDiriUploaded,
@@ -608,6 +656,44 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                         ),
                       ),
                     ],
+
+                    // TROUBLESHOOTING INFO
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue[200]!),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.help_outline, color: Colors.blue[700], size: 18),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Tips Upload:',
+                                style: TextStyle(
+                                  color: Colors.blue[700],
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '• Pastikan file JPG/PNG\n• Ukuran maksimal 5MB\n• Foto harus jelas dan terbaca\n• Jika gagal, coba foto ulang dengan pencahayaan baik',
+                            style: TextStyle(
+                              color: Colors.blue[700],
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),

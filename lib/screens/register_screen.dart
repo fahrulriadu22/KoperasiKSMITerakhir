@@ -68,7 +68,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController hubunganController = TextEditingController(text: "Orang Tua");
   DateTime? _selectedTanggalLahirAhliWaris;
 
-  // ✅ DATA MASTER (akan diisi dari API)
+  // ✅ DATA MASTER
   List<dynamic> _provinsiList = [];
   List<dynamic> _kotaListKtp = [];
   List<dynamic> _kotaListDomisili = [];
@@ -93,85 +93,46 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _loadMasterData();
   }
 
-  // ✅ PERBAIKAN: Load master data dengan error handling yang lebih baik
+  // ✅ LOAD MASTER DATA DENGAN ERROR HANDLING
   Future<void> _loadMasterData() async {
     try {
       setState(() => _isLoading = true);
       
-      print('🔄 ========== LOADING MASTER DATA ==========');
-      
+      print('🔄 Loading master data...');
+
       // Load provinsi
-      print('📍 Loading provinsi...');
       final provinsiResult = await _apiService.getProvince();
-      print('📍 Provinsi success: ${provinsiResult['success']}');
-      print('📍 Provinsi data type: ${provinsiResult['data']?.runtimeType}');
-      
       if (provinsiResult['success'] == true) {
         final data = provinsiResult['data'];
         if (data is List) {
           _provinsiList = data;
-          print('📍 Provinsi loaded as List: ${_provinsiList.length} items');
-        } else if (data is Map) {
-          // Jika data berupa map, convert ke list
-          _provinsiList = data.entries.map((entry) {
-            return {
-              'id': entry.key.toString(),
-              'nama': entry.value.toString(),
-            };
-          }).toList();
-          print('📍 Provinsi converted from Map: ${_provinsiList.length} items');
+          print('📍 Provinsi loaded: ${_provinsiList.length} items');
         } else {
-          print('📍 Provinsi data is null or empty');
           _provinsiList = [];
         }
       } else {
-        print('❌ Provinsi failed: ${provinsiResult['message']}');
-        _provinsiList = [];
+        _setupFallbackData();
       }
 
       // Load master data untuk agama dan cabang
-      print('🕌 Loading master data (agama & cabang)...');
       final masterResult = await _apiService.getMasterData();
-      print('🕌 Master success: ${masterResult['success']}');
-      
       if (masterResult['success'] == true && masterResult['data'] != null) {
         final data = masterResult['data']!;
         
-        // ✅ FIX: Handle format agama
+        // Handle agama
         if (data['agama'] is List) {
           _agamaList = data['agama'];
-          print('🕌 Agama loaded as List: ${_agamaList.length} items');
-        } else if (data['agama'] is Map) {
-          _agamaList = (data['agama'] as Map).entries.map((entry) {
-            return {
-              'id': entry.key.toString(),
-              'nama': entry.value.toString(),
-            };
-          }).toList();
-          print('🕌 Agama converted from Map: ${_agamaList.length} items');
         } else {
-          print('🕌 Agama data is null or empty');
           _agamaList = [];
         }
         
-        // ✅ FIX: Handle format cabang
+        // Handle cabang
         if (data['cabang'] is List) {
           _cabangList = data['cabang'];
-          print('🏢 Cabang loaded as List: ${_cabangList.length} items');
-        } else if (data['cabang'] is Map) {
-          _cabangList = (data['cabang'] as Map).entries.map((entry) {
-            return {
-              'id': entry.key.toString(),
-              'nama': entry.value.toString(),
-            };
-          }).toList();
-          print('🏢 Cabang converted from Map: ${_cabangList.length} items');
         } else {
-          print('🏢 Cabang data is null or empty');
           _cabangList = [];
         }
       } else {
-        print('❌ Master data failed: ${masterResult['message']}');
         _setupFallbackData();
       }
       
@@ -184,17 +145,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  // ✅ FALLBACK DATA JIKA API TIDAK BISA
+  // ✅ FALLBACK DATA
   void _setupFallbackData() {
     print('🔄 Setting up fallback data...');
     
-    // Fallback provinsi
     _provinsiList = [
       {'id': '35', 'nama': 'JAWA TIMUR'},
       {'id': '11', 'nama': 'ACEH'},
       {'id': '12', 'nama': 'SUMATERA UTARA'},
-      {'id': '13', 'nama': 'SUMATERA BARAT'},
-      {'id': '14', 'nama': 'RIAU'},
       {'id': '31', 'nama': 'DKI JAKARTA'},
     ];
     
@@ -203,24 +161,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
       {'id': '2', 'nama': 'Kristen'},
       {'id': '3', 'nama': 'Katolik'},
       {'id': '4', 'nama': 'Hindu'},
-      {'id': '5', 'nama': 'Buddha'},
-      {'id': '6', 'nama': 'Konghucu'},
     ];
     
     _cabangList = [
       {'id': '1', 'nama': 'Cabang Pusat'},
       {'id': '2', 'nama': 'Cabang Utama'},
-      {'id': '3', 'nama': 'Cabang Pembantu'},
     ];
     
     setState(() {});
-    print('✅ Fallback data setup complete');
   }
 
-  // ✅ PERBAIKAN: Load kota dengan error handling
+  // ✅ LOAD KOTA
   Future<void> _loadKota(String idProvinsi, bool forKtp) async {
     try {
-      print('🏙️ Loading kota for provinsi: $idProvinsi, forKtp: $forKtp');
+      print('🏙️ Loading kota for provinsi: $idProvinsi');
       final result = await _apiService.getRegency(idProvinsi);
       
       if (result['success'] == true) {
@@ -229,51 +183,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
           setState(() {
             if (forKtp) {
               _kotaListKtp = data;
-              _selectedKotaKtp = null; // Reset selected kota
-            } else {
-              _kotaListDomisili = data;
-              _selectedKotaDomisili = null; // Reset selected kota
-            }
-          });
-          print('🏙️ Kota loaded: ${data.length} items');
-        } else if (data is Map) {
-          final kotaList = data.entries.map((entry) {
-            return {
-              'id': entry.key.toString(),
-              'nama': entry.value.toString(),
-            };
-          }).toList();
-          setState(() {
-            if (forKtp) {
-              _kotaListKtp = kotaList;
               _selectedKotaKtp = null;
             } else {
-              _kotaListDomisili = kotaList;
+              _kotaListDomisili = data;
               _selectedKotaDomisili = null;
             }
           });
-          print('🏙️ Kota converted from Map: ${kotaList.length} items');
         } else {
-          print('🏙️ Kota data is null or empty');
           setState(() {
             if (forKtp) {
               _kotaListKtp = [];
-              _selectedKotaKtp = null;
             } else {
               _kotaListDomisili = [];
-              _selectedKotaDomisili = null;
             }
           });
         }
       } else {
-        print('❌ Failed to load kota: ${result['message']}');
         setState(() {
           if (forKtp) {
             _kotaListKtp = [];
-            _selectedKotaKtp = null;
           } else {
             _kotaListDomisili = [];
-            _selectedKotaDomisili = null;
           }
         });
       }
@@ -282,10 +212,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() {
         if (forKtp) {
           _kotaListKtp = [];
-          _selectedKotaKtp = null;
         } else {
           _kotaListDomisili = [];
-          _selectedKotaDomisili = null;
         }
       });
     }
@@ -379,12 +307,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  // ✅ FIXED: VALIDATE ALL FORMS - NULL SAFETY
+  // ✅ VALIDATE ALL FORMS
   bool _validateAllForms() {
     for (int i = 0; i < _formKeys.length; i++) {
       final formKey = _formKeys[i];
       if (formKey.currentState != null && !formKey.currentState!.validate()) {
-        setState(() => _currentStep = i + 1); // +1 karena step 0 tidak pakai form
+        setState(() => _currentStep = i + 1);
         return false;
       }
     }
@@ -441,7 +369,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  // ✅ VALIDATION METHODS - FIXED NULL SAFETY
+  // ✅ VALIDATION METHODS
   String? _validateRequired(String? value, String fieldName) {
     if (value == null || value.isEmpty) {
       return '$fieldName wajib diisi';
@@ -489,9 +417,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
-  // ✅ PERBAIKAN: VALIDATOR FOR DROPDOWN - lebih fleksibel
   String? _validateDropdown(String? value, String fieldName) {
-    if (value == null || value.isEmpty || value == 'empty') {
+    if (value == null || value.isEmpty) {
       return '$fieldName wajib dipilih';
     }
     return null;
@@ -530,27 +457,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
           const SizedBox(height: 16),
           _buildInfoCard(
-            'Visi',
+            'Visi & Misi',
             'Menjadi koperasi terdepan dalam meningkatkan kesejahteraan anggota melalui layanan yang profesional dan inovatif.',
-            Icons.visibility,
-          ),
-          const SizedBox(height: 16),
-          _buildInfoCard(
-            'Misi',
-            '• Memberikan layanan keuangan yang terjangkau\n• Meningkatkan kapasitas usaha anggota\n• Mengembangkan jaringan kemitraan yang strategis\n• Menerapkan prinsip tata kelola yang baik',
             Icons.flag,
-          ),
-          const SizedBox(height: 16),
-          _buildInfoCard(
-            'Manfaat Bergabung',
-            '• Akses pinjaman dengan bunga kompetitif\n• Bagi hasil dari usaha koperasi\n• Pelatihan dan pengembangan usaha\n• Jaringan bisnis yang luas\n• Layanan konsultasi keuangan',
-            Icons.emoji_events,
-          ),
-          const SizedBox(height: 16),
-          _buildInfoCard(
-            'Manfaat Anggota',
-            '• Hak suara dalam Rapat Anggota\n• Hak mendapatkan pembagian SHU\n• Akses terhadap semua produk koperasi\n• Perlindungan asuransi\n• Program kesejahteraan anggota',
-            Icons.people,
           ),
           const SizedBox(height: 24),
           Card(
@@ -668,54 +577,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
               validator: (v) => _validateRequired(v, 'Nama lengkap'),
             ),
             const SizedBox(height: 16),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                if (constraints.maxWidth > 600) {
-                  return Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: birthPlaceController,
-                          label: 'Tempat Lahir *',
-                          icon: Icons.place_outlined,
-                          validator: (v) => _validateRequired(v, 'Tempat lahir'),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildDateField(
-                          label: 'Tanggal Lahir *',
-                          value: _selectedBirthDate,
-                          onTap: () => _selectDate((date) {
-                            setState(() => _selectedBirthDate = date);
-                          }, DateTime.now().subtract(const Duration(days: 365 * 18))),
-                          validator: (v) => _selectedBirthDate == null ? 'Tanggal lahir wajib diisi' : null,
-                        ),
-                      ),
-                    ],
-                  );
-                } else {
-                  return Column(
-                    children: [
-                      _buildTextField(
-                        controller: birthPlaceController,
-                        label: 'Tempat Lahir *',
-                        icon: Icons.place_outlined,
-                        validator: (v) => _validateRequired(v, 'Tempat lahir'),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildDateField(
-                        label: 'Tanggal Lahir *',
-                        value: _selectedBirthDate,
-                        onTap: () => _selectDate((date) {
-                          setState(() => _selectedBirthDate = date);
-                        }, DateTime.now().subtract(const Duration(days: 365 * 18))),
-                        validator: (v) => _selectedBirthDate == null ? 'Tanggal lahir wajib diisi' : null,
-                      ),
-                    ],
-                  );
-                }
-              },
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTextField(
+                    controller: birthPlaceController,
+                    label: 'Tempat Lahir *',
+                    icon: Icons.place_outlined,
+                    validator: (v) => _validateRequired(v, 'Tempat lahir'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildDateField(
+                    label: 'Tanggal Lahir *',
+                    value: _selectedBirthDate,
+                    onTap: () => _selectDate((date) {
+                      setState(() => _selectedBirthDate = date);
+                    }, DateTime.now().subtract(const Duration(days: 365 * 18))),
+                    validator: (v) => _selectedBirthDate == null ? 'Tanggal lahir wajib diisi' : null,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             _buildTextField(
@@ -739,7 +622,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               icon: Icons.fax_outlined,
               keyboardType: TextInputType.phone,
             ),
-            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -760,12 +642,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
               items: _agamaList.map((agama) {
                 final id = agama['id']?.toString() ?? '';
                 final nama = agama['nama']?.toString() ?? 'Unknown';
-                return DropdownMenuItem(
+                return DropdownMenuItem<String>(
                   value: id,
                   child: Text(nama),
                 );
               }).toList(),
-              onChanged: (value) {
+              onChanged: (String? value) {
                 if (value != null) {
                   setState(() {
                     agamaIdController.text = value;
@@ -783,12 +665,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
               items: _cabangList.map((cabang) {
                 final id = cabang['id']?.toString() ?? '';
                 final nama = cabang['nama']?.toString() ?? 'Unknown';
-                return DropdownMenuItem(
+                return DropdownMenuItem<String>(
                   value: id,
                   child: Text(nama),
                 );
               }).toList(),
-              onChanged: (value) {
+              onChanged: (String? value) {
                 if (value != null) {
                   setState(() {
                     cabangIdController.text = value;
@@ -803,12 +685,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
               label: 'Jenis Identitas *',
               value: jenisIdentitasController.text,
               items: const [
-                DropdownMenuItem(value: 'KTP', child: Text('KTP')),
-                DropdownMenuItem(value: 'SIM', child: Text('SIM')),
-                DropdownMenuItem(value: 'Passport', child: Text('Passport')),
+                DropdownMenuItem<String>(value: 'KTP', child: Text('KTP')),
+                DropdownMenuItem<String>(value: 'SIM', child: Text('SIM')),
+                DropdownMenuItem<String>(value: 'Passport', child: Text('Passport')),
               ],
-              onChanged: (value) {
-                setState(() => jenisIdentitasController.text = value!);
+              onChanged: (String? value) {
+                if (value != null) {
+                  setState(() => jenisIdentitasController.text = value);
+                }
               },
               validator: (value) => _validateDropdown(value, 'Jenis identitas'),
             ),
@@ -830,20 +714,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             const SizedBox(height: 16),
             _buildDropdownFormField(
-              label: 'Dari mana Anda mengetahui kami? *',
+              label: 'Sumber Informasi *',
               value: sumberInformasiController.text.isEmpty ? null : sumberInformasiController.text,
               items: _sumberInfoList.map((sumber) {
-                return DropdownMenuItem(
+                return DropdownMenuItem<String>(
                   value: sumber['id'].toString(),
                   child: Text(sumber['nama']),
                 );
               }).toList(),
-              onChanged: (value) {
-                setState(() => sumberInformasiController.text = value!);
+              onChanged: (String? value) {
+                if (value != null) {
+                  setState(() => sumberInformasiController.text = value);
+                }
               },
               validator: (value) => _validateDropdown(value, 'Sumber informasi'),
             ),
-            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -859,7 +744,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           children: [
             _buildTextField(
               controller: ktpAlamatController,
-              label: 'Alamat Sesuai KTP *',
+              label: 'Alamat KTP *',
               icon: Icons.home_outlined,
               maxLines: 2,
               validator: (v) => _validateRequired(v, 'Alamat KTP'),
@@ -872,54 +757,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
               validator: (v) => _validateRequired(v, 'No. Rumah'),
             ),
             const SizedBox(height: 16),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                if (constraints.maxWidth > 600) {
-                  return Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: ktpRtController,
-                          label: 'RT *',
-                          icon: Icons.numbers_outlined,
-                          keyboardType: TextInputType.number,
-                          validator: (v) => _validateRequired(v, 'RT'),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildTextField(
-                          controller: ktpRwController,
-                          label: 'RW *',
-                          icon: Icons.numbers_outlined,
-                          keyboardType: TextInputType.number,
-                          validator: (v) => _validateRequired(v, 'RW'),
-                        ),
-                      ),
-                    ],
-                  );
-                } else {
-                  return Column(
-                    children: [
-                      _buildTextField(
-                        controller: ktpRtController,
-                        label: 'RT *',
-                        icon: Icons.numbers_outlined,
-                        keyboardType: TextInputType.number,
-                        validator: (v) => _validateRequired(v, 'RT'),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildTextField(
-                        controller: ktpRwController,
-                        label: 'RW *',
-                        icon: Icons.numbers_outlined,
-                        keyboardType: TextInputType.number,
-                        validator: (v) => _validateRequired(v, 'RW'),
-                      ),
-                    ],
-                  );
-                }
-              },
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTextField(
+                    controller: ktpRtController,
+                    label: 'RT *',
+                    icon: Icons.numbers_outlined,
+                    keyboardType: TextInputType.number,
+                    validator: (v) => _validateRequired(v, 'RT'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildTextField(
+                    controller: ktpRwController,
+                    label: 'RW *',
+                    icon: Icons.numbers_outlined,
+                    keyboardType: TextInputType.number,
+                    validator: (v) => _validateRequired(v, 'RW'),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             
@@ -927,23 +786,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _buildDropdownFormField(
               label: 'Provinsi *',
               value: _selectedProvinsiKtp,
-              items: _provinsiList.isNotEmpty
-                  ? _provinsiList.map((provinsi) {
-                      final id = provinsi['id']?.toString() ?? '';
-                      final nama = provinsi['nama']?.toString() ?? 'Unknown';
-                      return DropdownMenuItem(
-                        value: id,
-                        child: Text(nama),
-                      );
-                    }).toList()
-                  : [
-                      const DropdownMenuItem(
-                        value: 'empty',
-                        child: Text('Loading provinsi...'),
-                      )
-                    ],
-              onChanged: _provinsiList.isNotEmpty ? (value) {
-                if (value != null && value != 'empty') {
+              items: _provinsiList.map((provinsi) {
+                final id = provinsi['id']?.toString() ?? '';
+                final nama = provinsi['nama']?.toString() ?? 'Unknown';
+                return DropdownMenuItem<String>(
+                  value: id,
+                  child: Text(nama),
+                );
+              }).toList(),
+              onChanged: (String? value) {
+                if (value != null) {
                   setState(() {
                     _selectedProvinsiKtp = value;
                     _selectedKotaKtp = null;
@@ -951,7 +803,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   });
                   _loadKota(value, true);
                 }
-              } : null,
+              },
               validator: (value) => _validateDropdown(value, 'Provinsi'),
             ),
             const SizedBox(height: 16),
@@ -960,33 +812,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _buildDropdownFormField(
               label: 'Kabupaten/Kota *',
               value: _selectedKotaKtp,
-              items: _kotaListKtp.isNotEmpty
-                  ? _kotaListKtp.map((kota) {
-                      final id = kota['id']?.toString() ?? '';
-                      final nama = kota['nama']?.toString() ?? 'Unknown';
-                      return DropdownMenuItem(
-                        value: id,
-                        child: Text(nama),
-                      );
-                    }).toList()
-                  : _selectedProvinsiKtp != null
-                      ? [
-                          const DropdownMenuItem(
-                            value: 'empty',
-                            child: Text('Loading kota...'),
-                          )
-                        ]
-                      : [
-                          const DropdownMenuItem(
-                            value: 'empty',
-                            child: Text('Pilih provinsi dulu'),
-                          )
-                        ],
-              onChanged: _kotaListKtp.isNotEmpty ? (value) {
-                if (value != null && value != 'empty') {
+              items: _kotaListKtp.map((kota) {
+                final id = kota['id']?.toString() ?? '';
+                final nama = kota['nama']?.toString() ?? 'Unknown';
+                return DropdownMenuItem<String>(
+                  value: id,
+                  child: Text(nama),
+                );
+              }).toList(),
+              onChanged: (String? value) {
+                if (value != null) {
                   setState(() => _selectedKotaKtp = value);
                 }
-              } : null,
+              },
               validator: (value) => _validateDropdown(value, 'Kabupaten/Kota'),
             ),
             const SizedBox(height: 16),
@@ -998,7 +836,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               keyboardType: TextInputType.number,
               validator: (v) => _validateRequired(v, 'Kode Pos'),
             ),
-            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -1033,7 +870,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             const SizedBox(height: 16),
             _buildTextField(
               controller: domisiliAlamatController,
-              label: 'Alamat Saat Ini *',
+              label: 'Alamat Domisili *',
               icon: Icons.home_outlined,
               maxLines: 2,
               validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Alamat domisili'),
@@ -1048,58 +885,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
               enabled: !_sameAsKtp,
             ),
             const SizedBox(height: 16),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                if (constraints.maxWidth > 600) {
-                  return Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: domisiliRtController,
-                          label: 'RT *',
-                          icon: Icons.numbers_outlined,
-                          keyboardType: TextInputType.number,
-                          validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RT'),
-                          enabled: !_sameAsKtp,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildTextField(
-                          controller: domisiliRwController,
-                          label: 'RW *',
-                          icon: Icons.numbers_outlined,
-                          keyboardType: TextInputType.number,
-                          validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RW'),
-                          enabled: !_sameAsKtp,
-                        ),
-                      ),
-                    ],
-                  );
-                } else {
-                  return Column(
-                    children: [
-                      _buildTextField(
-                        controller: domisiliRtController,
-                        label: 'RT *',
-                        icon: Icons.numbers_outlined,
-                        keyboardType: TextInputType.number,
-                        validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RT'),
-                        enabled: !_sameAsKtp,
-                      ),
-                      const SizedBox(height: 16),
-                      _buildTextField(
-                        controller: domisiliRwController,
-                        label: 'RW *',
-                        icon: Icons.numbers_outlined,
-                        keyboardType: TextInputType.number,
-                        validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RW'),
-                        enabled: !_sameAsKtp,
-                      ),
-                    ],
-                  );
-                }
-              },
+            Row(
+              children: [
+                Expanded(
+                  child: _buildTextField(
+                    controller: domisiliRtController,
+                    label: 'RT *',
+                    icon: Icons.numbers_outlined,
+                    keyboardType: TextInputType.number,
+                    validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RT'),
+                    enabled: !_sameAsKtp,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildTextField(
+                    controller: domisiliRwController,
+                    label: 'RW *',
+                    icon: Icons.numbers_outlined,
+                    keyboardType: TextInputType.number,
+                    validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RW'),
+                    enabled: !_sameAsKtp,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             
@@ -1107,33 +916,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _buildDropdownFormField(
               label: 'Provinsi *',
               value: _selectedProvinsiDomisili,
-              items: _sameAsKtp
-                  ? [
-                      DropdownMenuItem(
-                        value: _selectedProvinsiKtp,
-                        child: Text(_provinsiList.firstWhere(
-                          (prov) => prov['id']?.toString() == _selectedProvinsiKtp,
-                          orElse: () => {'nama': 'Unknown'},
-                        )['nama']?.toString() ?? 'Unknown'),
-                      )
-                    ]
-                  : _provinsiList.isNotEmpty
-                      ? _provinsiList.map((provinsi) {
-                          final id = provinsi['id']?.toString() ?? '';
-                          final nama = provinsi['nama']?.toString() ?? 'Unknown';
-                          return DropdownMenuItem(
-                            value: id,
-                            child: Text(nama),
-                          );
-                        }).toList()
-                      : [
-                          const DropdownMenuItem(
-                            value: 'empty',
-                            child: Text('Loading provinsi...'),
-                          )
-                        ],
-              onChanged: _sameAsKtp ? null : (_provinsiList.isNotEmpty ? (value) {
-                if (value != null && value != 'empty') {
+              items: _provinsiList.map((provinsi) {
+                final id = provinsi['id']?.toString() ?? '';
+                final nama = provinsi['nama']?.toString() ?? 'Unknown';
+                return DropdownMenuItem<String>(
+                  value: id,
+                  child: Text(nama),
+                );
+              }).toList(),
+              onChanged: _sameAsKtp ? null : (String? value) {
+                if (value != null) {
                   setState(() {
                     _selectedProvinsiDomisili = value;
                     _selectedKotaDomisili = null;
@@ -1141,7 +933,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   });
                   _loadKota(value, false);
                 }
-              } : null),
+              },
               validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Provinsi'),
             ),
             const SizedBox(height: 16),
@@ -1150,43 +942,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _buildDropdownFormField(
               label: 'Kabupaten/Kota *',
               value: _selectedKotaDomisili,
-              items: _sameAsKtp
-                  ? [
-                      DropdownMenuItem(
-                        value: _selectedKotaKtp,
-                        child: Text(_kotaListKtp.firstWhere(
-                          (kota) => kota['id']?.toString() == _selectedKotaKtp,
-                          orElse: () => {'nama': 'Unknown'},
-                        )['nama']?.toString() ?? 'Unknown'),
-                      )
-                    ]
-                  : _kotaListDomisili.isNotEmpty
-                      ? _kotaListDomisili.map((kota) {
-                          final id = kota['id']?.toString() ?? '';
-                          final nama = kota['nama']?.toString() ?? 'Unknown';
-                          return DropdownMenuItem(
-                            value: id,
-                            child: Text(nama),
-                          );
-                        }).toList()
-                      : _selectedProvinsiDomisili != null
-                          ? [
-                              const DropdownMenuItem(
-                                value: 'empty',
-                                child: Text('Loading kota...'),
-                              )
-                            ]
-                          : [
-                              const DropdownMenuItem(
-                                value: 'empty',
-                                child: Text('Pilih provinsi dulu'),
-                              )
-                            ],
-              onChanged: _sameAsKtp ? null : (_kotaListDomisili.isNotEmpty ? (value) {
-                if (value != null && value != 'empty') {
+              items: _kotaListDomisili.map((kota) {
+                final id = kota['id']?.toString() ?? '';
+                final nama = kota['nama']?.toString() ?? 'Unknown';
+                return DropdownMenuItem<String>(
+                  value: id,
+                  child: Text(nama),
+                );
+              }).toList(),
+              onChanged: _sameAsKtp ? null : (String? value) {
+                if (value != null) {
                   setState(() => _selectedKotaDomisili = value);
                 }
-              } : null),
+              },
               validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Kabupaten/Kota'),
             ),
             const SizedBox(height: 16),
@@ -1199,7 +967,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Kode Pos'),
               enabled: !_sameAsKtp,
             ),
-            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -1240,24 +1007,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
               label: 'Hubungan Keluarga *',
               value: hubunganController.text,
               items: const [
-                DropdownMenuItem(value: 'Orang Tua', child: Text('Orang Tua')),
-                DropdownMenuItem(value: 'Suami/Istri', child: Text('Suami/Istri')),
-                DropdownMenuItem(value: 'Anak', child: Text('Anak')),
-                DropdownMenuItem(value: 'Saudara Kandung', child: Text('Saudara Kandung')),
+                DropdownMenuItem<String>(value: 'Orang Tua', child: Text('Orang Tua')),
+                DropdownMenuItem<String>(value: 'Suami/Istri', child: Text('Suami/Istri')),
+                DropdownMenuItem<String>(value: 'Anak', child: Text('Anak')),
+                DropdownMenuItem<String>(value: 'Saudara Kandung', child: Text('Saudara Kandung')),
               ],
-              onChanged: (value) {
-                setState(() => hubunganController.text = value!);
+              onChanged: (String? value) {
+                if (value != null) {
+                  setState(() => hubunganController.text = value);
+                }
               },
               validator: (value) => _validateDropdown(value, 'Hubungan keluarga'),
             ),
-            const SizedBox(height: 16),
           ],
         ),
       ),
     );
   }
 
-  // ✅ WIDGET BUILDERS - FIXED
+  // ✅ WIDGET BUILDERS
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
@@ -1332,7 +1100,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ✅ PERBAIKAN: DROPDOWN FORM FIELD - LEBIH ROBUST
+  // ✅ PERBAIKAN: DROPDOWN FORM FIELD YANG BISA DI-CLICK
   Widget _buildDropdownFormField({
     required String label,
     required String? value,
@@ -1352,10 +1120,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
       validator: validator,
       isExpanded: true,
+      // ✅ FIX: Pastikan dropdown bisa di-click
+      dropdownColor: Colors.white,
+      icon: const Icon(Icons.arrow_drop_down),
+      borderRadius: BorderRadius.circular(12),
     );
   }
 
-  // ✅ FIXED: NAVIGATION BUTTON LOGIC
+  // ✅ NAVIGATION BUTTON LOGIC
   void _handleNextStep() {
     if (_currentStep == 0) {
       // Step 0: Info Koperasi - hanya butuh persetujuan
@@ -1440,7 +1212,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ),
 
-                  // ✅ FIXED: NAVIGATION BUTTONS
+                  // ✅ NAVIGATION BUTTONS
                   Container(
                     padding: const EdgeInsets.all(16),
                     color: Colors.white,
