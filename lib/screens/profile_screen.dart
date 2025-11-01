@@ -4,7 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 import 'edit_profile_screen.dart';
 
-// ✅ CUSTOM SHAPE UNTUK APPBAR DENGAN TENGAH PENDEK & SAMPING IKUT MELENGKUNG KE DALEM
+// ✅ CUSTOM SHAPE UNTUK APPBAR
 class NotchedAppBarShape extends ContinuousRectangleBorder {
   @override
   Path getOuterPath(Rect rect, {TextDirection? textDirection}) {
@@ -79,7 +79,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ✅ PERBAIKAN: FITUR UPLOAD FOTO DENGAN VALIDASI FILE YANG LEBIH BAIK
+  // ✅ PERBAIKAN: FITUR UPLOAD FOTO YANG LEBIH BAIK
   Future<void> _uploadPhoto(String type, String typeName) async {
     if (_isUploading) return;
     
@@ -92,124 +92,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
 
       if (pickedFile != null) {
-        // ✅ PERBAIKAN: Validasi file extension sebelum upload
-        final filePath = pickedFile.path.toLowerCase();
-        final allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif'];
-        final fileExtension = filePath.substring(filePath.lastIndexOf('.'));
-        
-        if (!allowedExtensions.any((ext) => filePath.endsWith(ext))) {
-          throw Exception('Format file tidak didukung. Gunakan JPG, JPEG, PNG, atau GIF.');
-        }
-
-        setState(() {
-          _isUploading = true;
-          _uploadError = null;
-        });
-        
-        _showUploadingDialog('Mengupload $typeName...');
-
-        final file = File(pickedFile.path);
-        print('📤 Uploading $type: ${file.path}');
-        print('📤 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
-
-        // ✅ PERBAIKAN: Validasi file sebelum upload
-        if (!await file.exists()) {
-          throw Exception('File tidak ditemukan');
-        }
-
-        // ✅ PERBAIKAN: Check file size (max 5MB)
-        final fileSize = file.lengthSync();
-        if (fileSize > 5 * 1024 * 1024) {
-          throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
-        }
-
-        // ✅ GUNAKAN METHOD UPLOAD FOTO YANG BARU
-        final result = await _apiService.uploadFoto(
-          type: type,
-          filePath: pickedFile.path,
-        );
-
-        if (!mounted) return;
-        
-        Navigator.pop(context); // Tutup dialog
-        setState(() => _isUploading = false);
-
-        print('📤 Upload result for $type: $result');
-
-        if (result['success'] == true) {
-          // ✅ Refresh user data untuk mendapatkan update terbaru
-          await _loadCurrentUser();
-          
-          // ✅ Panggil callback jika ada
-          widget.onProfileUpdated?.call();
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$typeName berhasil diupload ✅'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        } else {
-          final errorMessage = result['message'] ?? 'Gagal upload $typeName';
-          
-          // ✅ PERBAIKAN: Handle specific error messages
-          String userMessage = errorMessage;
-          if (errorMessage.contains('400') || errorMessage.contains('did not select a file')) {
-            userMessage = 'File tidak terpilih atau format tidak didukung';
-          } else if (errorMessage.contains('404')) {
-            userMessage = 'Endpoint upload tidak ditemukan';
-          } else if (errorMessage.contains('413')) {
-            userMessage = 'Ukuran file terlalu besar';
-          } else if (errorMessage.contains('format tidak didukung')) {
-            userMessage = 'Format file tidak didukung. Gunakan JPG, JPEG, PNG, atau GIF.';
-          }
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(userMessage),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
+        await _processPhotoUpload(pickedFile, type, typeName);
       }
     } catch (e) {
-      if (!mounted) return;
-      
-      Navigator.pop(context); // Tutup dialog
-      setState(() {
-        _isUploading = false;
-        _uploadError = 'Error upload $typeName: $e';
-      });
-      
-      print('❌ Error upload: $e');
-      
-      // ✅ PERBAIKAN: User-friendly error messages
-      String userMessage = 'Terjadi kesalahan saat upload';
-      if (e.toString().contains('File tidak ditemukan')) {
-        userMessage = 'File tidak ditemukan';
-      } else if (e.toString().contains('Ukuran file terlalu besar')) {
-        userMessage = 'Ukuran file terlalu besar. Maksimal 5MB.';
-      } else if (e.toString().contains('timeout')) {
-        userMessage = 'Upload timeout, coba lagi';
-      } else if (e.toString().contains('permission')) {
-        userMessage = 'Izin akses galeri ditolak';
-      } else if (e.toString().contains('Format file tidak didukung')) {
-        userMessage = 'Format file tidak didukung. Gunakan JPG, JPEG, PNG, atau GIF.';
-      }
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$userMessage ($typeName)'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      _handleUploadError(e, typeName);
     }
   }
 
-  // ✅ PERBAIKAN: FITUR AMBIL FOTO DARI KAMERA DENGAN VALIDASI
+  // ✅ PERBAIKAN: FITUR AMBIL FOTO DARI KAMERA
   Future<void> _takePhoto(String type, String typeName) async {
     if (_isUploading) return;
     
@@ -222,96 +112,119 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
 
       if (pickedFile != null) {
-        setState(() {
-          _isUploading = true;
-          _uploadError = null;
-        });
-        
-        _showUploadingDialog('Mengambil $typeName...');
-
-        final file = File(pickedFile.path);
-        print('📸 Taking photo for $type: ${file.path}');
-
-        // ✅ PERBAIKAN: Validasi file sebelum upload
-        if (!await file.exists()) {
-          throw Exception('File tidak ditemukan');
-        }
-
-        final result = await _apiService.uploadFoto(
-          type: type,
-          filePath: pickedFile.path,
-        );
-
-        if (!mounted) return;
-        
-        Navigator.pop(context); // Tutup dialog
-        setState(() => _isUploading = false);
-
-        print('📸 Camera result for $type: $result');
-
-        if (result['success'] == true) {
-          // ✅ Refresh user data untuk mendapatkan update terbaru
-          await _loadCurrentUser();
-          
-          // ✅ Panggil callback jika ada
-          widget.onProfileUpdated?.call();
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$typeName berhasil diambil ✅'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        } else {
-          final errorMessage = result['message'] ?? 'Gagal menyimpan $typeName';
-          
-          // ✅ PERBAIKAN: Handle specific error messages
-          String userMessage = errorMessage;
-          if (errorMessage.contains('400') || errorMessage.contains('did not select a file')) {
-            userMessage = 'File tidak terpilih atau format tidak didukung';
-          } else if (errorMessage.contains('format tidak didukung')) {
-            userMessage = 'Format file tidak didukung. Gunakan JPG, JPEG, PNG, atau GIF.';
-          }
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(userMessage),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
+        await _processPhotoUpload(pickedFile, type, typeName);
       }
     } catch (e) {
+      _handleUploadError(e, typeName);
+    }
+  }
+
+  // ✅ PROCESS PHOTO UPLOAD - REUSABLE METHOD
+  Future<void> _processPhotoUpload(XFile pickedFile, String type, String typeName) async {
+    setState(() {
+      _isUploading = true;
+      _uploadError = null;
+    });
+    
+    _showUploadingDialog('Mengupload $typeName...');
+
+    try {
+      final file = File(pickedFile.path);
+      
+      // ✅ VALIDASI FILE
+      if (!await file.exists()) {
+        throw Exception('File tidak ditemukan');
+      }
+
+      // ✅ CHECK FILE SIZE (max 5MB)
+      final fileSize = file.lengthSync();
+      if (fileSize > 5 * 1024 * 1024) {
+        throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
+      }
+
+      // ✅ CHECK FILE EXTENSION
+      final allowedExtensions = ['.jpg', '.jpeg', '.png'];
+      final fileExtension = pickedFile.path.toLowerCase().substring(pickedFile.path.lastIndexOf('.'));
+      if (!allowedExtensions.any((ext) => pickedFile.path.toLowerCase().endsWith(ext))) {
+        throw Exception('Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.');
+      }
+
+      print('📤 Uploading $type: ${file.path}');
+      print('📤 File size: ${(fileSize / 1024).toStringAsFixed(2)} KB');
+
+      // ✅ GUNAKAN METHOD UPLOAD FOTO
+      final result = await _apiService.uploadFoto(
+        type: type,
+        filePath: pickedFile.path,
+      );
+
       if (!mounted) return;
       
       Navigator.pop(context); // Tutup dialog
-      setState(() {
-        _isUploading = false;
-        _uploadError = 'Error mengambil $typeName: $e';
-      });
-      
-      print('❌ Error take photo: $e');
-      
-      // ✅ PERBAIKAN: User-friendly error messages untuk kamera
-      String userMessage = 'Error mengambil foto';
-      if (e.toString().contains('File tidak ditemukan')) {
-        userMessage = 'File tidak ditemukan';
-      } else if (e.toString().contains('permission')) {
-        userMessage = 'Izin kamera ditolak';
-      } else if (e.toString().contains('Format file tidak didukung')) {
-        userMessage = 'Format file tidak didukung';
+      setState(() => _isUploading = false);
+
+      print('📤 Upload result for $type: $result');
+
+      if (result['success'] == true) {
+        // ✅ Refresh user data untuk mendapatkan update terbaru
+        await _loadCurrentUser();
+        
+        // ✅ Panggil callback jika ada
+        widget.onProfileUpdated?.call();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$typeName berhasil diupload ✅'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        final errorMessage = result['message'] ?? 'Gagal upload $typeName';
+        _showErrorSnackBar(errorMessage);
       }
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$userMessage ($typeName)'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Tutup dialog
+      setState(() => _isUploading = false);
+      _handleUploadError(e, typeName);
     }
+  }
+
+  // ✅ HANDLE UPLOAD ERROR - REUSABLE METHOD
+  void _handleUploadError(dynamic e, String typeName) {
+    setState(() {
+      _isUploading = false;
+      _uploadError = 'Error upload $typeName: $e';
+    });
+    
+    print('❌ Error upload: $e');
+    
+    // ✅ User-friendly error messages
+    String userMessage = 'Terjadi kesalahan saat upload';
+    if (e.toString().contains('File tidak ditemukan')) {
+      userMessage = 'File tidak ditemukan';
+    } else if (e.toString().contains('Ukuran file terlalu besar')) {
+      userMessage = 'Ukuran file terlalu besar. Maksimal 5MB.';
+    } else if (e.toString().contains('timeout')) {
+      userMessage = 'Upload timeout, coba lagi';
+    } else if (e.toString().contains('permission')) {
+      userMessage = 'Izin akses ditolak';
+    } else if (e.toString().contains('Format file tidak didukung')) {
+      userMessage = 'Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.';
+    }
+    
+    _showErrorSnackBar('$userMessage ($typeName)');
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
   void _showUploadingDialog(String message) {
@@ -345,7 +258,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ✅ PERBAIKAN: SHOW PHOTO OPTIONS DENGAN KAMERA & GALERI
+  // ✅ SHOW PHOTO OPTIONS UNTUK FOTO PROFILE
   void _showPhotoOptions() {
     showModalBottomSheet(
       context: context,
@@ -390,7 +303,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ✅ PERBAIKAN: SHOW DOCUMENT OPTIONS DENGAN KAMERA & GALERI
+  // ✅ SHOW DOCUMENT OPTIONS UNTUK KTP & KK
   void _showDocumentOptions() {
     showModalBottomSheet(
       context: context,
@@ -408,6 +321,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            
             // KTP Options
             Card(
               child: Column(
@@ -444,10 +358,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
             const SizedBox(height: 8),
+            
             // KK Options
             Card(
               child: Column(
@@ -484,6 +400,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
@@ -498,7 +415,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ✅ PERBAIKAN: LOGOUT FUNCTION YANG LEBIH ROBUST
+  // ✅ LOGOUT FUNCTION
   Future<void> _logout() async {
     bool confirm = await showDialog(
       context: context,
@@ -519,7 +436,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ) ?? false;
 
     if (confirm && mounted) {
-      // Show loading indicator
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -536,11 +452,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
 
       try {
-        // ✅ PERBAIKAN: Gunakan method logout yang baru (return Future<Map>)
         final result = await _apiService.logout();
         
         if (mounted) {
-          Navigator.pop(context); // Close loading dialog
+          Navigator.pop(context);
           
           if (result['success'] == true) {
             Navigator.pushNamedAndRemoveUntil(
@@ -549,7 +464,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               (route) => false
             );
           } else {
-            // Jika logout API gagal, tetap redirect ke login (fallback)
+            // Fallback ke login meski API gagal
             Navigator.pushNamedAndRemoveUntil(
               context, 
               '/login', 
@@ -559,8 +474,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       } catch (e) {
         if (mounted) {
-          Navigator.pop(context); // Close loading dialog
-          // Tetap redirect ke login meski error
+          Navigator.pop(context);
           Navigator.pushNamedAndRemoveUntil(
             context, 
             '/login', 
@@ -571,11 +485,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ✅ REFRESH PROFILE DATA - COMPATIBLE
+  // ✅ REFRESH PROFILE DATA
   Future<void> _refreshProfile() async {
     await _loadCurrentUser();
-    
-    // ✅ Panggil callback jika ada
     widget.onProfileUpdated?.call();
     
     if (mounted) {
@@ -683,16 +595,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         CircleAvatar(
                           radius: 50,
                           backgroundColor: Colors.green[50],
-                          backgroundImage: _currentUser['foto_diri'] != null && 
-                                         _currentUser['foto_diri'].toString().isNotEmpty &&
-                                         _currentUser['foto_diri'] != 'uploaded'
-                              ? NetworkImage(_currentUser['foto_diri']) // Jika ada URL dari server
-                              : null,
-                          child: _currentUser['foto_diri'] == null || 
-                                _currentUser['foto_diri'].toString().isEmpty ||
-                                _currentUser['foto_diri'] == 'uploaded'
-                              ? Icon(Icons.person, size: 60, color: Colors.green[700])
-                              : null,
+                          backgroundImage: _getProfileImage(),
+                          child: _getProfilePlaceholder(),
                         ),
                         if (_isUploading)
                           Positioned.fill(
@@ -777,303 +681,351 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 30),
 
             // ✅ DOKUMEN SECTION
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.folder_open, color: Colors.orange[700]),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Dokumen',
-                          style: TextStyle(
-                            fontSize: 18, 
-                            fontWeight: FontWeight.bold
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 20),
-                    _buildDocumentStatus('KTP', _currentUser['foto_ktp']),
-                    _buildDocumentStatus('Kartu Keluarga', _currentUser['foto_kk']),
-                    _buildDocumentStatus('Foto Diri', _currentUser['foto_diri']),
-                    const SizedBox(height: 12),
-                    // ✅ PERBAIKAN: TROUBLESHOOTING INFO YANG LEBIH DETAIL
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue[200]!),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.info_outline, color: Colors.blue[700], size: 16),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Tips Upload:',
-                                style: TextStyle(
-                                  color: Colors.blue[700],
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '• Format file: JPG, JPEG, PNG\n• Ukuran maksimal: 5MB\n• Foto harus jelas dan terbaca\n• Jika gagal, coba foto ulang dengan pencahayaan baik\n• Pastikan koneksi internet stabil',
-                            style: TextStyle(
-                              color: Colors.blue[700],
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _isUploading ? null : _showDocumentOptions,
-                        icon: Icon(Icons.upload, color: _isUploading ? Colors.grey : Colors.green[700]),
-                        label: Text(
-                          _isUploading ? 'Sedang Upload...' : 'Upload Dokumen',
-                          style: TextStyle(color: _isUploading ? Colors.grey : Colors.green[700]),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            _buildDocumentsSection(),
 
             const SizedBox(height: 16),
 
             // ✅ INFORMASI PRIBADI
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.person_outline, color: Colors.grey[700]),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Informasi Pribadi',
-                          style: TextStyle(
-                            fontSize: 18, 
-                            fontWeight: FontWeight.bold
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 20),
-                    _buildInfoTile(Icons.person, 'Username', _currentUser['username'] ?? '-'),
-                    _buildInfoTile(Icons.phone, 'Nomor Telepon', _currentUser['phone'] ?? _currentUser['noTelepon'] ?? '-'),
-                    _buildInfoTile(Icons.work, 'Pekerjaan', _currentUser['job'] ?? _currentUser['pekerjaan'] ?? '-'),
-                    _buildInfoTile(Icons.place, 'Tempat Lahir', _currentUser['birth_place'] ?? _currentUser['tempatLahir'] ?? '-'),
-                    _buildInfoTile(Icons.cake, 'Tanggal Lahir', 
-                      _formatTanggalLahir(_currentUser['birth_date'] ?? _currentUser['tanggalLahir']) ?? '-'),
-                  ],
-                ),
-              ),
-            ),
+            _buildPersonalInfoSection(),
 
             const SizedBox(height: 16),
 
             // ✅ ALAMAT KTP
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.credit_card, color: Colors.blue[700]),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Alamat KTP',
-                          style: TextStyle(
-                            fontSize: 18, 
-                            fontWeight: FontWeight.bold
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 20),
-                    _buildInfoTile(Icons.home, 'Alamat KTP', _currentUser['ktp_alamat'] ?? _currentUser['alamatKtp'] ?? '-', maxLines: 3),
-                    Row(
-                      children: [
-                        Expanded(child: _buildInfoTile(Icons.numbers, 'RT', _currentUser['ktp_rt'] ?? _currentUser['rtKtp'] ?? '-')),
-                        Expanded(child: _buildInfoTile(Icons.numbers, 'RW', _currentUser['ktp_rw'] ?? _currentUser['rwKtp'] ?? '-')),
-                      ],
-                    ),
-                    _buildInfoTile(Icons.house, 'No. Rumah', _currentUser['ktp_no'] ?? _currentUser['noRumahKtp'] ?? '-'),
-                    _buildInfoTile(Icons.location_city, 'Kota/Kabupaten', _getKotaName(_currentUser['ktp_id_regency']) ?? '-'),
-                    _buildInfoTile(Icons.markunread_mailbox, 'Kode Pos', _currentUser['ktp_postal'] ?? _currentUser['kodePosKtp'] ?? '-'),
-                  ],
-                ),
-              ),
-            ),
+            _buildKtpAddressSection(),
 
             const SizedBox(height: 16),
 
             // ✅ ALAMAT DOMISILI
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.home_work, color: Colors.green[700]),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Alamat Domisili',
-                          style: TextStyle(
-                            fontSize: 18, 
-                            fontWeight: FontWeight.bold
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 20),
-                    _buildInfoTile(Icons.home, 'Alamat Domisili', 
-                      _currentUser['domisili_alamat'] ?? _currentUser['alamatDomisili'] ?? '-', maxLines: 3),
-                    Row(
-                      children: [
-                        Expanded(child: _buildInfoTile(Icons.numbers, 'RT', _currentUser['domisili_rt'] ?? _currentUser['rtDomisili'] ?? '-')),
-                        Expanded(child: _buildInfoTile(Icons.numbers, 'RW', _currentUser['domisili_rw'] ?? _currentUser['rwDomisili'] ?? '-')),
-                      ],
-                    ),
-                    _buildInfoTile(Icons.house, 'No. Rumah', _currentUser['domisili_no'] ?? _currentUser['noRumahDomisili'] ?? '-'),
-                    _buildInfoTile(Icons.location_city, 'Kota/Kabupaten', _getKotaName(_currentUser['domisili_id_regency']) ?? '-'),
-                    _buildInfoTile(Icons.markunread_mailbox, 'Kode Pos', _currentUser['domisili_postal'] ?? _currentUser['kodePosDomisili'] ?? '-'),
-                  ],
-                ),
-              ),
-            ),
+            _buildDomisiliAddressSection(),
 
             const SizedBox(height: 16),
 
             // ✅ INFORMASI KOPERASI
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.account_balance, color: Colors.orange[700]),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Informasi Koperasi',
-                          style: TextStyle(
-                            fontSize: 18, 
-                            fontWeight: FontWeight.bold
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 20),
-                    _buildInfoTile(Icons.credit_card, 'No. Anggota', _currentUser['username'] ?? '-'),
-                    _buildInfoTile(Icons.calendar_today, 'Bergabung Sejak', _getTahunGabung()),
-                    _buildInfoTile(Icons.verified, 'Status Keanggotaan', 'Aktif'),
-                    _buildInfoTile(Icons.fingerprint, 'ID Member', _currentUser['id']?.toString() ?? _currentUser['user_id']?.toString() ?? '-'),
-                  ],
-                ),
-              ),
-            ),
+            _buildCooperativeInfoSection(),
 
             const SizedBox(height: 30),
 
             // ✅ ACTION BUTTONS
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: BorderSide(color: Colors.green[700]!),
-                    ),
-                    onPressed: _isUploading ? null : () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => EditProfileScreen(
-                            user: _currentUser,
-                            onProfileUpdated: (updatedData) {
-                              setState(() {
-                                _currentUser = {..._currentUser, ...updatedData};
-                              });
-                              // ✅ Panggil callback untuk update di parent
-                              widget.onProfileUpdated?.call();
-                            },
-                          ),
-                        ),
-                      );
-                    },
-                    icon: Icon(Icons.edit, color: _isUploading ? Colors.grey : Colors.green[700]),
-                    label: Text(
-                      'Edit Profil',
-                      style: TextStyle(
-                        fontSize: 16, 
-                        color: _isUploading ? Colors.grey : Colors.green[700],
-                        fontWeight: FontWeight.w600
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isUploading ? Colors.grey : Colors.red[600],
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    onPressed: _isUploading ? null : _logout,
-                    icon: const Icon(Icons.logout, color: Colors.white, size: 20),
-                    label: const Text(
-                      'Keluar',
-                      style: TextStyle(
-                        fontSize: 16, 
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            _buildActionButtons(),
 
             const SizedBox(height: 20),
           ],
         ),
       ),
+    );
+  }
+
+  // ✅ HELPER METHODS UNTUK BUILD WIDGETS
+
+  ImageProvider? _getProfileImage() {
+    final fotoDiri = _currentUser['foto_diri'];
+    if (fotoDiri != null && 
+        fotoDiri.toString().isNotEmpty && 
+        fotoDiri != 'uploaded' &&
+        fotoDiri.toString().startsWith('http')) {
+      return NetworkImage(fotoDiri);
+    }
+    return null;
+  }
+
+  Widget? _getProfilePlaceholder() {
+    final fotoDiri = _currentUser['foto_diri'];
+    if (fotoDiri == null || 
+        fotoDiri.toString().isEmpty || 
+        fotoDiri == 'uploaded' ||
+        !fotoDiri.toString().startsWith('http')) {
+      return Icon(Icons.person, size: 60, color: Colors.green[700]);
+    }
+    return null;
+  }
+
+  Widget _buildDocumentsSection() {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.folder_open, color: Colors.orange[700]),
+                const SizedBox(width: 8),
+                const Text(
+                  'Dokumen',
+                  style: TextStyle(
+                    fontSize: 18, 
+                    fontWeight: FontWeight.bold
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            _buildDocumentStatus('KTP', _currentUser['foto_ktp']),
+            _buildDocumentStatus('Kartu Keluarga', _currentUser['foto_kk']),
+            _buildDocumentStatus('Foto Diri', _currentUser['foto_diri']),
+            const SizedBox(height: 12),
+            
+            // ✅ TROUBLESHOOTING INFO
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue[200]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.blue[700], size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Tips Upload:',
+                        style: TextStyle(
+                          color: Colors.blue[700],
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '• Format file: JPG, JPEG, PNG\n• Ukuran maksimal: 5MB\n• Foto harus jelas dan terbaca\n• Jika gagal, coba foto ulang dengan pencahayaan baik\n• Pastikan koneksi internet stabil',
+                    style: TextStyle(
+                      color: Colors.blue[700],
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isUploading ? null : _showDocumentOptions,
+                icon: Icon(Icons.upload, color: _isUploading ? Colors.grey : Colors.green[700]),
+                label: Text(
+                  _isUploading ? 'Sedang Upload...' : 'Upload Dokumen',
+                  style: TextStyle(color: _isUploading ? Colors.grey : Colors.green[700]),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPersonalInfoSection() {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.person_outline, color: Colors.grey[700]),
+                const SizedBox(width: 8),
+                const Text(
+                  'Informasi Pribadi',
+                  style: TextStyle(
+                    fontSize: 18, 
+                    fontWeight: FontWeight.bold
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            _buildInfoTile(Icons.person, 'Username', _currentUser['username'] ?? '-'),
+            _buildInfoTile(Icons.phone, 'Nomor Telepon', _currentUser['phone'] ?? _currentUser['noTelepon'] ?? '-'),
+            _buildInfoTile(Icons.work, 'Pekerjaan', _currentUser['job'] ?? _currentUser['pekerjaan'] ?? '-'),
+            _buildInfoTile(Icons.place, 'Tempat Lahir', _currentUser['birth_place'] ?? _currentUser['tempatLahir'] ?? '-'),
+            _buildInfoTile(Icons.cake, 'Tanggal Lahir', 
+              _formatTanggalLahir(_currentUser['birth_date'] ?? _currentUser['tanggalLahir']) ?? '-'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildKtpAddressSection() {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.credit_card, color: Colors.blue[700]),
+                const SizedBox(width: 8),
+                const Text(
+                  'Alamat KTP',
+                  style: TextStyle(
+                    fontSize: 18, 
+                    fontWeight: FontWeight.bold
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            _buildInfoTile(Icons.home, 'Alamat KTP', _currentUser['ktp_alamat'] ?? _currentUser['alamatKtp'] ?? '-', maxLines: 3),
+            Row(
+              children: [
+                Expanded(child: _buildInfoTile(Icons.numbers, 'RT', _currentUser['ktp_rt'] ?? _currentUser['rtKtp'] ?? '-')),
+                Expanded(child: _buildInfoTile(Icons.numbers, 'RW', _currentUser['ktp_rw'] ?? _currentUser['rwKtp'] ?? '-')),
+              ],
+            ),
+            _buildInfoTile(Icons.house, 'No. Rumah', _currentUser['ktp_no'] ?? _currentUser['noRumahKtp'] ?? '-'),
+            _buildInfoTile(Icons.location_city, 'Kota/Kabupaten', _getKotaName(_currentUser['ktp_id_regency']) ?? '-'),
+            _buildInfoTile(Icons.markunread_mailbox, 'Kode Pos', _currentUser['ktp_postal'] ?? _currentUser['kodePosKtp'] ?? '-'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDomisiliAddressSection() {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.home_work, color: Colors.green[700]),
+                const SizedBox(width: 8),
+                const Text(
+                  'Alamat Domisili',
+                  style: TextStyle(
+                    fontSize: 18, 
+                    fontWeight: FontWeight.bold
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            _buildInfoTile(Icons.home, 'Alamat Domisili', 
+              _currentUser['domisili_alamat'] ?? _currentUser['alamatDomisili'] ?? '-', maxLines: 3),
+            Row(
+              children: [
+                Expanded(child: _buildInfoTile(Icons.numbers, 'RT', _currentUser['domisili_rt'] ?? _currentUser['rtDomisili'] ?? '-')),
+                Expanded(child: _buildInfoTile(Icons.numbers, 'RW', _currentUser['domisili_rw'] ?? _currentUser['rwDomisili'] ?? '-')),
+              ],
+            ),
+            _buildInfoTile(Icons.house, 'No. Rumah', _currentUser['domisili_no'] ?? _currentUser['noRumahDomisili'] ?? '-'),
+            _buildInfoTile(Icons.location_city, 'Kota/Kabupaten', _getKotaName(_currentUser['domisili_id_regency']) ?? '-'),
+            _buildInfoTile(Icons.markunread_mailbox, 'Kode Pos', _currentUser['domisili_postal'] ?? _currentUser['kodePosDomisili'] ?? '-'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCooperativeInfoSection() {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.account_balance, color: Colors.orange[700]),
+                const SizedBox(width: 8),
+                const Text(
+                  'Informasi Koperasi',
+                  style: TextStyle(
+                    fontSize: 18, 
+                    fontWeight: FontWeight.bold
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            _buildInfoTile(Icons.credit_card, 'No. Anggota', _currentUser['username'] ?? '-'),
+            _buildInfoTile(Icons.calendar_today, 'Bergabung Sejak', _getTahunGabung()),
+            _buildInfoTile(Icons.verified, 'Status Keanggotaan', 'Aktif'),
+            _buildInfoTile(Icons.fingerprint, 'ID Member', _currentUser['id']?.toString() ?? _currentUser['user_id']?.toString() ?? '-'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              side: BorderSide(color: Colors.green[700]!),
+            ),
+            onPressed: _isUploading ? null : () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => EditProfileScreen(
+                    user: _currentUser,
+                    onProfileUpdated: (updatedData) {
+                      setState(() {
+                        _currentUser = {..._currentUser, ...updatedData};
+                      });
+                      widget.onProfileUpdated?.call();
+                    },
+                  ),
+                ),
+              );
+            },
+            icon: Icon(Icons.edit, color: _isUploading ? Colors.grey : Colors.green[700]),
+            label: Text(
+              'Edit Profil',
+              style: TextStyle(
+                fontSize: 16, 
+                color: _isUploading ? Colors.grey : Colors.green[700],
+                fontWeight: FontWeight.w600
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _isUploading ? Colors.grey : Colors.red[600],
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            onPressed: _isUploading ? null : _logout,
+            icon: const Icon(Icons.logout, color: Colors.white, size: 20),
+            label: const Text(
+              'Keluar',
+              style: TextStyle(
+                fontSize: 16, 
+                color: Colors.white,
+                fontWeight: FontWeight.w600
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1115,7 +1067,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildDocumentStatus(String docName, dynamic status) {
-    final isUploaded = status != null && status.toString().isNotEmpty && status != 'uploaded';
+    final isUploaded = _isDocumentUploaded(status);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -1155,6 +1107,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  bool _isDocumentUploaded(dynamic status) {
+    return status != null && 
+           status.toString().isNotEmpty && 
+           status != 'uploaded' &&
+           status.toString().startsWith('http');
+  }
+
   String? _formatTanggalLahir(String? tanggalLahir) {
     if (tanggalLahir == null || tanggalLahir.isEmpty) return null;
     
@@ -1171,8 +1130,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String? _getKotaName(dynamic kotaId) {
     if (kotaId == null) return null;
-    // TODO: Implement mapping dari ID kota ke nama kota
-    // Untuk sementara return ID-nya
     return kotaId.toString();
   }
 

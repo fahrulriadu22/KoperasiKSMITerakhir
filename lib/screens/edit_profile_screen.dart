@@ -19,6 +19,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
 
+  // ✅ CONTROLLERS
   final TextEditingController _fullNameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
@@ -57,11 +58,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _showConfirmPassword = false;
   bool _sameAsKtp = false;
 
-  // ✅ DEBUG STATE
-  bool _provinsiLoaded = false;
-  bool _kotaKtpLoaded = false;
-  bool _kotaDomisiliLoaded = false;
-
   @override
   void initState() {
     super.initState();
@@ -71,7 +67,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   void _loadUserData() {
     setState(() {
-      // ✅ Load data dari user sesuai dengan field API
+      // ✅ Load data dari user
       _fullNameController.text = widget.user['fullname'] ?? widget.user['fullName'] ?? '';
       _emailController.text = widget.user['email'] ?? '';
       _phoneController.text = widget.user['phone'] ?? widget.user['noTelepon'] ?? '';
@@ -103,51 +99,29 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     });
   }
 
-  // ✅ PERBAIKAN: LOAD DATA MASTER DENGAN DEBUGGING
   Future<void> _loadMasterData() async {
     try {
       setState(() => _isLoadingMasterData = true);
-      print('🔄 Loading master data...');
 
       // Load provinsi
       final provinsiResult = await _apiService.getProvince();
-      print('📊 Provinsi API Result: ${provinsiResult['success']}');
-      print('📊 Provinsi Data: ${provinsiResult['data']}');
-      
       if (provinsiResult['success'] == true && mounted) {
         final data = provinsiResult['data'];
-        print('📊 Provinsi raw data type: ${data.runtimeType}');
-        
         if (data is List) {
           setState(() {
             _provinsiList = data;
-            _provinsiLoaded = true;
-          });
-          print('✅ Provinsi loaded: ${_provinsiList.length} items');
-        } else {
-          print('❌ Provinsi data is not a List: $data');
-          setState(() {
-            _provinsiList = [];
-            _provinsiLoaded = true;
           });
         }
         
-        // Setelah provinsi terload, load kota untuk KTP jika ada
+        // Load kota untuk KTP jika ada
         if (_selectedProvinsiKtp != null && _selectedProvinsiKtp!.isNotEmpty) {
-          print('🔄 Loading kota KTP for provinsi: $_selectedProvinsiKtp');
           await _loadKota(_selectedProvinsiKtp!, true);
         }
         
         // Load kota untuk domisili jika ada
         if (_selectedProvinsiDomisili != null && _selectedProvinsiDomisili!.isNotEmpty) {
-          print('🔄 Loading kota Domisili for provinsi: $_selectedProvinsiDomisili');
           await _loadKota(_selectedProvinsiDomisili!, false);
         }
-      } else {
-        print('❌ Failed to load provinsi: ${provinsiResult['message']}');
-        setState(() {
-          _provinsiLoaded = true;
-        });
       }
 
       // Load master data untuk agama
@@ -158,7 +132,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           setState(() {
             _agamaList = data['agama'] ?? [];
           });
-          print('✅ Agama loaded: ${_agamaList.length} items');
         }
       }
     } catch (e) {
@@ -175,28 +148,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (mounted) {
         setState(() => _isLoadingMasterData = false);
       }
-      print('✅ Master data loading completed');
     }
   }
 
-  // ✅ PERBAIKAN: LOAD KOTA DENGAN DEBUGGING
   Future<void> _loadKota(String idProvinsi, bool forKtp) async {
     try {
-      print('🔄 Loading kota for provinsi: $idProvinsi, forKtp: $forKtp');
-      
       final result = await _apiService.getRegency(idProvinsi);
-      print('📊 Kota API Result: ${result['success']}');
-      print('📊 Kota Data: ${result['data']}');
-      
       if (result['success'] == true && mounted) {
         final data = result['data'];
-        print('📊 Kota raw data type: ${data.runtimeType}');
-        
         if (data is List) {
           setState(() {
             if (forKtp) {
               _kotaListKtp = data;
-              _kotaKtpLoaded = true;
               // Reset selected kota jika tidak ada di list baru
               if (_selectedKotaKtp != null && 
                   !_kotaListKtp.any((kota) => kota['id'].toString() == _selectedKotaKtp)) {
@@ -204,7 +167,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               }
             } else {
               _kotaListDomisili = data;
-              _kotaDomisiliLoaded = true;
               // Reset selected kota jika tidak ada di list baru
               if (_selectedKotaDomisili != null && 
                   !_kotaListDomisili.any((kota) => kota['id'].toString() == _selectedKotaDomisili)) {
@@ -212,38 +174,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               }
             }
           });
-          print('✅ Kota loaded: ${forKtp ? _kotaListKtp.length : _kotaListDomisili.length} items');
-        } else {
-          print('❌ Kota data is not a List: $data');
-          setState(() {
-            if (forKtp) {
-              _kotaListKtp = [];
-              _kotaKtpLoaded = true;
-            } else {
-              _kotaListDomisili = [];
-              _kotaDomisiliLoaded = true;
-            }
-          });
         }
-      } else {
-        print('❌ Failed to load kota: ${result['message']}');
-        setState(() {
-          if (forKtp) {
-            _kotaKtpLoaded = true;
-          } else {
-            _kotaDomisiliLoaded = true;
-          }
-        });
       }
     } catch (e) {
       print('❌ Error loading kota: $e');
-      setState(() {
-        if (forKtp) {
-          _kotaKtpLoaded = true;
-        } else {
-          _kotaDomisiliLoaded = true;
-        }
-      });
     }
   }
 
@@ -287,7 +221,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // ✅ Prepare update data sesuai dengan API
+      // ✅ Prepare update data
       final updatedData = {
         'username': widget.user['username'] ?? '',
         'fullname': _fullNameController.text.trim(),
@@ -316,10 +250,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'domisili_id_regency': _sameAsKtp ? (_selectedKotaKtp ?? '') : (_selectedKotaDomisili ?? ''),
       };
 
-      // ✅ Hapus field yang kosong untuk menghindari error
+      // ✅ Hapus field yang kosong
       updatedData.removeWhere((key, value) => value.toString().isEmpty);
 
-      // ✅ Update profile menggunakan method dari ApiService
+      // ✅ Update profile
       final profileResult = await _apiService.updateUserProfile(updatedData);
       
       // ✅ Update password jika diisi
@@ -382,7 +316,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  // ✅ PERBAIKAN: BUILD DROPDOWN DENGAN DEBUG INFO
+  // ✅ BUILD DROPDOWN YANG LEBIH BAIK
   Widget _buildDropdown({
     required String label,
     required String? value,
@@ -390,8 +324,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     required Function(String?)? onChanged,
     required String? Function(String?)? validator,
     bool enabled = true,
-    bool isLoading = false,
-    String debugInfo = '',
   }) {
     final dropdownItems = items.map((item) {
       final id = item['id']?.toString() ?? '';
@@ -403,34 +335,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }).toList();
 
     // Add empty item if no items
-    if (dropdownItems.isEmpty && !isLoading) {
+    if (dropdownItems.isEmpty) {
       dropdownItems.add(
-        DropdownMenuItem(
+        const DropdownMenuItem(
           value: '',
-          child: Text('Tidak ada data $debugInfo'),
+          child: Text('Tidak ada data'),
         ),
       );
     }
 
     return DropdownButtonFormField<String>(
       value: value,
-      items: isLoading 
-          ? [DropdownMenuItem(value: '', child: Text('Loading...'))]
-          : dropdownItems,
-      onChanged: enabled && !isLoading ? onChanged : null,
+      items: dropdownItems,
+      onChanged: enabled ? onChanged : null,
       decoration: InputDecoration(
         labelText: label,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        suffixIcon: isLoading 
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : null,
       ),
       validator: validator,
-      disabledHint: isLoading ? const Text('Loading...') : Text('$debugInfo (${items.length} items)'),
     );
   }
 
@@ -473,47 +395,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 key: _formKey,
                 child: ListView(
                   children: [
-                    // ✅ DEBUG INFO
-                    if (!_provinsiLoaded || !_kotaKtpLoaded || !_kotaDomisiliLoaded)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.orange[50],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.orange[200]!),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.info, color: Colors.orange[700], size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Status Data:',
-                                    style: TextStyle(
-                                      color: Colors.orange[700],
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    'Provinsi: ${_provinsiLoaded ? '✅' : '🔄'}, '
-                                    'Kota KTP: ${_kotaKtpLoaded ? '✅' : '🔄'}, '
-                                    'Kota Domisili: ${_kotaDomisiliLoaded ? '✅' : '🔄'}',
-                                    style: TextStyle(
-                                      color: Colors.orange[700],
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
                     // ✅ INFO
                     Container(
                       padding: const EdgeInsets.all(12),
@@ -631,12 +512,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     _buildDropdown(
                       label: 'Agama *',
                       value: _selectedAgama,
-                      items: _agamaList.map((agama) {
-                        return DropdownMenuItem<String>(
-                          value: agama['id'].toString(),
-                          child: Text(agama['nama'] ?? ''),
-                        );
-                      }).toList(),
+                      items: _agamaList,
                       onChanged: (String? newValue) {
                         setState(() {
                           _selectedAgama = newValue;
@@ -783,19 +659,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       value: _selectedProvinsiKtp,
                       items: _provinsiList,
                       onChanged: (String? newValue) {
-                        print('Provinsi KTP changed to: $newValue');
                         setState(() {
                           _selectedProvinsiKtp = newValue;
                           _selectedKotaKtp = null;
                           _kotaListKtp = [];
-                          _kotaKtpLoaded = false;
                         });
                         if (newValue != null && newValue.isNotEmpty) {
                           _loadKota(newValue, true);
                         }
                       },
                       validator: (value) => value == null || value.isEmpty ? 'Pilih provinsi KTP' : null,
-                      debugInfo: '(${_provinsiList.length} provinsi)',
                     ),
                     const SizedBox(height: 16),
 
@@ -805,29 +678,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       value: _selectedKotaKtp,
                       items: _kotaListKtp,
                       onChanged: (String? newValue) {
-                        print('Kota KTP changed to: $newValue');
                         setState(() => _selectedKotaKtp = newValue);
                       },
                       validator: (value) => value == null || value.isEmpty ? 'Pilih kota/kabupaten KTP' : null,
-                      isLoading: !_kotaKtpLoaded,
-                      debugInfo: '(${_kotaListKtp.length} kota)',
-                    ),
-                    const SizedBox(height: 16),
-
-                    // ✅ KOTA KTP
-                    _buildDropdown(
-                      label: 'Kota/Kabupaten KTP *',
-                      value: _selectedKotaKtp,
-                      items: _kotaListKtp.map((kota) {
-                        return DropdownMenuItem<String>(
-                          value: kota['id'].toString(),
-                          child: Text(kota['nama'] ?? ''),
-                        );
-                      }).toList(),
-                      onChanged: (String? newValue) {
-                        setState(() => _selectedKotaKtp = newValue);
-                      },
-                      validator: (value) => value == null ? 'Pilih kota/kabupaten KTP' : null,
                     ),
                     const SizedBox(height: 16),
 
@@ -949,12 +802,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       value: _selectedProvinsiDomisili,
                       items: _provinsiList,
                       onChanged: _sameAsKtp ? null : (String? newValue) {
-                        print('Provinsi Domisili changed to: $newValue');
                         setState(() {
                           _selectedProvinsiDomisili = newValue;
                           _selectedKotaDomisili = null;
                           _kotaListDomisili = [];
-                          _kotaDomisiliLoaded = false;
                         });
                         if (newValue != null && newValue.isNotEmpty) {
                           _loadKota(newValue, false);
@@ -962,7 +813,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       },
                       validator: _sameAsKtp ? null : (value) => value == null || value.isEmpty ? 'Pilih provinsi domisili' : null,
                       enabled: !_sameAsKtp,
-                      debugInfo: '(${_provinsiList.length} provinsi)',
                     ),
                     const SizedBox(height: 16),
 
@@ -970,16 +820,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     _buildDropdown(
                       label: 'Kota/Kabupaten Domisili *',
                       value: _selectedKotaDomisili,
-                      items: _kotaListDomisili.map((kota) {
-                        return DropdownMenuItem<String>(
-                          value: kota['id'].toString(),
-                          child: Text(kota['nama'] ?? ''),
-                        );
-                      }).toList(),
+                      items: _kotaListDomisili,
                       onChanged: _sameAsKtp ? null : (String? newValue) {
                         setState(() => _selectedKotaDomisili = newValue);
                       },
-                      validator: _sameAsKtp ? null : (value) => value == null ? 'Pilih kota/kabupaten domisili' : null,
+                      validator: _sameAsKtp ? null : (value) => value == null || value.isEmpty ? 'Pilih kota/kabupaten domisili' : null,
                       enabled: !_sameAsKtp,
                     ),
                     const SizedBox(height: 16),

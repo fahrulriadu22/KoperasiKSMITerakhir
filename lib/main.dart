@@ -265,36 +265,54 @@ void _checkDokumenStatusAndNavigate(Map<String, dynamic> userData) {
     });
   }
 
-  // ✅ PERBAIKAN: Handle logout dengan better cleanup
-  Future<void> _handleLogout() async {
-    try {
-      print('🚪 Handling logout...');
-      
-      final userId = _userData['user_id']?.toString() ?? _userData['id']?.toString();
-      if (userId != null && userId.isNotEmpty) {
+// ✅ PERBAIKAN: Handle logout dengan better cleanup
+Future<void> _handleLogout() async {
+  try {
+    print('🚪 Handling logout...');
+    
+    // ✅ TAMPILKAN LOADING DULU
+    setState(() => _isLoading = true);
+    
+    final userId = _userData['user_id']?.toString() ?? _userData['id']?.toString();
+    if (userId != null && userId.isNotEmpty) {
+      try {
         await firebaseService.unsubscribeFromTopic('user_$userId');
         print('🔔 Unsubscribed from user topic');
+      } catch (e) {
+        print('❌ Error unsubscribing from topic: $e');
       }
-      
-      final logoutResult = await _apiService.logout();
-      print('🔐 Logout API result: ${logoutResult['success']}');
-      
-      setState(() {
-        _isLoggedIn = false;
-        _userData = {};
-      });
-      
-      _navigateToLogin();
-      
-    } catch (e) {
-      print('❌ Error during logout: $e');
-      setState(() {
-        _isLoggedIn = false;
-        _userData = {};
-      });
-      _navigateToLogin();
     }
+    
+    // ✅ LOGOUT DARI API
+    final logoutResult = await _apiService.logout();
+    print('🔐 Logout API result: ${logoutResult['success']}');
+    
+    // ✅ CLEAR STATE
+    setState(() {
+      _isLoggedIn = false;
+      _userData = {};
+    });
+    
+    // ✅ NAVIGASI KE LOGIN DENGAN DELAY
+    Future.delayed(const Duration(milliseconds: 1000), () {
+      if (mounted) {
+        _navigateToLogin();
+      }
+    });
+    
+  } catch (e) {
+    print('❌ Error during logout: $e');
+    
+    // ✅ FALLBACK: CLEAR STATE MESKIPUN ERROR
+    setState(() {
+      _isLoading = false;
+      _isLoggedIn = false;
+      _userData = {};
+    });
+    
+    _navigateToLogin();
   }
+}
 
   // ✅ PERBAIKAN: Navigate to login dengan safety check
   void _navigateToLogin() {

@@ -44,7 +44,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     print('   - Foto Diri: ${widget.user['foto_diri']}');
   }
 
-  // ✅ PERBAIKAN: UPLOAD METHOD YANG LEBIH ROBUST
+  // ✅ PERBAIKAN BESAR: UPLOAD METHOD DENGAN DEBUG DETAIL
   Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool) setLoading) async {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
@@ -63,6 +63,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
         final file = File(pickedFile.path);
         print('📤 Uploading $type: ${file.path}');
         print('📤 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
+        print('📤 File exists: ${await file.exists()}');
         
         // ✅ PERBAIKAN: Validasi file sebelum upload
         if (!await file.exists()) {
@@ -75,7 +76,10 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
           throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
         }
 
-        // ✅ PERBAIKAN: Upload dengan error handling yang lebih baik
+        print('🔄 Calling API uploadFoto with type: $type');
+        print('🔄 File path: ${pickedFile.path}');
+        
+        // ✅ PERBAIKAN: Upload dengan timeout dan error handling yang lebih baik
         final result = await _apiService.uploadFoto(
           type: type,
           filePath: pickedFile.path,
@@ -83,7 +87,10 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
 
         setState(() => setLoading(false));
 
-        print('📤 Upload result for $type: $result');
+        print('📤 Upload result for $type: ${result['success']}');
+        print('📤 Upload message: ${result['message']}');
+        print('📤 Upload data: ${result['file_path']}');
+        print('📤 Token expired: ${result['token_expired']}');
 
         if (result['success'] == true) {
           setState(() => setFile(file));
@@ -99,27 +106,27 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
           // ✅ CEK JIKA SEMUA DOKUMEN SUDAH DIUPLOAD
           _checkAllDocumentsUploaded();
         } else {
+          // ✅ PERBAIKAN: Handle token expired
+          if (result['token_expired'] == true) {
+            _showTokenExpiredDialog();
+            return;
+          }
+          
           setState(() => setFile(null));
           final errorMessage = result['message'] ?? 'Gagal upload ${_getDocumentName(type)}';
           
-          // ✅ PERBAIKAN: Handle specific error messages
-          String userMessage = errorMessage;
-          if (errorMessage.contains('400') || errorMessage.contains('did not select a file')) {
-            userMessage = 'File tidak terpilih atau format tidak didukung';
-          } else if (errorMessage.contains('404')) {
-            userMessage = 'Endpoint upload tidak ditemukan';
-          } else if (errorMessage.contains('413')) {
-            userMessage = 'Ukuran file terlalu besar';
-          }
+          print('❌ Upload failed: $errorMessage');
           
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(userMessage),
+              content: Text(errorMessage),
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 4),
             ),
           );
         }
+      } else {
+        print('❌ No file selected');
       }
     } catch (e) {
       setState(() {
@@ -129,6 +136,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
       });
       
       print('❌ Error upload $type: $e');
+      print('❌ Error type: ${e.runtimeType}');
       
       // ✅ PERBAIKAN: User-friendly error messages
       String userMessage = 'Terjadi kesalahan saat upload';
@@ -140,6 +148,10 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
         userMessage = 'Upload timeout, coba lagi';
       } else if (e.toString().contains('permission')) {
         userMessage = 'Izin akses galeri ditolak';
+      } else if (e.toString().contains('SocketException')) {
+        userMessage = 'Tidak ada koneksi internet';
+      } else if (e.toString().contains('HttpException')) {
+        userMessage = 'Gagal terhubung ke server';
       }
       
       ScaffoldMessenger.of(context).showSnackBar(
@@ -150,6 +162,28 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
         ),
       );
     }
+  }
+
+  // ✅ PERBAIKAN: METHOD UNTUK HANDLE TOKEN EXPIRED
+  void _showTokenExpiredDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Sesi Berakhir'),
+        content: const Text('Sesi login Anda telah berakhir. Silakan login kembali.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+              // Navigate to login screen
+              Navigator.pushReplacementNamed(context, '/login');
+            },
+            child: const Text('Login Kembali'),
+          ),
+        ],
+      ),
+    );
   }
 
   // ✅ CEK JIKA SEMUA DOKUMEN SUDAH DIUPLOAD
@@ -263,14 +297,16 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     );
   }
 
+  // ✅ PERBAIKAN BESAR: PROCEED TO DASHBOARD DENGAN BETTER HANDLING
   void _proceedToDashboard() {
+    print('🚀 Starting proceed to dashboard...');
     setState(() => _isLoading = true);
     
     // Update user data dengan status dokumen
     final updatedUser = Map<String, dynamic>.from(widget.user);
-    updatedUser['foto_ktp'] = _ktpFile != null ? 'uploaded' : widget.user['foto_ktp'];
-    updatedUser['foto_kk'] = _kkFile != null ? 'uploaded' : widget.user['foto_kk'];
-    updatedUser['foto_diri'] = _fotoDiriFile != null ? 'uploaded' : widget.user['foto_diri'];
+    updatedUser['foto_ktp'] = _ktpFile != null ? 'uploaded' : (widget.user['foto_ktp'] ?? 'pending');
+    updatedUser['foto_kk'] = _kkFile != null ? 'uploaded' : (widget.user['foto_kk'] ?? 'pending');
+    updatedUser['foto_diri'] = _fotoDiriFile != null ? 'uploaded' : (widget.user['foto_diri'] ?? 'pending');
 
     print('🚀 Proceeding to dashboard with user data:');
     print('   - KTP: ${updatedUser['foto_ktp']}');
@@ -278,18 +314,36 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     print('   - Foto Diri: ${updatedUser['foto_diri']}');
     print('   - Callback available: ${widget.onDocumentsComplete != null}');
 
-    // ✅ PERBAIKAN: PANGGIL CALLBACK JIKA ADA, JIKA TIDAK NAVIGASI LANGSUNG
-    if (widget.onDocumentsComplete != null) {
-      print('📞 Memanggil callback onDocumentsComplete...');
-      widget.onDocumentsComplete!();
-    } else {
-      print('🔄 Callback tidak ada, navigasi langsung ke Dashboard...');
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => DashboardMain(user: updatedUser)),
-        (route) => false,
-      );
-    }
+    // ✅ PERBAIKAN: Delay untuk memastikan UI update
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        
+        // ✅ PERBAIKAN: PANGGIL CALLBACK JIKA ADA, JIKA TIDAK NAVIGASI LANGSUNG
+        if (widget.onDocumentsComplete != null) {
+          print('📞 Memanggil callback onDocumentsComplete...');
+          widget.onDocumentsComplete!();
+        } else {
+          print('🔄 Callback tidak ada, navigasi langsung ke Dashboard...');
+          try {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => DashboardMain(user: updatedUser)),
+              (route) => false,
+            );
+            print('✅ Navigation to dashboard successful');
+          } catch (e) {
+            print('❌ Navigation error: $e');
+            // Fallback navigation
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => DashboardMain(user: widget.user)),
+              (route) => false,
+            );
+          }
+        }
+      }
+    });
   }
 
   // ✅ SHOW IMAGE SOURCE DIALOG dengan opsi kamera
@@ -349,7 +403,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     );
   }
 
-  // ✅ Take photo from camera
+  // ✅ PERBAIKAN: Take photo from camera dengan better error handling
   Future<void> _takePhoto(String type, Function(File?) setFile, Function(bool) setLoading) async {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
@@ -367,12 +421,14 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
         
         final file = File(pickedFile.path);
         print('📸 Taking photo for $type: ${file.path}');
+        print('📸 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
         
         // ✅ PERBAIKAN: Validasi file sebelum upload
         if (!await file.exists()) {
           throw Exception('File tidak ditemukan');
         }
 
+        print('🔄 Calling API uploadFoto from camera...');
         final result = await _apiService.uploadFoto(
           type: type,
           filePath: pickedFile.path,
@@ -380,7 +436,8 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
 
         setState(() => setLoading(false));
 
-        print('📸 Camera result for $type: $result');
+        print('📸 Camera result for $type: ${result['success']}');
+        print('📸 Camera message: ${result['message']}');
 
         if (result['success'] == true) {
           setState(() => setFile(file));
@@ -396,23 +453,27 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
           // ✅ CEK JIKA SEMUA DOKUMEN SUDAH DIUPLOAD
           _checkAllDocumentsUploaded();
         } else {
+          // ✅ PERBAIKAN: Handle token expired
+          if (result['token_expired'] == true) {
+            _showTokenExpiredDialog();
+            return;
+          }
+          
           setState(() => setFile(null));
           final errorMessage = result['message'] ?? 'Gagal mengambil ${_getDocumentName(type)}';
           
-          // ✅ PERBAIKAN: Handle specific error messages
-          String userMessage = errorMessage;
-          if (errorMessage.contains('400') || errorMessage.contains('did not select a file')) {
-            userMessage = 'File tidak terpilih atau format tidak didukung';
-          }
+          print('❌ Camera upload failed: $errorMessage');
           
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(userMessage),
+              content: Text(errorMessage),
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 4),
             ),
           );
         }
+      } else {
+        print('❌ No photo taken');
       }
     } catch (e) {
       setState(() {
@@ -422,6 +483,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
       });
       
       print('❌ Error take photo $type: $e');
+      print('❌ Error type: ${e.runtimeType}');
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -611,7 +673,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                           width: double.infinity,
                           height: 50,
                           child: ElevatedButton(
-                            onPressed: allUploaded ? _lanjutKeDashboard : null,
+                            onPressed: allUploaded && !_isLoading ? _lanjutKeDashboard : null,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: allUploaded ? Colors.green[700] : Colors.grey[400],
                               foregroundColor: Colors.white,
@@ -646,7 +708,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                           width: double.infinity,
                           height: 45,
                           child: OutlinedButton(
-                            onPressed: _lewatiUpload,
+                            onPressed: _isLoading ? null : _lewatiUpload,
                             style: OutlinedButton.styleFrom(
                               foregroundColor: Colors.orange,
                               side: const BorderSide(color: Colors.orange),
@@ -654,13 +716,22 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: const Text(
-                              'Lewati & Lanjut ke Dashboard',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.orange,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Lewati & Lanjut ke Dashboard',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                           ),
                         ),
                       ],
@@ -722,7 +793,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '• Pastikan file JPG/PNG\n• Ukuran maksimal 5MB\n• Foto harus jelas dan terbaca\n• Jika gagal, coba foto ulang dengan pencahayaan baik',
+                            '• Pastikan file JPG/PNG\n• Ukuran maksimal 5MB\n• Foto harus jelas dan terbaca\n• Jika gagal, coba foto ulang dengan pencahayaan baik\n• Pastikan koneksi internet stabil',
                             style: TextStyle(
                               color: Colors.blue[700],
                               fontSize: 10,

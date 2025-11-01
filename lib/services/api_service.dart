@@ -143,52 +143,49 @@ class ApiService {
     }
   }
 
-  // ✅ LOGOUT METHOD - FIXED NULL SAFETY ISSUE
-  Future<Map<String, dynamic>> logout() async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      // ✅ KIRIM REQUEST LOGOUT KE SERVER DULU
-      final response = await http.post(
-        Uri.parse('$baseUrl/users/logout'),
-        headers: headers,
-        body: '',
-      ).timeout(const Duration(seconds: 10));
+// ✅ PERBAIKAN: LOGOUT METHOD YANG LEBIH BAIK
+Future<Map<String, dynamic>> logout() async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    print('🔐 Attempting logout...');
+    
+    // ✅ KIRIM REQUEST LOGOUT KE SERVER DULU (dengan timeout pendek)
+    final response = await http.post(
+      Uri.parse('$baseUrl/users/logout'),
+      headers: headers,
+      body: '',
+    ).timeout(const Duration(seconds: 5));
 
-      print('🔐 Logout API Response: ${response.statusCode}');
-      
-      // ✅ HAPUS DATA LOCAL DARI SHARED PREFERENCES
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('token');
-      await prefs.remove('user');
-      
-      // ✅ CLEAR SEMUA DATA JIKA PERLU
-      await prefs.clear();
-      
-      return {
-        'success': true,
-        'message': 'Logout berhasil'
-      };
-      
-    } catch (e) {
-      print('❌ Error during logout API call: $e');
-      
-      // ✅ FALLBACK: HAPUS DATA LOCAL MESKIPUN API GAGAL
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove('token');
-        await prefs.remove('user');
-        await prefs.clear();
-      } catch (localError) {
-        print('❌ Error clearing local data: $localError');
-      }
-      
-      return {
-        'success': true, // Tetap sukses karena data local sudah dihapus
-        'message': 'Logout berhasil (offline)'
-      };
-    }
+    print('🔐 Logout API Response: ${response.statusCode}');
+    
+  } catch (e) {
+    print('🔐 Logout API call failed: $e');
+    // Tetap lanjut hapus data local meskipun API gagal
   }
+  
+  // ✅ PASTIKAN HAPUS DATA LOCAL MESKIPUN API GAGAL
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('token');
+    await prefs.remove('user');
+    await prefs.clear();
+    
+    print('✅ Local data cleared successfully');
+    
+    return {
+      'success': true,
+      'message': 'Logout berhasil'
+    };
+    
+  } catch (e) {
+    print('❌ Error clearing local data: $e');
+    return {
+      'success': false,
+      'message': 'Gagal menghapus data local'
+    };
+  }
+}
 
   // ✅ GET DASHBOARD DATA - ENHANCED WITH BETTER ERROR HANDLING
   Future<Map<String, dynamic>> getDashboardData() async {
@@ -1189,4 +1186,78 @@ class ApiService {
       print('❌ Error clearing token: $e');
     }
   }
+  // ✅ TAMBAHKAN METHOD INI DI ApiService CLASS
+
+// ✅ GET USER PROFILE DENGAN FOTO - METHOD BARU
+Future<Map<String, dynamic>> getUserProfileWithPhotos() async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/users/profile'),
+      headers: headers,
+      body: '',
+    ).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data['status'] == true) {
+        final userData = data['data'];
+        
+        // ✅ Update local storage dengan data terbaru
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user', jsonEncode(userData));
+        
+        return {
+          'success': true,
+          'data': userData,
+          'message': data['message'] ?? 'Success get profile'
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Gagal mengambil profile'
+        };
+      }
+    } else if (response.statusCode == 401) {
+      await _clearToken();
+      return {
+        'success': false,
+        'message': 'Sesi telah berakhir',
+        'token_expired': true
+      };
+    } else {
+      return {
+        'success': false,
+        'message': 'Gagal mengambil profile: ${response.statusCode}'
+      };
+    }
+  } catch (e) {
+    if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
+      return {
+        'success': false,
+        'message': 'Timeout, server tidak merespons'
+      };
+    }
+    return {
+      'success': false,
+      'message': 'Error: $e'
+    };
+  }
+}
+
+// ✅ UPDATE LOCAL USER DATA SETELAH UPLOAD - METHOD BARU
+Future<void> updateLocalUserData(Map<String, dynamic> newData) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final userString = prefs.getString('user');
+    if (userString != null) {
+      final currentUser = jsonDecode(userString);
+      currentUser.addAll(newData);
+      await prefs.setString('user', jsonEncode(currentUser));
+    }
+  } catch (e) {
+    print('❌ Error updating local user data: $e');
+  }
+}
 }
