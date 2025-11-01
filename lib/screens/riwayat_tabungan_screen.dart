@@ -74,7 +74,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     _loadRiwayatTabungan();
   }
 
-  // ✅ PERBAIKAN: Method untuk load data dengan handle format response yang benar
+  // ✅ PERBAIKAN: Method untuk load data riwayat tabungan yang benar
   Future<void> _loadRiwayatTabungan() async {
     if (mounted) {
       setState(() {
@@ -85,20 +85,18 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     }
 
     try {
-      // ✅ PERBAIKAN: Gunakan method getAllSaldo dari ApiService
-      final result = await _apiService.getAllSaldo();
+      // ✅ PERBAIKAN: Gunakan method getRiwayatTabungan() dari ApiService, bukan getAllSaldo()
+      final result = await _apiService.getRiwayatTabungan();
+      
+      print('📊 Riwayat Tabungan API Response: $result');
       
       if (mounted) {
         setState(() {
-          // ✅ PERBAIKAN: Handle response dari getAllSaldo dengan benar
           if (result['success'] == true && result['data'] != null) {
             final data = result['data'];
             
-            if (data is Map<String, dynamic>) {
-              // ✅ FIX: Data saldo berupa Map, konversi ke format riwayat
-              _riwayatTabungan = _convertSaldoToRiwayat(data);
-            } else if (data is List) {
-              // Jika data sudah berupa list (untuk riwayat transaksi)
+            if (data is List) {
+              // ✅ FIX: Data riwayat berupa List, langsung pakai
               _riwayatTabungan = data.map((item) {
                 if (item is Map<String, dynamic>) {
                   return item;
@@ -108,18 +106,23 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
                   return _createDefaultTransaction();
                 }
               }).toList();
+              
+              print('✅ Loaded ${_riwayatTabungan.length} transaksi');
             } else {
               _riwayatTabungan = [];
+              print('❌ Data format tidak sesuai: $data');
             }
           } else {
             _riwayatTabungan = [];
             _hasError = true;
-            _errorMessage = result['message'] ?? 'Gagal memuat data tabungan';
+            _errorMessage = result['message'] ?? 'Gagal memuat data riwayat tabungan';
+            print('❌ API Error: $_errorMessage');
           }
           _isLoading = false;
         });
       }
     } catch (e) {
+      print('❌ Error loading riwayat tabungan: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -131,43 +134,47 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     }
   }
 
+  // ✅ PERBAIKAN: Fallback method jika API riwayat tidak tersedia
+  Future<void> _loadFallbackData() async {
+    try {
+      // Coba ambil data saldo sebagai fallback
+      final saldoResult = await _apiService.getAllSaldo();
+      
+      if (mounted) {
+        setState(() {
+          if (saldoResult['success'] == true && saldoResult['data'] != null) {
+            _riwayatTabungan = _convertSaldoToRiwayat(saldoResult['data']);
+          } else {
+            _riwayatTabungan = _getDemoData();
+          }
+          _isLoading = false;
+          _hasError = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _riwayatTabungan = _getDemoData();
+          _isLoading = false;
+          _hasError = false;
+        });
+      }
+    }
+  }
+
   // ✅ PERBAIKAN: Konversi data saldo ke format riwayat transaksi
   List<Map<String, dynamic>> _convertSaldoToRiwayat(Map<String, dynamic> saldoData) {
     final List<Map<String, dynamic>> riwayat = [];
     
     try {
-      // ✅ FIX: Handle berbagai kemungkinan format field saldo
-      final Map<String, dynamic> processedData = {};
-      
-      // Cek field-field yang mungkin ada
-      final possibleFields = ['pokok', 'wajib', 'wajib_khusus', 'sita', 'sukarela', 'simuna', 'saldo_pokok', 'saldo_wajib', 'saldo_sukarela'];
-      
-      for (var field in possibleFields) {
-        if (saldoData.containsKey(field)) {
-          final value = saldoData[field];
-          if (value is num) {
-            processedData[field] = value.toInt();
-          } else if (value is String) {
-            processedData[field] = int.tryParse(value) ?? 0;
-          } else {
-            processedData[field] = 0;
-          }
-        }
-      }
+      print('🔄 Converting saldo data to riwayat: $saldoData');
       
       // Tambahkan data untuk setiap jenis tabungan yang ada saldonya
       for (var type in _tabunganTypes) {
         if (type['id'] == 'semua') continue;
         
         final jenis = type['id'] as String;
-        
-        // Cek berbagai kemungkinan nama field
-        int saldo = 0;
-        if (processedData.containsKey(jenis)) {
-          saldo = processedData[jenis];
-        } else if (processedData.containsKey('saldo_$jenis')) {
-          saldo = processedData['saldo_$jenis'];
-        }
+        final saldo = _getSaldoValue(jenis, saldoData);
         
         if (saldo > 0) {
           riwayat.add({
@@ -184,46 +191,10 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         }
       }
       
-      // ✅ FIX: Jika tidak ada data saldo, buat data dummy untuk demo
-      if (riwayat.isEmpty) {
-        riwayat.addAll([
-          {
-            'id': 'pokok-demo',
-            'jenis_transaksi': 'Saldo Pokok',
-            'jumlah': 50000,
-            'tanggal': DateTime.now().toString(),
-            'jenis_tabungan': 'pokok',
-            'keterangan': 'Saldo pokok awal',
-            'status_verifikasi': 'terverifikasi',
-            'bukti_pembayaran': null,
-            'is_saldo': true,
-          },
-          {
-            'id': 'wajib-demo',
-            'jenis_transaksi': 'Saldo Wajib',
-            'jumlah': 100000,
-            'tanggal': DateTime.now().toString(),
-            'jenis_tabungan': 'wajib',
-            'keterangan': 'Saldo wajib bulanan',
-            'status_verifikasi': 'terverifikasi',
-            'bukti_pembayaran': null,
-            'is_saldo': true,
-          },
-          {
-            'id': 'sukarela-demo',
-            'jenis_transaksi': 'Saldo Sukarela',
-            'jumlah': 250000,
-            'tanggal': DateTime.now().toString(),
-            'jenis_tabungan': 'sukarela',
-            'keterangan': 'Saldo sukarela',
-            'status_verifikasi': 'terverifikasi',
-            'bukti_pembayaran': null,
-            'is_saldo': true,
-          },
-        ]);
-      }
+      print('✅ Converted ${riwayat.length} saldo items');
       
     } catch (e) {
+      print('❌ Error converting saldo: $e');
       // Fallback ke data demo jika ada error
       riwayat.addAll(_getDemoData());
     }
@@ -231,30 +202,78 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     return riwayat;
   }
 
+  // ✅ PERBAIKAN: Method untuk mendapatkan nilai saldo dari berbagai kemungkinan field
+  int _getSaldoValue(String jenis, Map<String, dynamic> saldoData) {
+    try {
+      // Cek berbagai kemungkinan nama field
+      final possibleKeys = [
+        jenis,
+        'saldo_$jenis',
+        '${jenis}_saldo',
+        'simpanan_$jenis',
+      ];
+      
+      for (var key in possibleKeys) {
+        if (saldoData.containsKey(key)) {
+          final value = saldoData[key];
+          if (value is int) return value;
+          if (value is double) return value.toInt();
+          if (value is String) return int.tryParse(value) ?? 0;
+        }
+      }
+      
+      return 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
   // ✅ Data demo untuk fallback
   List<Map<String, dynamic>> _getDemoData() {
     return [
       {
         'id': 'pokok-demo',
-        'jenis_transaksi': 'Saldo Pokok',
+        'jenis_transaksi': 'Setoran Pokok',
         'jumlah': 50000,
-        'tanggal': DateTime.now().toString(),
+        'tanggal': DateTime.now().subtract(Duration(days: 30)).toString(),
         'jenis_tabungan': 'pokok',
-        'keterangan': 'Saldo pokok awal',
+        'keterangan': 'Setoran pokok awal',
         'status_verifikasi': 'terverifikasi',
         'bukti_pembayaran': null,
-        'is_saldo': true,
+        'is_saldo': false,
       },
       {
         'id': 'wajib-demo',
-        'jenis_transaksi': 'Saldo Wajib',
+        'jenis_transaksi': 'Setoran Wajib',
         'jumlah': 100000,
-        'tanggal': DateTime.now().toString(),
+        'tanggal': DateTime.now().subtract(Duration(days: 15)).toString(),
         'jenis_tabungan': 'wajib',
-        'keterangan': 'Saldo wajib bulanan',
-        'status_verifikasi': 'terverifikasi',
+        'keterangan': 'Setoran wajib bulanan',
+        'status_verifikasi': 'menunggu',
+        'bukti_pembayaran': '/path/to/bukti.jpg',
+        'is_saldo': false,
+      },
+      {
+        'id': 'sukarela-demo',
+        'jenis_transaksi': 'Setoran Sukarela',
+        'jumlah': 250000,
+        'tanggal': DateTime.now().subtract(Duration(days: 7)).toString(),
+        'jenis_tabungan': 'sukarela',
+        'keterangan': 'Setoran sukarela',
+        'status_verifikasi': 'belum_upload',
         'bukti_pembayaran': null,
-        'is_saldo': true,
+        'is_saldo': false,
+      },
+      {
+        'id': 'sita-demo',
+        'jenis_transaksi': 'Setoran SiTabung',
+        'jumlah': 150000,
+        'tanggal': DateTime.now().subtract(Duration(days: 3)).toString(),
+        'jenis_tabungan': 'sita',
+        'keterangan': 'Setoran program SiTabung',
+        'status_verifikasi': 'terverifikasi',
+        'bukti_pembayaran': '/path/to/bukti2.jpg',
+        'is_saldo': false,
       },
     ];
   }
@@ -270,6 +289,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
       'keterangan': 'Transaksi tabungan',
       'status_verifikasi': 'belum_upload',
       'bukti_pembayaran': null,
+      'is_saldo': false,
     };
   }
 
@@ -363,7 +383,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     }
   }
 
-  // ✅ PERBAIKAN: Upload bukti pembayaran dengan error handling
+  // ✅ PERBAIKAN: Upload bukti pembayaran dengan error handling yang lebih baik
   Future<void> _uploadBuktiPembayaran(Map<String, dynamic> transaksi) async {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
@@ -374,12 +394,29 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
       );
 
       if (pickedFile != null) {
+        // ✅ PERBAIKAN: Validasi file sebelum upload
+        final filePath = pickedFile.path.toLowerCase();
+        final allowedExtensions = ['.jpg', '.jpeg', '.png'];
+        final fileExtension = filePath.substring(filePath.lastIndexOf('.'));
+        
+        if (!allowedExtensions.any((ext) => filePath.endsWith(ext))) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          return;
+        }
+
         _showUploadingDialog('Mengupload Bukti Pembayaran...');
 
-        // ✅ PERBAIKAN: Gunakan method uploadFoto dari ApiService
-        final result = await _apiService.uploadFoto(
-          type: 'bukti_pembayaran',
+        // ✅ PERBAIKAN: Gunakan method uploadBuktiTransfer yang baru dari ApiService
+        final result = await _apiService.uploadBuktiTransfer(
+          transaksiId: transaksi['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
           filePath: pickedFile.path,
+          jenisTransaksi: transaksi['jenis_tabungan']?.toString() ?? 'sukarela',
         );
 
         if (!mounted) return;
@@ -389,7 +426,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
           // Update local data dengan path bukti
           if (mounted) {
             setState(() {
-              transaksi['bukti_pembayaran'] = pickedFile.path;
+              transaksi['bukti_pembayaran'] = result['file_path'] ?? pickedFile.path;
               transaksi['status_verifikasi'] = 'menunggu';
             });
           }
@@ -415,9 +452,11 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
       if (!mounted) return;
       Navigator.pop(context);
       
+      print('❌ Error upload bukti: $e');
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error: ${e.toString()}'),
+          content: Text('Error upload: ${e.toString()}'),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 3),
         ),
@@ -432,20 +471,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         const SnackBar(
           content: Text('Bukti pembayaran belum diupload'),
           backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    // Check if file exists
-    final file = File(imagePath);
-    if (!file.existsSync()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('File bukti tidak ditemukan'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
+          duration: Duration(seconds: 2),
         ),
       );
       return;
@@ -492,30 +518,25 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
               padding: const EdgeInsets.all(16),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: Image.file(
-                  file,
-                  fit: BoxFit.contain,
-                  width: 300,
-                  height: 400,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      width: 300,
-                      height: 400,
-                      color: Colors.grey[200],
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.error, size: 50, color: Colors.grey),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Gagal memuat gambar',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        ],
+                child: imagePath.startsWith('http')
+                    ? Image.network(
+                        imagePath,
+                        fit: BoxFit.contain,
+                        width: 300,
+                        height: 400,
+                        errorBuilder: (context, error, stackTrace) {
+                          return _buildImageErrorWidget();
+                        },
+                      )
+                    : Image.file(
+                        File(imagePath),
+                        fit: BoxFit.contain,
+                        width: 300,
+                        height: 400,
+                        errorBuilder: (context, error, stackTrace) {
+                          return _buildImageErrorWidget();
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
             ),
             
@@ -534,6 +555,25 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildImageErrorWidget() {
+    return Container(
+      width: 300,
+      height: 400,
+      color: Colors.grey[200],
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error, size: 50, color: Colors.grey),
+          const SizedBox(height: 8),
+          const Text(
+            'Gagal memuat gambar',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ],
       ),
     );
   }
@@ -673,14 +713,28 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          ElevatedButton.icon(
-            onPressed: _loadRiwayatTabungan,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Coba Lagi'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton.icon(
+                onPressed: _loadRiwayatTabungan,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Coba Lagi'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                onPressed: _loadFallbackData,
+                icon: const Icon(Icons.warning),
+                label: const Text('Gunakan Data Demo'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orange,
+                ),
+              ),
+            ],
           ),
         ],
       ),

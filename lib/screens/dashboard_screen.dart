@@ -127,94 +127,134 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ✅ PERBAIKAN: LOAD DATA SALDO DAN ANGSURAN DENGAN STRUKTUR DATA YANG BENAR
+  // ✅ PERBAIKAN: LOAD DATA DASHBOARD YANG BENAR
   Future<void> _loadDataFromApi() async {
     try {
       setState(() => _isLoading = true);
+      print('🚀 Memulai load data dashboard...');
 
-      // ✅ LOAD SALDO DATA DARI API - DENGAN HANDLING STRUCTURE YANG BERBEDA
+      // ✅ COBA PAKAI getDashboardData() DULU
+      final dashboardResult = await _apiService.getDashboardData();
+      
+      if (dashboardResult['success'] == true) {
+        print('✅ Dashboard API Success: ${dashboardResult['data']}');
+        
+        final dashboardData = dashboardResult['data'] ?? {};
+        
+        // ✅ EXTRACT DATA DARI RESPONSE DASHBOARD
+        setState(() {
+          _saldoData = dashboardData['saldo'] ?? {};
+          _angsuranData = dashboardData['angsuran'] ?? {};
+        });
+        
+      } else {
+        print('❌ Dashboard API Failed: ${dashboardResult['message']}');
+        
+        // ✅ FALLBACK: JIKA DASHBOARD GAGAL, COBA LOAD MANUAL
+        await _loadDataManual();
+      }
+
+    } catch (e) {
+      print('❌ Error loading dashboard data: $e');
+      // ✅ FALLBACK KE MANUAL LOAD JIKA ERROR
+      await _loadDataManual();
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // ✅ PERBAIKAN: FALLBACK METHOD JIKA DASHBOARD API GAGAL
+  Future<void> _loadDataManual() async {
+    try {
+      print('🔄 Fallback ke manual data loading...');
+      
+      // ✅ LOAD SALDO DATA 
       final saldoResult = await _apiService.getAllSaldo();
       if (saldoResult['success'] == true) {
-        print('✅ Saldo API Response: ${saldoResult['data']}');
+        print('✅ Manual Saldo Success: ${saldoResult['data']}');
         setState(() {
           _saldoData = saldoResult['data'] ?? {};
         });
       } else {
-        print('❌ Gagal load saldo: ${saldoResult['message']}');
-        // Set default data jika gagal
+        print('❌ Manual Saldo Failed: ${saldoResult['message']}');
         setState(() {
           _saldoData = {
-            'pokok': 0,
-            'wajib': 0,
-            'sukarela': 0,
-            'sita': 0,
-            'simuna': 0,
-            'taqsith': 0,
-            'saldo': 0,
+            'pokok': 0, 'wajib': 0, 'sukarela': 0, 
+            'sita': 0, 'simuna': 0, 'taqsith': 0, 'saldo': 0,
           };
         });
       }
 
-      // ✅ LOAD ANGSURAN DATA DARI API - DENGAN HANDLING STRUCTURE YANG BERBEDA
+      // ✅ LOAD ANGSURAN DATA
       final angsuranResult = await _apiService.getAllAngsuran();
       if (angsuranResult['success'] == true) {
-        print('✅ Angsuran API Response: ${angsuranResult['data']}');
+        print('✅ Manual Angsuran Success: ${angsuranResult['data']}');
         setState(() {
           _angsuranData = angsuranResult['data'] ?? {};
         });
       } else {
-        print('❌ Gagal load angsuran: ${angsuranResult['message']}');
-        // Set default data jika gagal
+        print('❌ Manual Angsuran Failed: ${angsuranResult['message']}');
         setState(() {
           _angsuranData = {'angsuran': 0};
         });
       }
-
     } catch (e) {
-      print('❌ Error loading data from API: $e');
-      // Set default data jika error
+      print('❌ Error manual load: $e');
+      // Set default data
       setState(() {
         _saldoData = {
-          'pokok': 0,
-          'wajib': 0,
-          'sukarela': 0,
-          'sita': 0,
-          'simuna': 0,
-          'taqsith': 0,
-          'saldo': 0,
+          'pokok': 0, 'wajib': 0, 'sukarela': 0, 
+          'sita': 0, 'simuna': 0, 'taqsith': 0, 'saldo': 0,
         };
         _angsuranData = {'angsuran': 0};
       });
-    } finally {
-      setState(() => _isLoading = false);
     }
   }
 
   // ✅ PERBAIKAN: FUNGSI UNTUK MENDAPATKAN NILAI DARI API DATA DENGAN STRUCTURE YANG FLEKSIBEL
   int _getApiValue(String key, Map<String, dynamic> data) {
     try {
-      print('🔍 Mencari key: $key dalam data: $data');
+      if (data.isEmpty) return 0;
       
-      // Cek berbagai kemungkinan struktur data
+      // ✅ CEK BERBAGAI STRUCTURE YANG MUNGKIN:
       
-      // 1. Cek langsung di root
+      // 1. Structure Dashboard: data = {'saldo': {'pokok': 1000}, 'angsuran': {'angsuran': 500}}
+      if (data.containsKey('saldo') && data['saldo'] is Map) {
+        final saldoData = data['saldo'];
+        if (saldoData.containsKey(key)) {
+          final value = saldoData[key];
+          print('✅ Found $key in dashboard saldo: $value');
+          return _parseValue(value);
+        }
+      }
+      
+      // 2. Structure Angsuran: data = {'angsuran': 500}
+      if (data.containsKey('angsuran')) {
+        if (key == 'angsuran') {
+          final value = data['angsuran'];
+          print('✅ Found angsuran in dashboard: $value');
+          return _parseValue(value);
+        }
+      }
+      
+      // 3. Structure Langsung: data = {'pokok': 1000, 'wajib': 2000}
       if (data.containsKey(key)) {
         final value = data[key];
         print('✅ Found $key in root: $value');
         return _parseValue(value);
       }
       
-      // 2. Cek dalam nested 'data' object
+      // 4. Structure Nested: data = {'data': {'pokok': 1000}}
       if (data.containsKey('data') && data['data'] is Map) {
         final nestedData = data['data'];
         if (nestedData.containsKey(key)) {
           final value = nestedData[key];
-          print('✅ Found $key in data object: $value');
+          print('✅ Found $key in nested data: $value');
           return _parseValue(value);
         }
       }
       
-      // 3. Cek dalam berbagai kemungkinan key naming convention
+      // 5. Cek berbagai kemungkinan key naming
       final possibleKeys = _getPossibleKeys(key);
       for (final possibleKey in possibleKeys) {
         if (data.containsKey(possibleKey)) {
@@ -222,20 +262,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           print('✅ Found $key as $possibleKey: $value');
           return _parseValue(value);
         }
-        
-        // Cek dalam nested data juga
-        if (data.containsKey('data') && data['data'] is Map) {
-          final nestedData = data['data'];
-          if (nestedData.containsKey(possibleKey)) {
-            final value = nestedData[possibleKey];
-            print('✅ Found $key as $possibleKey in data object: $value');
-            return _parseValue(value);
-          }
-        }
       }
       
-      // 4. Jika tidak ditemukan, return 0
-      print('❌ Key $key not found in data structure');
+      print('❌ Key $key not found in any structure');
       return 0;
       
     } catch (e) {
@@ -372,7 +401,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // ✅ LOGOUT FUNCTION dengan session management - COMPATIBLE
+  // ✅ PERBAIKAN: LOGOUT FUNCTION YANG BENAR
   Future<void> _logout() async {
     bool confirm = await showDialog(
       context: context,
@@ -402,14 +431,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
 
-      await _apiService.logout();
+      // ✅ PERBAIKAN: GUNAKAN METHOD LOGOUT YANG BARU (RETURN FUTURE<MAP>)
+      final result = await _apiService.logout();
+      
+      // Tutup loading dialog
+      if (mounted) Navigator.of(context).pop();
       
       if (mounted) {
-        Navigator.pushNamedAndRemoveUntil(
-          context, 
-          '/login', 
-          (route) => false
-        );
+        if (result['success'] == true) {
+          Navigator.pushNamedAndRemoveUntil(
+            context, 
+            '/login', 
+            (route) => false
+          );
+        } else {
+          // Jika logout API gagal, tetap redirect ke login
+          Navigator.pushNamedAndRemoveUntil(
+            context, 
+            '/login', 
+            (route) => false
+          );
+        }
       }
     }
   }
@@ -547,7 +589,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: const Text('Tutup'),
           ),
           TextButton(
-            onPressed: _refreshData,
+            onPressed: () {
+              Navigator.pop(context);
+              _refreshData();
+            },
             child: const Text('Refresh'),
           ),
         ],
@@ -601,11 +646,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ DEBUG: Print data structure untuk troubleshooting
+    print('📊 Saldo Data Structure: $_saldoData');
+    print('📊 Angsuran Data Structure: $_angsuranData');
+    
     // ✅ DATA DARI API (bukan dari user data)
     final saldo = _getSaldoValue();
     final angsuran = _getApiValue('angsuran', _angsuranData);
     final totalTabungan = _calculateTotalTabungan();
     final userData = _currentUser ?? widget.user;
+
+    // ✅ DEBUG: Print calculated values
+    print('''
+    🧮 Calculated Values:
+    - Saldo: $saldo
+    - Angsuran: $angsuran  
+    - Total Tabungan: $totalTabungan
+    ''');
 
     return Scaffold(
       appBar: PreferredSize(

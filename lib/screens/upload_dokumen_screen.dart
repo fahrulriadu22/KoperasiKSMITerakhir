@@ -6,8 +6,13 @@ import 'dashboard_main.dart';
 
 class UploadDokumenScreen extends StatefulWidget {
   final Map<String, dynamic> user;
+  final VoidCallback? onDocumentsComplete; // ✅ TAMBAH PARAMETER CALLBACK
 
-  const UploadDokumenScreen({super.key, required this.user});
+  const UploadDokumenScreen({
+    super.key, 
+    required this.user,
+    this.onDocumentsComplete, // ✅ TAMBAH PARAMETER CALLBACK
+  });
 
   @override
   State<UploadDokumenScreen> createState() => _UploadDokumenScreenState();
@@ -90,6 +95,9 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
               duration: const Duration(seconds: 3),
             ),
           );
+
+          // ✅ CEK JIKA SEMUA DOKUMEN SUDAH DIUPLOAD
+          _checkAllDocumentsUploaded();
         } else {
           setState(() => setFile(null));
           final errorMessage = result['message'] ?? 'Gagal upload ${_getDocumentName(type)}';
@@ -141,6 +149,20 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
           duration: const Duration(seconds: 4),
         ),
       );
+    }
+  }
+
+  // ✅ CEK JIKA SEMUA DOKUMEN SUDAH DIUPLOAD
+  void _checkAllDocumentsUploaded() {
+    final bool allUploaded = _ktpFile != null && _kkFile != null && _fotoDiriFile != null;
+    if (allUploaded) {
+      print('🎉 Semua dokumen sudah diupload!');
+      // Otomatis panggil callback setelah 2 detik
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) {
+          _proceedToDashboard();
+        }
+      });
     }
   }
 
@@ -250,12 +272,24 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     updatedUser['foto_kk'] = _kkFile != null ? 'uploaded' : widget.user['foto_kk'];
     updatedUser['foto_diri'] = _fotoDiriFile != null ? 'uploaded' : widget.user['foto_diri'];
 
-    // ✅ Navigasi ke dashboard
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => DashboardMain(user: updatedUser)),
-      (route) => false,
-    );
+    print('🚀 Proceeding to dashboard with user data:');
+    print('   - KTP: ${updatedUser['foto_ktp']}');
+    print('   - KK: ${updatedUser['foto_kk']}');
+    print('   - Foto Diri: ${updatedUser['foto_diri']}');
+    print('   - Callback available: ${widget.onDocumentsComplete != null}');
+
+    // ✅ PERBAIKAN: PANGGIL CALLBACK JIKA ADA, JIKA TIDAK NAVIGASI LANGSUNG
+    if (widget.onDocumentsComplete != null) {
+      print('📞 Memanggil callback onDocumentsComplete...');
+      widget.onDocumentsComplete!();
+    } else {
+      print('🔄 Callback tidak ada, navigasi langsung ke Dashboard...');
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => DashboardMain(user: updatedUser)),
+        (route) => false,
+      );
+    }
   }
 
   // ✅ SHOW IMAGE SOURCE DIALOG dengan opsi kamera
@@ -358,6 +392,9 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
               duration: const Duration(seconds: 3),
             ),
           );
+
+          // ✅ CEK JIKA SEMUA DOKUMEN SUDAH DIUPLOAD
+          _checkAllDocumentsUploaded();
         } else {
           setState(() => setFile(null));
           final errorMessage = result['message'] ?? 'Gagal mengambil ${_getDocumentName(type)}';

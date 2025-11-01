@@ -18,42 +18,61 @@ class ApiService {
     };
   }
 
-  // ✅ GET PROTECTED HEADERS DENGAN TOKEN
+  // ✅ GET PROTECTED HEADERS DENGAN TOKEN - FIXED NULL SAFETY
   Future<Map<String, String>> getProtectedHeaders() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userKey = prefs.getString('token');
-    
-    final headers = <String, String>{
-      'DEVICE-ID': _deviceId,
-      'DEVICE-TOKEN': _deviceToken,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    };
-    
-    if (userKey != null && userKey.isNotEmpty) {
-      headers['x-api-key'] = userKey;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userKey = prefs.getString('token');
+      
+      final headers = <String, String>{
+        'DEVICE-ID': _deviceId,
+        'DEVICE-TOKEN': _deviceToken,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      };
+      
+      if (userKey != null && userKey.isNotEmpty) {
+        headers['x-api-key'] = userKey;
+      } else {
+        print('⚠️ Token tidak ditemukan di SharedPreferences');
+      }
+      
+      return headers;
+    } catch (e) {
+      print('❌ Error getProtectedHeaders: $e');
+      return {
+        'DEVICE-ID': _deviceId,
+        'DEVICE-TOKEN': _deviceToken,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      };
     }
-    
-    return headers;
   }
 
-  // ✅ GET PROTECTED HEADERS UNTUK MULTIPART/FILE UPLOAD
+  // ✅ GET PROTECTED HEADERS UNTUK MULTIPART/FILE UPLOAD - FIXED
   Future<Map<String, String>> getMultipartHeaders() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userKey = prefs.getString('token');
-    
-    final headers = <String, String>{
-      'DEVICE-ID': _deviceId,
-      'DEVICE-TOKEN': _deviceToken,
-    };
-    
-    if (userKey != null && userKey.isNotEmpty) {
-      headers['x-api-key'] = userKey;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userKey = prefs.getString('token');
+      
+      final headers = <String, String>{
+        'DEVICE-ID': _deviceId,
+        'DEVICE-TOKEN': _deviceToken,
+      };
+      
+      if (userKey != null && userKey.isNotEmpty) {
+        headers['x-api-key'] = userKey;
+      }
+      
+      return headers;
+    } catch (e) {
+      print('❌ Error getMultipartHeaders: $e');
+      return {
+        'DEVICE-ID': _deviceId,
+        'DEVICE-TOKEN': _deviceToken,
+      };
     }
-    
-    return headers;
   }
 
-  // ✅ LOGIN METHOD
+  // ✅ LOGIN METHOD - SUDAH BAGUS
   Future<Map<String, dynamic>> login(String username, String password) async {
     try {
       final headers = getAuthHeaders();
@@ -111,7 +130,6 @@ class ApiService {
         'message': 'Gagal terhubung ke server'
       };
     } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout dan error lainnya dengan generic catch
       if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
         return {
           'success': false,
@@ -125,7 +143,482 @@ class ApiService {
     }
   }
 
-  // ✅ REGISTER METHOD
+  // ✅ LOGOUT METHOD - FIXED NULL SAFETY ISSUE
+  Future<Map<String, dynamic>> logout() async {
+    try {
+      final headers = await getProtectedHeaders();
+      
+      // ✅ KIRIM REQUEST LOGOUT KE SERVER DULU
+      final response = await http.post(
+        Uri.parse('$baseUrl/users/logout'),
+        headers: headers,
+        body: '',
+      ).timeout(const Duration(seconds: 10));
+
+      print('🔐 Logout API Response: ${response.statusCode}');
+      
+      // ✅ HAPUS DATA LOCAL DARI SHARED PREFERENCES
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('token');
+      await prefs.remove('user');
+      
+      // ✅ CLEAR SEMUA DATA JIKA PERLU
+      await prefs.clear();
+      
+      return {
+        'success': true,
+        'message': 'Logout berhasil'
+      };
+      
+    } catch (e) {
+      print('❌ Error during logout API call: $e');
+      
+      // ✅ FALLBACK: HAPUS DATA LOCAL MESKIPUN API GAGAL
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('token');
+        await prefs.remove('user');
+        await prefs.clear();
+      } catch (localError) {
+        print('❌ Error clearing local data: $localError');
+      }
+      
+      return {
+        'success': true, // Tetap sukses karena data local sudah dihapus
+        'message': 'Logout berhasil (offline)'
+      };
+    }
+  }
+
+  // ✅ GET DASHBOARD DATA - ENHANCED WITH BETTER ERROR HANDLING
+  Future<Map<String, dynamic>> getDashboardData() async {
+    try {
+      final headers = await getProtectedHeaders();
+      
+      print('🚀 Request Dashboard Headers: ${headers.containsKey('x-api-key') ? 'Token ADA' : 'Token TIDAK ADA'}');
+      
+      final response = await http.post(
+        Uri.parse('$baseUrl/dashboard/getData'),
+        headers: headers,
+        body: '',
+      ).timeout(const Duration(seconds: 30));
+
+      print('📡 Dashboard Response Status: ${response.statusCode}');
+      print('📡 Dashboard Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        if (data['status'] == true) {
+          return {
+            'success': true,
+            'data': data['data'] ?? {},
+            'message': data['message'] ?? 'Success get dashboard data'
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Gagal mengambil data dashboard'
+          };
+        }
+      } else if (response.statusCode == 401) {
+        // Token expired atau tidak valid
+        await _clearToken();
+        return {
+          'success': false,
+          'message': 'Sesi telah berakhir, silakan login kembali',
+          'token_expired': true
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Gagal mengambil data dashboard: ${response.statusCode}'
+        };
+      }
+    } on SocketException {
+      return {
+        'success': false,
+        'message': 'Tidak ada koneksi internet'
+      };
+    } catch (e) {
+      print('❌ Dashboard API Error: $e');
+      if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
+        return {
+          'success': false,
+          'message': 'Timeout, server tidak merespons'
+        };
+      }
+      return {
+        'success': false,
+        'message': 'Error: $e'
+      };
+    }
+  }
+
+  // ✅ GET ALL SALDO - ENHANCED
+  Future<Map<String, dynamic>> getAllSaldo() async {
+    try {
+      final headers = await getProtectedHeaders();
+      
+      final response = await http.post(
+        Uri.parse('$baseUrl/transaction/getAllSaldo'),
+        headers: headers,
+        body: '',
+      ).timeout(const Duration(seconds: 30));
+
+      print('💰 Saldo Response: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        if (data['status'] == true) {
+          return {
+            'success': true,
+            'data': data['data'] ?? {},
+            'message': data['message'] ?? 'Success get saldo'
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Gagal mengambil data saldo'
+          };
+        }
+      } else if (response.statusCode == 401) {
+        await _clearToken();
+        return {
+          'success': false,
+          'message': 'Sesi telah berakhir',
+          'token_expired': true
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Gagal mengambil data saldo: ${response.statusCode}'
+        };
+      }
+    } on SocketException {
+      return {
+        'success': false,
+        'message': 'Tidak ada koneksi internet'
+      };
+    } catch (e) {
+      if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
+        return {
+          'success': false,
+          'message': 'Timeout, server tidak merespons'
+        };
+      }
+      return {
+        'success': false,
+        'message': 'Error: $e'
+      };
+    }
+  }
+
+  // ✅ GET ALL ANGSURAN - ENHANCED
+  Future<Map<String, dynamic>> getAllAngsuran() async {
+    try {
+      final headers = await getProtectedHeaders();
+      
+      final response = await http.post(
+        Uri.parse('$baseUrl/transaction/getAllTaqsith'),
+        headers: headers,
+        body: '',
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        if (data['status'] == true) {
+          return {
+            'success': true,
+            'data': data['data'] ?? {},
+            'message': data['message'] ?? 'Success get angsuran'
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Gagal mengambil data angsuran'
+          };
+        }
+      } else if (response.statusCode == 401) {
+        await _clearToken();
+        return {
+          'success': false,
+          'message': 'Sesi telah berakhir',
+          'token_expired': true
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Gagal mengambil data angsuran: ${response.statusCode}'
+        };
+      }
+    } catch (e) {
+      if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
+        return {
+          'success': false,
+          'message': 'Timeout, server tidak merespons'
+        };
+      }
+      return {
+        'success': false,
+        'message': 'Error: $e'
+      };
+    }
+  }
+
+  // ✅ UPLOAD FOTO PROFILE - FIXED FILE VALIDATION
+  Future<Map<String, dynamic>> uploadFoto({
+    required String type,
+    required String filePath,
+  }) async {
+    try {
+      final headers = await getMultipartHeaders();
+      
+      // ✅ VALIDASI FILE SEBELUM UPLOAD
+      File file = File(filePath);
+      if (!await file.exists()) {
+        return {
+          'success': false,
+          'message': 'File tidak ditemukan'
+        };
+      }
+      
+      // ✅ CHECK FILE SIZE (max 5MB)
+      final fileSize = await file.length();
+      if (fileSize > 5 * 1024 * 1024) {
+        return {
+          'success': false,
+          'message': 'Ukuran file terlalu besar. Maksimal 5MB.'
+        };
+      }
+      
+      // ✅ CHECK FILE EXTENSION
+      final allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif'];
+      final fileExtension = filePath.toLowerCase().substring(filePath.lastIndexOf('.'));
+      if (!allowedExtensions.any((ext) => filePath.toLowerCase().endsWith(ext))) {
+        return {
+          'success': false,
+          'message': 'Format file tidak didukung. Gunakan JPG, JPEG, PNG, atau GIF.'
+        };
+      }
+      
+      var request = http.MultipartRequest(
+        'POST', 
+        Uri.parse('$baseUrl/users/setPhoto')
+      );
+      
+      request.headers.addAll(headers);
+      
+      request.files.add(await http.MultipartFile.fromPath(
+        type, // field name sesuai type (foto_profile, foto_ktp, dll)
+        filePath,
+        filename: '${type}_${DateTime.now().millisecondsSinceEpoch}$fileExtension',
+      ));
+
+      request.fields['type'] = type;
+
+      final response = await request.send().timeout(const Duration(seconds: 60));
+      final responseBody = await response.stream.bytesToString();
+      
+      print('📸 Upload Foto Response: ${response.statusCode}');
+      print('📸 Upload Foto Body: $responseBody');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseBody);
+        
+        if (data['status'] == true) {
+          await _updateUserPhoto(type, data['file_path'] ?? '');
+          
+          return {
+            'success': true,
+            'message': data['message'] ?? 'Upload berhasil',
+            'file_path': data['file_path']
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Upload gagal'
+          };
+        }
+      } else if (response.statusCode == 401) {
+        await _clearToken();
+        return {
+          'success': false,
+          'message': 'Sesi telah berakhir',
+          'token_expired': true
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Upload gagal: ${response.statusCode}'
+        };
+      }
+    } catch (e) {
+      print('❌ Upload Foto Error: $e');
+      if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
+        return {
+          'success': false,
+          'message': 'Upload timeout, coba lagi'
+        };
+      }
+      return {
+        'success': false,
+        'message': 'Error: $e'
+      };
+    }
+  }
+
+  // ✅ GET RIWAYAT TABUNGAN - TAMBAH FITUR UPLOAD BUKTI
+  Future<Map<String, dynamic>> getRiwayatTabungan() async {
+    try {
+      final headers = await getProtectedHeaders();
+      
+      final response = await http.post(
+        Uri.parse('$baseUrl/transaction/getRiwayatTabungan'),
+        headers: headers,
+        body: '',
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        if (data['status'] == true) {
+          return {
+            'success': true,
+            'data': data['data'] ?? [],
+            'message': data['message'] ?? 'Success get riwayat tabungan'
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Gagal mengambil riwayat tabungan'
+          };
+        }
+      } else if (response.statusCode == 401) {
+        await _clearToken();
+        return {
+          'success': false,
+          'message': 'Sesi telah berakhir',
+          'token_expired': true
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Gagal mengambil riwayat tabungan: ${response.statusCode}'
+        };
+      }
+    } catch (e) {
+      if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
+        return {
+          'success': false,
+          'message': 'Timeout, server tidak merespons'
+        };
+      }
+      return {
+        'success': false,
+        'message': 'Error: $e'
+      };
+    }
+  }
+
+  // ✅ UPLOAD BUKTI TRANSFER UNTUK RIWAYAT TABUNGAN - FITUR BARU
+  Future<Map<String, dynamic>> uploadBuktiTransfer({
+    required String transaksiId,
+    required String filePath,
+    required String jenisTransaksi,
+  }) async {
+    try {
+      final headers = await getMultipartHeaders();
+      
+      // ✅ VALIDASI FILE
+      File file = File(filePath);
+      if (!await file.exists()) {
+        return {
+          'success': false,
+          'message': 'File bukti transfer tidak ditemukan'
+        };
+      }
+      
+      // ✅ CHECK FILE SIZE
+      final fileSize = await file.length();
+      if (fileSize > 5 * 1024 * 1024) {
+        return {
+          'success': false,
+          'message': 'Ukuran file terlalu besar. Maksimal 5MB.'
+        };
+      }
+      
+      var request = http.MultipartRequest(
+        'POST', 
+        Uri.parse('$baseUrl/transaction/uploadBukti')
+      );
+      
+      request.headers.addAll(headers);
+      
+      // ✅ TAMBAH FILE
+      final fileExtension = filePath.toLowerCase().substring(filePath.lastIndexOf('.'));
+      request.files.add(await http.MultipartFile.fromPath(
+        'bukti_transfer',
+        filePath,
+        filename: 'bukti_${jenisTransaksi}_${DateTime.now().millisecondsSinceEpoch}$fileExtension',
+      ));
+
+      // ✅ TAMBAH FIELD DATA
+      request.fields['transaksi_id'] = transaksiId;
+      request.fields['jenis_transaksi'] = jenisTransaksi;
+
+      final response = await request.send().timeout(const Duration(seconds: 60));
+      final responseBody = await response.stream.bytesToString();
+      
+      print('📎 Upload Bukti Response: ${response.statusCode}');
+      print('📎 Upload Bukti Body: $responseBody');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseBody);
+        
+        if (data['status'] == true) {
+          return {
+            'success': true,
+            'message': data['message'] ?? 'Bukti transfer berhasil diupload',
+            'file_path': data['file_path']
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Upload bukti transfer gagal'
+          };
+        }
+      } else if (response.statusCode == 401) {
+        await _clearToken();
+        return {
+          'success': false,
+          'message': 'Sesi telah berakhir',
+          'token_expired': true
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Upload bukti transfer gagal: ${response.statusCode}'
+        };
+      }
+    } catch (e) {
+      print('❌ Upload Bukti Error: $e');
+      if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
+        return {
+          'success': false,
+          'message': 'Upload timeout, coba lagi'
+        };
+      }
+      return {
+        'success': false,
+        'message': 'Error: $e'
+      };
+    }
+  }
+
+  // ✅ METHOD-METHOD LAIN YANG SUDAH BAGUS (TIDAK PERLU PERUBAHAN BESAR)
   Future<Map<String, dynamic>> register(Map<String, dynamic> userData) async {
     try {
       final headers = getAuthHeaders();
@@ -161,7 +654,6 @@ class ApiService {
         };
       }
     } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
       if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
         return {
           'success': false,
@@ -175,7 +667,6 @@ class ApiService {
     }
   }
 
-  // ✅ GET MASTER DATA
   Future<Map<String, dynamic>> getMasterData() async {
     try {
       final headers = getAuthHeaders();
@@ -200,7 +691,6 @@ class ApiService {
         };
       }
     } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
       if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
         return {
           'success': false,
@@ -214,7 +704,6 @@ class ApiService {
     }
   }
 
-  // ✅ GET PROVINCE
   Future<Map<String, dynamic>> getProvince() async {
     try {
       final headers = getAuthHeaders();
@@ -227,19 +716,33 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return {
-          'success': true,
-          'data': data['data'] ?? [],
-          'message': 'Success get province'
-        };
+        
+        if (data['status'] == true) {
+          if (data.containsKey('provinces')) {
+            return {
+              'success': true,
+              'data': data['provinces'] ?? [],
+              'message': data['message'] ?? 'Success get province'
+            };
+          } else {
+            return {
+              'success': false,
+              'message': 'Format response tidak sesuai: tidak ada key provinces'
+            };
+          }
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Gagal mengambil data province'
+          };
+        }
       } else {
         return {
           'success': false,
-          'message': 'Gagal mengambil data province'
+          'message': 'Gagal mengambil data province: ${response.statusCode}'
         };
       }
     } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
       if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
         return {
           'success': false,
@@ -253,7 +756,6 @@ class ApiService {
     }
   }
 
-  // ✅ GET REGENCY
   Future<Map<String, dynamic>> getRegency(String idProvince) async {
     try {
       final headers = getAuthHeaders();
@@ -266,71 +768,33 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return {
-          'success': true,
-          'data': data['data'] ?? [],
-          'message': 'Success get regency'
-        };
-      } else {
-        return {
-          'success': false,
-          'message': 'Gagal mengambil data regency'
-        };
-      }
-    } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
-      if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
-        return {
-          'success': false,
-          'message': 'Timeout, server tidak merespons'
-        };
-      }
-      return {
-        'success': false,
-        'message': 'Error: $e'
-      };
-    }
-  }
-
-  // ✅ GET ALL SALDO
-  Future<Map<String, dynamic>> getAllSaldo() async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/transaction/getAllSaldo'),
-        headers: headers,
-        body: '',
-      ).timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
         
         if (data['status'] == true) {
-          return {
-            'success': true,
-            'data': data['data'] ?? {},
-            'message': data['message'] ?? 'Success get saldo'
-          };
+          if (data.containsKey('regency')) {
+            return {
+              'success': true,
+              'data': data['regency'] ?? [],
+              'message': data['message'] ?? 'Success get regency'
+            };
+          } else {
+            return {
+              'success': false,
+              'message': 'Format response tidak sesuai: tidak ada key regency'
+            };
+          }
         } else {
           return {
             'success': false,
-            'message': data['message'] ?? 'Gagal mengambil data saldo'
+            'message': data['message'] ?? 'Gagal mengambil data regency'
           };
         }
       } else {
         return {
           'success': false,
-          'message': 'Gagal mengambil data saldo: ${response.statusCode}'
+          'message': 'Gagal mengambil data regency: ${response.statusCode}'
         };
       }
-    } on SocketException {
-      return {
-        'success': false,
-        'message': 'Tidak ada koneksi internet'
-      };
     } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
       if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
         return {
           'success': false,
@@ -344,54 +808,6 @@ class ApiService {
     }
   }
 
-  // ✅ GET ALL ANGSURAN
-  Future<Map<String, dynamic>> getAllAngsuran() async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/transaction/getAllTaqsith'),
-        headers: headers,
-        body: '',
-      ).timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        
-        if (data['status'] == true) {
-          return {
-            'success': true,
-            'data': data['data'] ?? {},
-            'message': data['message'] ?? 'Success get angsuran'
-          };
-        } else {
-          return {
-            'success': false,
-            'message': data['message'] ?? 'Gagal mengambil data angsuran'
-          };
-        }
-      } else {
-        return {
-          'success': false,
-          'message': 'Gagal mengambil data angsuran: ${response.statusCode}'
-        };
-      }
-    } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
-      if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
-        return {
-          'success': false,
-          'message': 'Timeout, server tidak merespons'
-        };
-      }
-      return {
-        'success': false,
-        'message': 'Error: $e'
-      };
-    }
-  }
-
-  // ✅ INSERT INBOX
   Future<Map<String, dynamic>> insertInbox({
     required String subject,
     required String keterangan,
@@ -421,7 +837,6 @@ class ApiService {
         };
       }
     } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
       if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
         return {
           'success': false,
@@ -435,7 +850,6 @@ class ApiService {
     }
   }
 
-  // ✅ GET ALL INBOX
   Future<Map<String, dynamic>> getAllInbox() async {
     try {
       final headers = await getProtectedHeaders();
@@ -468,7 +882,6 @@ class ApiService {
         };
       }
     } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
       if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
         return {
           'success': false,
@@ -482,95 +895,6 @@ class ApiService {
     }
   }
 
-  // ✅ UPLOAD FOTO
-  Future<Map<String, dynamic>> uploadFoto({
-    required String type,
-    required String filePath,
-  }) async {
-    try {
-      final headers = await getMultipartHeaders();
-      
-      var request = http.MultipartRequest(
-        'POST', 
-        Uri.parse('$baseUrl/users/setPhoto')
-      );
-      
-      request.headers.addAll(headers);
-      
-      String fieldName = type;
-      
-      File file = File(filePath);
-      if (!await file.exists()) {
-        return {
-          'success': false,
-          'message': 'File tidak ditemukan: $filePath'
-        };
-      }
-      
-      // Check file size (max 5MB)
-      final fileSize = await file.length();
-      if (fileSize > 5 * 1024 * 1024) {
-        return {
-          'success': false,
-          'message': 'Ukuran file terlalu besar. Maksimal 5MB.'
-        };
-      }
-      
-      request.files.add(await http.MultipartFile.fromPath(
-        fieldName, 
-        filePath,
-        filename: '${fieldName}_${DateTime.now().millisecondsSinceEpoch}.jpg',
-      ));
-
-      request.fields['type'] = type;
-
-      final response = await request.send().timeout(const Duration(seconds: 60));
-      final responseBody = await response.stream.bytesToString();
-      
-      if (response.statusCode == 200) {
-        final data = jsonDecode(responseBody);
-        
-        if (data['status'] == true) {
-          await _updateUserPhoto(type, data['file_path'] ?? 'uploaded');
-          
-          return {
-            'success': true,
-            'message': data['message'] ?? 'Upload berhasil',
-            'file_path': data['file_path']
-          };
-        } else {
-          return {
-            'success': false,
-            'message': data['message'] ?? 'Upload gagal'
-          };
-        }
-      } else if (response.statusCode == 404) {
-        return {
-          'success': false,
-          'message': 'Endpoint upload tidak ditemukan (404). Periksa URL API.'
-        };
-      } else {
-        return {
-          'success': false,
-          'message': 'Upload gagal: ${response.statusCode} - $responseBody'
-        };
-      }
-    } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
-      if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
-        return {
-          'success': false,
-          'message': 'Upload timeout, coba lagi'
-        };
-      }
-      return {
-        'success': false,
-        'message': 'Error: $e'
-      };
-    }
-  }
-
-  // ✅ UPDATE USER PHOTO IN LOCAL STORAGE
   Future<void> _updateUserPhoto(String type, String filePath) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -585,7 +909,6 @@ class ApiService {
     }
   }
 
-  // ✅ CHANGE PASSWORD
   Future<Map<String, dynamic>> changePassword(String oldPass, String newPass, String newPassConf) async {
     try {
       final headers = await getProtectedHeaders();
@@ -609,7 +932,6 @@ class ApiService {
         };
       }
     } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
       if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
         return {
           'success': false,
@@ -623,7 +945,6 @@ class ApiService {
     }
   }
 
-  // ✅ CHECK USER EXIST
   Future<Map<String, dynamic>> checkUserExist(String username, String email) async {
     try {
       final headers = getAuthHeaders();
@@ -647,7 +968,6 @@ class ApiService {
         };
       }
     } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
       if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
         return {
           'exists': false,
@@ -661,59 +981,6 @@ class ApiService {
     }
   }
 
-  // ✅ GET DASHBOARD DATA
-  Future<Map<String, dynamic>> getDashboardData() async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/dashboard/getData'),
-        headers: headers,
-        body: '',
-      ).timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        
-        if (data['status'] == true) {
-          return {
-            'success': true,
-            'data': data['data'] ?? {},
-            'message': data['message'] ?? 'Success get dashboard data'
-          };
-        } else {
-          return {
-            'success': false,
-            'message': data['message'] ?? 'Gagal mengambil data dashboard'
-          };
-        }
-      } else {
-        return {
-          'success': false,
-          'message': 'Gagal mengambil data dashboard: ${response.statusCode}'
-        };
-      }
-    } on SocketException {
-      return {
-        'success': false,
-        'message': 'Tidak ada koneksi internet'
-      };
-    } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
-      if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
-        return {
-          'success': false,
-          'message': 'Timeout, server tidak merespons'
-        };
-      }
-      return {
-        'success': false,
-        'message': 'Error: $e'
-      };
-    }
-  }
-
-  // ✅ GET USER PROFILE
   Future<Map<String, dynamic>> getUserProfile() async {
     try {
       final headers = await getProtectedHeaders();
@@ -748,7 +1015,6 @@ class ApiService {
         };
       }
     } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
       if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
         return {
           'success': false,
@@ -762,7 +1028,6 @@ class ApiService {
     }
   }
 
-  // ✅ UPDATE USER PROFILE
   Future<Map<String, dynamic>> updateUserProfile(Map<String, dynamic> profileData) async {
     try {
       final headers = await getProtectedHeaders();
@@ -781,7 +1046,6 @@ class ApiService {
         final data = jsonDecode(response.body);
         
         if (data['status'] == true) {
-          // Update local user data
           final prefs = await SharedPreferences.getInstance();
           final currentUser = await getCurrentUser();
           if (currentUser != null) {
@@ -807,7 +1071,6 @@ class ApiService {
         };
       }
     } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
       if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
         return {
           'success': false,
@@ -821,54 +1084,6 @@ class ApiService {
     }
   }
 
-  // ✅ GET RIWAYAT TABUNGAN
-  Future<Map<String, dynamic>> getRiwayatTabungan() async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/transaction/getRiwayatTabungan'),
-        headers: headers,
-        body: '',
-      ).timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        
-        if (data['status'] == true) {
-          return {
-            'success': true,
-            'data': data['data'] ?? [],
-            'message': data['message'] ?? 'Success get riwayat tabungan'
-          };
-        } else {
-          return {
-            'success': false,
-            'message': data['message'] ?? 'Gagal mengambil riwayat tabungan'
-          };
-        }
-      } else {
-        return {
-          'success': false,
-          'message': 'Gagal mengambil riwayat tabungan: ${response.statusCode}'
-        };
-      }
-    } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
-      if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
-        return {
-          'success': false,
-          'message': 'Timeout, server tidak merespons'
-        };
-      }
-      return {
-        'success': false,
-        'message': 'Error: $e'
-      };
-    }
-  }
-
-  // ✅ GET RIWAYAT ANGSURAN
   Future<Map<String, dynamic>> getRiwayatAngsuran() async {
     try {
       final headers = await getProtectedHeaders();
@@ -901,7 +1116,6 @@ class ApiService {
         };
       }
     } catch (e) {
-      // ✅ PERBAIKAN: Handle timeout
       if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
         return {
           'success': false,
@@ -915,40 +1129,30 @@ class ApiService {
     }
   }
 
-  // ✅ LOGOUT
-  Future<void> logout() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('token');
-      await prefs.remove('user');
-    } catch (e) {
-      print('Error during logout: $e');
-    }
-  }
-
-  // ✅ GET CURRENT USER FROM LOCAL STORAGE
+  // ✅ GET CURRENT USER FROM LOCAL STORAGE - FIXED NULL SAFETY
   Future<Map<String, dynamic>?> getCurrentUser() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final userString = prefs.getString('user');
-      if (userString != null) {
+      if (userString != null && userString.isNotEmpty) {
         return jsonDecode(userString);
       }
       return null;
     } catch (e) {
-      print('Error getting current user: $e');
+      print('❌ Error getting current user: $e');
       return null;
     }
   }
 
-  // ✅ CHECK LOGIN STATUS
+  // ✅ CHECK LOGIN STATUS - FIXED
   Future<bool> isLoggedIn() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
       final user = prefs.getString('user');
-      return token != null && user != null;
+      return token != null && token.isNotEmpty && user != null && user.isNotEmpty;
     } catch (e) {
+      print('❌ Error checking login status: $e');
       return false;
     }
   }
@@ -971,6 +1175,18 @@ class ApiService {
       return false;
     } catch (e) {
       return false;
+    }
+  }
+
+  // ✅ HELPER METHOD: CLEAR TOKEN SAAT EXPIRED
+  Future<void> _clearToken() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('token');
+      await prefs.remove('user');
+      print('🔐 Token cleared due to expiration');
+    } catch (e) {
+      print('❌ Error clearing token: $e');
     }
   }
 }

@@ -444,7 +444,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  // ✅ STEP 0: INFORMASI KOPERASI
+  // ✅ STEP 0: INFORMASI KOPERASI - DIPISAH VISI & MISI + TAMBAH MANFAAT
   Widget _buildInfoStep() {
     return SingleChildScrollView(
       child: Column(
@@ -452,16 +452,61 @@ class _RegisterScreenState extends State<RegisterScreen> {
         children: [
           _buildInfoCard(
             'Profil Koperasi KSMI',
-            'Koperasi Serba Usaha KSMI adalah koperasi yang berfokus pada pemberdayaan anggota melalui berbagai layanan keuangan dan non-keuangan yang berkualitas.',
+            'Koperasi Syirkah Muslim Indonesia atau disingkat KSMI merupakan koperasi konsumen yang berkomitmen untuk menerapkan transaksi muamalah sesuai syariah, dengan dibimbing oleh beberapa guru/ustadz dan mentor yang mumpuni di bidangnya. Untuk itu, Koperasi ini insyaAllah menjadi solusi Transaksi Halal Tanpa Riba, Denda & Sita bagi kaum muslimin secara umum',
             Icons.business,
+            Colors.green[800]!,
           ),
           const SizedBox(height: 16),
+          
           _buildInfoCard(
-            'Visi & Misi',
-            'Menjadi koperasi terdepan dalam meningkatkan kesejahteraan anggota melalui layanan yang profesional dan inovatif.',
+            'Visi Koperasi KSMI',
+            'Mewujudkan Koperasi Unggul & Profesional yang mampu meningkatkan kemandirian maupun kesejahteraan anggota serta bermuamalah demi tercapainya Kekuatan Ekonomi Umat yang berlandaskan Ajaran Al Quran dan As Sunnah dengan pemahaman Salafusshalih',
             Icons.flag,
+            Colors.blue[700]!,
+          ),
+          const SizedBox(height: 16),
+          
+          _buildInfoCard(
+            'Misi Koperasi KSMI',
+            '1. Menyelenggarakan kegiatan simpan pinjam sesuai syariah\n'
+            '2. Mengembangkan usaha produktif anggota\n'
+            '3. Memberikan pembinaan dan edukasi keuangan syariah\n'
+            '4. Membangun jaringan usaha yang halal dan berkah\n'
+            '5. Meningkatkan kesejahteraan ekonomi anggota',
+            Icons.assignment,
+            Colors.orange[700]!,
+          ),
+          const SizedBox(height: 16),
+          
+          _buildInfoCard(
+            'Manfaat Bergabung',
+            '• Transaksi bebas riba, denda, dan sita\n'
+            '• Sistem bagi hasil yang adil (Mudharabah & Musyarakah)\n'
+            '• Bimbingan spiritual dan bisnis dari mentor berpengalaman\n'
+            '• Jaringan usaha muslim yang luas\n'
+            '• Program pendidikan keuangan syariah\n'
+            '• Layanan konsultasi bisnis dan keluarga\n'
+            '• Akses produk halal dengan harga kompetitif',
+            Icons.emoji_events,
+            Colors.purple[700]!,
+          ),
+          const SizedBox(height: 16),
+          
+          _buildInfoCard(
+            'Manfaat Keanggotaan',
+            '• Simpanan Pokok & Wajib dengan sistem syariah\n'
+            '• Simpanan Sukarela dengan bagi hasil\n'
+            '• Pembiayaan usaha tanpa bunga\n'
+            '• Program SiTabung (Tabungan Berjangka)\n'
+            '• Bantuan sosial dan kematian\n'
+            '• Pelatihan dan workshop berkala\n'
+            '• Diskon produk dan layanan mitra\n'
+            '• Hak suara dalam Rapat Anggota',
+            Icons.card_membership,
+            Colors.teal[700]!,
           ),
           const SizedBox(height: 24),
+          
           Card(
             elevation: 2,
             child: Padding(
@@ -499,9 +544,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildInfoCard(String title, String content, IconData icon) {
+  // ✅ PERBAIKAN: Info card dengan warna yang berbeda
+  Widget _buildInfoCard(String title, String content, IconData icon, Color color) {
     return Card(
-      elevation: 2,
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -509,22 +558,35 @@ class _RegisterScreenState extends State<RegisterScreen> {
           children: [
             Row(
               children: [
-                Icon(icon, color: Colors.green[800]),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green[800],
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
               content,
-              style: const TextStyle(fontSize: 14, height: 1.5),
+              style: const TextStyle(
+                fontSize: 14, 
+                height: 1.5,
+                color: Colors.black87,
+              ),
             ),
           ],
         ),
