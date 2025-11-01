@@ -94,36 +94,59 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   // ✅ LOAD DATA PROVINSI, AGAMA, CABANG DARI API - FIXED
-  Future<void> _loadMasterData() async {
-    try {
-      setState(() => _isLoading = true);
-      
-      // Load provinsi
-      final provinsiResult = await _apiService.getProvince();
-      if (provinsiResult['success'] == true) {
-        setState(() {
-          _provinsiList = provinsiResult['data'] ?? [];
-        });
-      } else {
-        print('❌ Failed to load provinsi: ${provinsiResult['message']}');
-      }
-
-      // Load master data untuk agama dan cabang
-      final masterResult = await _apiService.getMasterData();
-      if (masterResult['success'] == true) {
-        setState(() {
-          _agamaList = masterResult['data']['agama'] ?? [];
-          _cabangList = masterResult['data']['cabang'] ?? [];
-        });
-      } else {
-        print('❌ Failed to load master data: ${masterResult['message']}');
-      }
-    } catch (e) {
-      print('❌ Error loading master data: $e');
-    } finally {
-      setState(() => _isLoading = false);
+// ✅ LOAD DATA PROVINSI, AGAMA, CABANG DARI API - DEEP DEBUG
+Future<void> _loadMasterData() async {
+  try {
+    setState(() => _isLoading = true);
+    
+    print('🔄 Loading master data...');
+    
+    // Load provinsi
+    final provinsiResult = await _apiService.getProvince();
+    print('📍 Provinsi result: ${provinsiResult['success']}');
+    print('📍 Provinsi data length: ${provinsiResult['data']?.length}');
+    if (provinsiResult['data'] != null && provinsiResult['data']!.isNotEmpty) {
+      print('📍 Sample provinsi: ${provinsiResult['data']![0]}');
     }
+
+    // Load master data untuk agama dan cabang
+    final masterResult = await _apiService.getMasterData();
+    print('📦 Master data success: ${masterResult['success']}');
+    print('📦 Master data keys: ${masterResult['data']?.keys}');
+    
+    if (masterResult['success'] == true && masterResult['data'] != null) {
+      final data = masterResult['data']!;
+      
+      // Debug agama
+      _agamaList = data['agama'] ?? [];
+      print('🕌 Agama list length: ${_agamaList.length}');
+      if (_agamaList.isNotEmpty) {
+        print('🕌 Sample agama:');
+        for (int i = 0; i < _agamaList.length && i < 3; i++) {
+          print('   - ${_agamaList[i]}');
+        }
+      }
+      
+      // Debug cabang
+      _cabangList = data['cabang'] ?? [];
+      print('🏢 Cabang list length: ${_cabangList.length}');
+      if (_cabangList.isNotEmpty) {
+        print('🏢 Sample cabang:');
+        for (int i = 0; i < _cabangList.length && i < 3; i++) {
+          print('   - ${_cabangList[i]}');
+        }
+      }
+      
+      setState(() {});
+    } else {
+      print('❌ Master data failed: ${masterResult['message']}');
+    }
+  } catch (e) {
+    print('❌ Error loading master data: $e');
+  } finally {
+    setState(() => _isLoading = false);
   }
+}
 
   // ✅ LOAD KOTA BERDASARKAN PROVINSI - FIXED
   Future<void> _loadKota(String idProvinsi, bool forKtp) async {
@@ -599,39 +622,79 @@ class _RegisterScreenState extends State<RegisterScreen> {
       child: SingleChildScrollView(
         child: Column(
           children: [
-            _buildDropdown(
-              label: 'Agama *',
-              value: agamaIdController.text.isEmpty ? null : agamaIdController.text,
-              items: _agamaList.isNotEmpty 
-                  ? _agamaList.map((agama) {
-                      return DropdownMenuItem(
-                        value: agama['id'].toString(),
-                        child: Text(agama['nama']?.toString() ?? 'Unknown'),
-                      );
-                    }).toList()
-                  : [const DropdownMenuItem(value: 'loading', child: Text('Loading...'))],
-              onChanged: _agamaList.isNotEmpty ? (value) {
-                setState(() => agamaIdController.text = value!);
-              } : null,
-              validator: (v) => _validateRequired(agamaIdController.text, 'Agama'),
+_buildDropdown(
+  label: 'Agama *',
+  value: agamaIdController.text.isEmpty ? null : agamaIdController.text,
+  items: _agamaList.isNotEmpty 
+      ? _agamaList.map((agama) {
+          final id = agama['id']?.toString() ?? '';
+          final nama = agama['nama']?.toString() ?? 'Unknown';
+          return DropdownMenuItem(
+            value: id,
+            child: Text(nama),
+          );
+        }).toList()
+      : [
+          DropdownMenuItem(
+            value: 'empty',
+            child: Text(
+              _isLoading ? 'Loading agama...' : 'Data agama tidak tersedia',
+              style: const TextStyle(color: Colors.grey),
             ),
+          )
+        ],
+  onChanged: _agamaList.isNotEmpty ? (value) {
+    if (value != null) {
+      setState(() {
+        agamaIdController.text = value;
+      });
+      print('✅ Agama dipilih: $value');
+    }
+  } : null,
+  validator: (v) {
+    if (agamaIdController.text.isEmpty) {
+      return 'Pilih agama terlebih dahulu';
+    }
+    return null;
+  },
+),
             const SizedBox(height: 16),
-            _buildDropdown(
-              label: 'Cabang *',
-              value: cabangIdController.text.isEmpty ? null : cabangIdController.text,
-              items: _cabangList.isNotEmpty
-                  ? _cabangList.map((cabang) {
-                      return DropdownMenuItem(
-                        value: cabang['id'].toString(),
-                        child: Text(cabang['nama']?.toString() ?? 'Unknown'),
-                      );
-                    }).toList()
-                  : [const DropdownMenuItem(value: 'loading', child: Text('Loading...'))],
-              onChanged: _cabangList.isNotEmpty ? (value) {
-                setState(() => cabangIdController.text = value!);
-              } : null,
-              validator: (v) => _validateRequired(cabangIdController.text, 'Cabang'),
+_buildDropdown(
+  label: 'Cabang *',
+  value: cabangIdController.text.isEmpty ? null : cabangIdController.text,
+  items: _cabangList.isNotEmpty
+      ? _cabangList.map((cabang) {
+          final id = cabang['id']?.toString() ?? '';
+          final nama = cabang['nama']?.toString() ?? 'Unknown';
+          return DropdownMenuItem(
+            value: id,
+            child: Text(nama),
+          );
+        }).toList()
+      : [
+          DropdownMenuItem(
+            value: 'empty',
+            child: Text(
+              _isLoading ? 'Loading cabang...' : 'Data cabang tidak tersedia',
+              style: const TextStyle(color: Colors.grey),
             ),
+          )
+        ],
+  onChanged: _cabangList.isNotEmpty ? (value) {
+    if (value != null) {
+      setState(() {
+        cabangIdController.text = value;
+      });
+      print('✅ Cabang dipilih: $value');
+    }
+  } : null,
+  validator: (v) {
+    if (cabangIdController.text.isEmpty) {
+      return 'Pilih cabang terlebih dahulu';
+    }
+    return null;
+  },
+),
             const SizedBox(height: 16),
             _buildDropdown(
               label: 'Jenis Identitas *',

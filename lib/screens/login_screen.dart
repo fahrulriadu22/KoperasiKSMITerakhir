@@ -19,56 +19,70 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscureText = true;
 
-  void _handleLogin() async {
-    if (!_formKey.currentState!.validate()) return;
+void _handleLogin() async {
+  if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+  setState(() => _isLoading = true);
 
-    final input = inputController.text.trim();
-    final pass = passwordController.text.trim();
+  final input = inputController.text.trim();
+  final pass = passwordController.text.trim();
 
-    try {
-      // ✅ FIX: Sekarang login() return Map<String, dynamic>
-      final result = await _authService.login(input, pass);
+  try {
+    final result = await _authService.login(input, pass);
 
-      if (result['success'] == true) {
-        if (!mounted) return;
-        
-        final user = result['user'];
-        
-        // ✅ CEK APAKAH SUDAH UPLOAD DOKUMEN (sesuaikan dengan field dari API)
-        final bool sudahUploadKTP = user['foto_ktp'] != null && user['foto_ktp'].isNotEmpty;
-        final bool sudahUploadKK = user['foto_kk'] != null && user['foto_kk'].isNotEmpty;
-        final bool sudahUploadDiri = user['foto_diri'] != null && user['foto_diri'].isNotEmpty;
+    print('🔐 Login Result:');
+    print('   - Success: ${result['success']}');
+    print('   - Message: ${result['message']}');
+    print('   - Token: ${result['token']}');
+    print('   - User Data: ${result['user']}');
+    print('   - User Keys: ${result['user']?.keys}');
 
-        print('🔍 Status Upload Dokumen:');
-        print('   - KTP: $sudahUploadKTP');
-        print('   - KK: $sudahUploadKK');
-        print('   - Foto Diri: $sudahUploadDiri');
+    if (result['success'] == true) {
+      if (!mounted) return;
+      
+      final user = result['user'];
+      
+      // ✅ DEBUG: CEK STRUKTUR USER YANG SEBENARNYA
+      print('🔍 DETAIL USER STRUCTURE:');
+      user?.forEach((key, value) {
+        print('   - $key: $value');
+      });
+      
+      // ✅ CEK APAKAH SUDAH UPLOAD DOKUMEN (sesuai structure sebenarnya)
+      final bool sudahUploadKTP = user?['foto_ktp'] != null && user['foto_ktp'].toString().isNotEmpty;
+      final bool sudahUploadKK = user?['foto_kk'] != null && user['foto_kk'].toString().isNotEmpty;
+      final bool sudahUploadDiri = user?['foto_diri'] != null && user['foto_diri'].toString().isNotEmpty;
 
-        if (sudahUploadKTP && sudahUploadKK && sudahUploadDiri) {
-          // ✅ SUDAH UPLOAD SEMUA DOKUMEN, LANGSUNG KE DASHBOARD
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => DashboardMain(user: user)),
-          );
-        } else {
-          // ✅ BELUM UPLOAD, ARAH KE UPLOAD DOKUMEN
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => UploadDokumenScreen(user: user)),
-          );
-        }
+      print('🔍 Status Upload Dokumen:');
+      print('   - KTP: $sudahUploadKTP (${user?['foto_ktp']})');
+      print('   - KK: $sudahUploadKK (${user?['foto_kk']})');
+      print('   - Foto Diri: $sudahUploadDiri (${user?['foto_diri']})');
+
+      if (sudahUploadKTP && sudahUploadKK && sudahUploadDiri) {
+        // ✅ SUDAH UPLOAD SEMUA DOKUMEN, LANGSUNG KE DASHBOARD
+        print('🎯 Navigasi ke Dashboard');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => DashboardMain(user: user!)),
+        );
       } else {
-        _showErrorDialog(result['message'] ?? 'Login gagal. Silakan coba lagi.');
+        // ✅ BELUM UPLOAD, ARAH KE UPLOAD DOKUMEN
+        print('🎯 Navigasi ke Upload Dokumen');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => UploadDokumenScreen(user: user!)),
+        );
       }
-    } catch (e) {
-      print('❌ Login error: $e');
-      _showErrorDialog('Terjadi kesalahan saat login: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+    } else {
+      _showErrorDialog(result['message'] ?? 'Login gagal. Silakan coba lagi.');
     }
+  } catch (e) {
+    print('❌ Login error: $e');
+    _showErrorDialog('Terjadi kesalahan saat login: $e');
+  } finally {
+    if (mounted) setState(() => _isLoading = false);
   }
+}
 
   void _showErrorDialog(String message) {
     showDialog(
