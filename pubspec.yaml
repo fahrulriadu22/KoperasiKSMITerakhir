@@ -27,19 +27,17 @@ dev_dependencies:
   flutter_lints: ^2.0.0
   flutter_launcher_icons: ^0.13.1
 
-# ✅ FIXED: Format yang benar untuk flutter_launcher_icons
+# ✅ PERBAIKAN: Format yang benar untuk flutter_launcher_icons
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/KSMI_LOGO.png"
-  adaptive_icon_background: "#1B5E20"  # Warna hijau KSMI
+  adaptive_icon_background: "#1B5E20"
   adaptive_icon_foreground: "assets/images/KSMI_LOGO.png"
-  min_sdk_android: 21
 
 flutter:
   uses-material-design: true
 
-  # ✅ FIXED: Assets configuration
+  # ✅ PERBAIKAN: Format assets yang benar
   assets:
-    - assets/images/
     - assets/images/KSMI_LOGO.png

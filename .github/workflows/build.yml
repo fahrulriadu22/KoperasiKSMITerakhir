@@ -3,8 +3,6 @@ name: Build APK Koperasi KSMI
 on: 
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
 
 jobs:
   build:
@@ -25,15 +23,12 @@ jobs:
     - name: Generate app icons
       run: flutter pub run flutter_launcher_icons
       
-    - name: Verify Flutter installation
-      run: flutter doctor
-      
     - name: Build APK Debug
-      run: flutter build apk --debug --no-tree-shake-icons
+      run: flutter build apk --debug
       
     - name: Upload APK Debug
       uses: actions/upload-artifact@v4
       with:
-        name: koperasi-ksmi-debug-v1.0.0
+        name: koperasi-ksmi-debug
         path: build/app/outputs/flutter-apk/app-debug.apk
         retention-days: 7
