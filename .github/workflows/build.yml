@@ -15,9 +15,11 @@ jobs:
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        # ✅ GUNAKAN FLUTTER VERSI YANG SAMA DENGAN LOCAL ANDA
         flutter-version: '3.35.7'
         
+    - name: Clean project
+      run: flutter clean
+      
     - name: Install dependencies
       run: flutter pub get
       
@@ -32,4 +34,3 @@ jobs:
       with:
         name: koperasi-ksmi-debug
         path: build/app/outputs/flutter-apk/app-debug.apk
-        retention-days: 7
