@@ -62,7 +62,7 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
     {'id': 'ijarah', 'name': 'Ijarah', 'icon': Icons.home_work, 'color': Colors.purple},
     {'id': 'qardh', 'name': 'Qardh Hasan', 'icon': Icons.volunteer_activism, 'color': Colors.teal},
     {'id': 'wakalah', 'name': 'Wakalah', 'icon': Icons.assignment, 'color': Colors.indigo},
-    {'id': 'taqsith', 'name': 'Taqsith', 'icon': Icons.handshake, 'color': Colors.purple},
+    {'id': 'taqsith', 'name': 'Taqsith', 'icon': Icons.payments, 'color': Colors.deepPurple},
   ];
 
   @override
@@ -87,30 +87,42 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
 
     try {
       // ✅ PERBAIKAN: Gunakan method yang benar dari ApiService
-      final result = await _apiService.getRiwayatAngsuran();
+      final result = await _apiService.getAllAngsuran();
       
       if (mounted) {
         setState(() {
-          // ✅ PERBAIKAN: Handle berbagai format response
-          if (result is List) {
-            _riwayatAngsuran = result.map((item) {
-              if (item is Map<String, dynamic>) {
-                return item;
-              } else if (item is Map) {
-                return Map<String, dynamic>.from(item);
-              } else {
-                return <String, dynamic>{
-                  'id': item.toString(),
-                  'keterangan': 'Angsuran',
-                  'jumlah': 0,
-                  'tanggal': DateTime.now().toString(),
-                  'status': 'Pending',
-                  'jenis_tabungan': 'taqsith'
-                };
-              }
-            }).toList();
+          // ✅ PERBAIKAN: Handle response dari getAllAngsuran
+          if (result['success'] == true && result['data'] != null) {
+            final data = result['data'];
+            
+            if (data is Map<String, dynamic>) {
+              // Jika data berupa map, konversi ke list
+              _riwayatAngsuran = _convertMapToList(data);
+            } else if (data is List) {
+              // Jika data sudah berupa list
+              _riwayatAngsuran = data.map((item) {
+                if (item is Map<String, dynamic>) {
+                  return item;
+                } else if (item is Map) {
+                  return Map<String, dynamic>.from(item);
+                } else {
+                  return <String, dynamic>{
+                    'id': item.toString(),
+                    'keterangan': 'Angsuran',
+                    'jumlah': 0,
+                    'tanggal': DateTime.now().toString(),
+                    'status': 'Pending',
+                    'jenis_tabungan': 'taqsith'
+                  };
+                }
+              }).toList();
+            } else {
+              _riwayatAngsuran = [];
+            }
           } else {
             _riwayatAngsuran = [];
+            _hasError = true;
+            _errorMessage = result['message'] ?? 'Gagal memuat data angsuran';
           }
           _isLoading = false;
         });
@@ -128,13 +140,29 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
     }
   }
 
+  // ✅ METHOD UNTUK KONVERSI MAP KE LIST
+  List<Map<String, dynamic>> _convertMapToList(Map<String, dynamic> data) {
+    final List<Map<String, dynamic>> result = [];
+    
+    data.forEach((key, value) {
+      if (value is Map<String, dynamic>) {
+        result.add({
+          'id': key,
+          ...value,
+        });
+      }
+    });
+    
+    return result;
+  }
+
   // ✅ PERBAIKAN: Filter riwayat berdasarkan jenis angsuran dengan safety check
   List<Map<String, dynamic>> get _filteredRiwayat {
     if (_selectedAngsuranType == 'semua') {
       return _riwayatAngsuran;
     }
     return _riwayatAngsuran.where((angsuran) {
-      final jenis = angsuran['jenis_tabungan']?.toString() ?? 'taqsith';
+      final jenis = angsuran['jenis_tabungan']?.toString().toLowerCase() ?? 'taqsith';
       return jenis == _selectedAngsuranType;
     }).toList();
   }
@@ -150,7 +178,7 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
       }
       
       final filtered = _riwayatAngsuran.where((a) => 
-        (a['jenis_tabungan']?.toString() ?? '') == jenisTabungan
+        (a['jenis_tabungan']?.toString().toLowerCase() ?? '') == jenisTabungan
       );
       return filtered.fold(0, (sum, angsuran) {
         final jumlah = (angsuran['jumlah'] as num?)?.toInt() ?? 0;
@@ -183,6 +211,8 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
       case 'tertunggak': return Colors.red;
       case 'pending': return Colors.orange;
       case 'selesai': return Colors.green;
+      case 'ditolak': return Colors.red;
+      case 'diproses': return Colors.orange;
       default: return Colors.grey;
     }
   }
@@ -191,7 +221,7 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
   Color _getAngsuranColor(String jenis) {
     final jenisStr = jenis.toString().toLowerCase();
     switch (jenisStr) {
-      case 'taqsith': return Colors.purple;
+      case 'taqsith': return Colors.deepPurple;
       case 'mudharabah': return Colors.green;
       case 'murabahah': return Colors.blue;
       case 'musyarakah': return Colors.orange;
@@ -217,14 +247,29 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
     }
   }
 
+  // ✅ PERBAIKAN: Format tanggal dengan safety
+  String _formatTanggal(String? tanggal) {
+    if (tanggal == null || tanggal.isEmpty) return '-';
+    
+    try {
+      final dateTime = DateTime.parse(tanggal);
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    } catch (e) {
+      return tanggal;
+    }
+  }
+
   // ✅ PERBAIKAN: Tampilkan dialog detail dengan data real
   void _showDetailAngsuran(Map<String, dynamic> angsuran) {
     final jumlah = (angsuran['jumlah'] as num?)?.toInt() ?? 0;
     final jenisTabungan = angsuran['jenis_tabungan']?.toString() ?? 'taqsith';
     final sisaAngsuran = (angsuran['sisa_angsuran'] as num?)?.toInt() ?? 0;
-    final tanggal = angsuran['tanggal']?.toString() ?? '';
+    final totalAngsuran = (angsuran['total_angsuran'] as num?)?.toInt() ?? jumlah;
+    final tanggal = _formatTanggal(angsuran['tanggal']?.toString());
     final status = angsuran['status']?.toString() ?? 'Pending';
     final keterangan = angsuran['keterangan']?.toString() ?? 'Angsuran ${_getAngsuranName(jenisTabungan)}';
+    final noKontrak = angsuran['no_kontrak']?.toString() ?? '-';
+    final tenor = angsuran['tenor']?.toString() ?? '-';
 
     showDialog(
       context: context,
@@ -233,7 +278,7 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.7,
+            maxHeight: MediaQuery.of(context).size.height * 0.8,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -300,7 +345,7 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
                     children: [
                       // INFO UTAMA
                       const Text(
-                        'Detail Angsuran',
+                        'Detail Pembiayaan',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -310,10 +355,47 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
                       const SizedBox(height: 16),
                       
                       _buildDetailItem('Jenis Pembiayaan', _getAngsuranName(jenisTabungan)),
+                      _buildDetailItem('No. Kontrak', noKontrak),
                       _buildDetailItem('Keterangan', keterangan),
                       _buildDetailItem('Tanggal', tanggal),
+                      _buildDetailItem('Tenor', '$tenor bulan'),
                       _buildDetailItem('Jumlah Angsuran', _formatCurrency(jumlah)),
+                      _buildDetailItem('Total Pembiayaan', _formatCurrency(totalAngsuran)),
                       _buildDetailItem('Sisa Angsuran', _formatCurrency(sisaAngsuran)),
+                      
+                      const SizedBox(height: 16),
+                      
+                      // PROGRESS BAR (jika ada sisa angsuran)
+                      if (totalAngsuran > 0 && sisaAngsuran >= 0)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Progress Pelunasan',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            LinearProgressIndicator(
+                              value: (totalAngsuran - sisaAngsuran) / totalAngsuran,
+                              backgroundColor: Colors.grey[300],
+                              color: Colors.green,
+                              minHeight: 8,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${((totalAngsuran - sisaAngsuran) / totalAngsuran * 100).toStringAsFixed(1)}% Terbayar',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.green,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       
                       const SizedBox(height: 16),
                       
@@ -336,7 +418,7 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              'Status: $status',
+                              'Status: ${status.toUpperCase()}',
                               style: TextStyle(
                                 color: _getStatusColor(status),
                                 fontWeight: FontWeight.bold,
@@ -364,6 +446,7 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     child: const Text('Tutup'),
                   ),
@@ -446,11 +529,49 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
     );
   }
 
+  // ✅ PERBAIKAN: Build empty state widget
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.payments_outlined, size: 80, color: Colors.grey[400]),
+          const SizedBox(height: 16),
+          const Text(
+            'Belum ada riwayat taqsith',
+            style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 40),
+            child: Text(
+              'Data riwayat pembiayaan akan muncul setelah Anda melakukan transaksi taqsith',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
+            onPressed: _loadRiwayatAngsuran,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Refresh Data'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final totalSemuaAngsuran = _getTotalAngsuran('semua');
+    final filteredCount = _filteredRiwayat.length;
 
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(70.0),
         child: AppBar(
@@ -497,7 +618,7 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
               children: [
                 const Text(
                   'Total Semua Taqsith',
-                  style: TextStyle(fontSize: 16, color: Colors.green),
+                  style: TextStyle(fontSize: 16, color: Colors.green, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -510,8 +631,8 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '${_filteredRiwayat.length} transaksi',
-                  style: TextStyle(color: Colors.green[600]),
+                  '$filteredCount transaksi',
+                  style: TextStyle(color: Colors.green[600], fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -523,6 +644,13 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
@@ -544,7 +672,7 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
                     margin: const EdgeInsets.only(right: 8),
                     decoration: BoxDecoration(
                       color: isSelected 
-                          ? (type['color'] as Color).withOpacity(0.2)
+                          ? (type['color'] as Color).withOpacity(0.15)
                           : Colors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
@@ -555,7 +683,7 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withOpacity(isSelected ? 0.1 : 0.05),
                           blurRadius: 4,
                           offset: const Offset(0, 2),
                         ),
@@ -582,10 +710,10 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
                         const SizedBox(height: 4),
                         Text(
                           _formatCurrency(totalAngsuran),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
-                            color: Colors.black54,
+                            color: isSelected ? Colors.black87 : Colors.black54,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -599,12 +727,9 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
 
           // ✅ Loading Indicator
           if (_isLoading) 
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: LinearProgressIndicator(
-                backgroundColor: Colors.green,
-                color: Colors.green,
-              ),
+            const LinearProgressIndicator(
+              backgroundColor: Colors.green,
+              color: Colors.green,
             ),
 
           // ✅ Riwayat List
@@ -626,31 +751,14 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
                 : _hasError
                     ? _buildErrorWidget()
                     : _filteredRiwayat.isEmpty
-                        ? const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.payments, size: 64, color: Colors.grey),
-                                SizedBox(height: 16),
-                                Text(
-                                  'Belum ada riwayat taqsith',
-                                  style: TextStyle(fontSize: 16, color: Colors.grey),
-                                ),
-                                SizedBox(height: 8),
-                                Text(
-                                  'Data akan muncul setelah melakukan pembiayaan',
-                                  style: TextStyle(fontSize: 14, color: Colors.grey),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                            ),
-                          )
+                        ? _buildEmptyState()
                         : RefreshIndicator(
                             onRefresh: _loadRiwayatAngsuran,
                             color: Colors.green,
                             backgroundColor: Colors.white,
-                            child: ListView.builder(
+                            child: ListView.separated(
                               itemCount: _filteredRiwayat.length,
+                              separatorBuilder: (context, index) => const SizedBox(height: 4),
                               itemBuilder: (context, index) {
                                 final angsuran = _filteredRiwayat[index];
                                 final jumlah = (angsuran['jumlah'] as num?)?.toInt() ?? 0;
@@ -658,7 +766,7 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
                                 final sisaAngsuran = (angsuran['sisa_angsuran'] as num?)?.toInt() ?? 0;
                                 final status = angsuran['status']?.toString() ?? 'Pending';
                                 final keterangan = angsuran['keterangan']?.toString() ?? 'Angsuran ${_getAngsuranName(jenisTabungan)}';
-                                final tanggal = angsuran['tanggal']?.toString() ?? '';
+                                final tanggal = _formatTanggal(angsuran['tanggal']?.toString());
 
                                 return Card(
                                   margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),

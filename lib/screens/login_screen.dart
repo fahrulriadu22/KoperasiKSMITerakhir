@@ -19,70 +19,52 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscureText = true;
 
-void _handleLogin() async {
-  if (!_formKey.currentState!.validate()) return;
+  void _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
 
-  setState(() => _isLoading = true);
+    setState(() => _isLoading = true);
 
-  final input = inputController.text.trim();
-  final pass = passwordController.text.trim();
+    final input = inputController.text.trim();
+    final pass = passwordController.text.trim();
 
-  try {
-    final result = await _authService.login(input, pass);
+    try {
+      final result = await _authService.login(input, pass);
 
-    print('🔐 Login Result:');
-    print('   - Success: ${result['success']}');
-    print('   - Message: ${result['message']}');
-    print('   - Token: ${result['token']}');
-    print('   - User Data: ${result['user']}');
-    print('   - User Keys: ${result['user']?.keys}');
+      print('🔐 Login Result:');
+      print('   - Success: ${result['success']}');
+      print('   - Message: ${result['message']}');
+      print('   - Token: ${result['token']}');
+      print('   - User Data: ${result['user']}');
 
-    if (result['success'] == true) {
-      if (!mounted) return;
-      
-      final user = result['user'];
-      
-      // ✅ DEBUG: CEK STRUKTUR USER YANG SEBENARNYA
-      print('🔍 DETAIL USER STRUCTURE:');
-      user?.forEach((key, value) {
-        print('   - $key: $value');
-      });
-      
-      // ✅ CEK APAKAH SUDAH UPLOAD DOKUMEN (sesuai structure sebenarnya)
-      final bool sudahUploadKTP = user?['foto_ktp'] != null && user['foto_ktp'].toString().isNotEmpty;
-      final bool sudahUploadKK = user?['foto_kk'] != null && user['foto_kk'].toString().isNotEmpty;
-      final bool sudahUploadDiri = user?['foto_diri'] != null && user['foto_diri'].toString().isNotEmpty;
-
-      print('🔍 Status Upload Dokumen:');
-      print('   - KTP: $sudahUploadKTP (${user?['foto_ktp']})');
-      print('   - KK: $sudahUploadKK (${user?['foto_kk']})');
-      print('   - Foto Diri: $sudahUploadDiri (${user?['foto_diri']})');
-
-      if (sudahUploadKTP && sudahUploadKK && sudahUploadDiri) {
-        // ✅ SUDAH UPLOAD SEMUA DOKUMEN, LANGSUNG KE DASHBOARD
+      if (result['success'] == true) {
+        if (!mounted) return;
+        
+        final user = result['user'];
+        
+        // ✅ DEBUG: CEK STRUKTUR USER YANG SEBENARNYA
+        print('🔍 DETAIL USER STRUCTURE:');
+        user?.forEach((key, value) {
+          print('   - $key: $value');
+        });
+        
+        // ✅ SIMPLE CHECK: Langsung ke dashboard karena upload foto
+        // handle di profile screen, bukan di login
         print('🎯 Navigasi ke Dashboard');
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => DashboardMain(user: user!)),
         );
+        
       } else {
-        // ✅ BELUM UPLOAD, ARAH KE UPLOAD DOKUMEN
-        print('🎯 Navigasi ke Upload Dokumen');
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => UploadDokumenScreen(user: user!)),
-        );
+        _showErrorDialog(result['message'] ?? 'Login gagal. Silakan coba lagi.');
       }
-    } else {
-      _showErrorDialog(result['message'] ?? 'Login gagal. Silakan coba lagi.');
+    } catch (e) {
+      print('❌ Login error: $e');
+      _showErrorDialog('Terjadi kesalahan saat login: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-  } catch (e) {
-    print('❌ Login error: $e');
-    _showErrorDialog('Terjadi kesalahan saat login: $e');
-  } finally {
-    if (mounted) setState(() => _isLoading = false);
   }
-}
 
   void _showErrorDialog(String message) {
     showDialog(
@@ -98,14 +80,6 @@ void _handleLogin() async {
         ],
       ),
     );
-  }
-
-  // ✅ TEST LOGIN FUNCTION (untuk debugging)
-  void _testLogin() async {
-    // Test dengan credential default
-    inputController.text = 'sonik';
-    passwordController.text = 'sonik';
-    _handleLogin();
   }
 
   @override
@@ -268,27 +242,6 @@ void _handleLogin() async {
                             ),
                     ),
                   ),
-
-                  // ✅ TOMBOL TEST LOGIN (Hanya untuk development)
-                  if (true) // Set false untuk production
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 40,
-                      child: OutlinedButton(
-                        onPressed: _isLoading ? null : _testLogin,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.green[700],
-                          side: BorderSide(color: Colors.green[700]!),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: const Text(
-                          'Test Login (sonik/sonik)',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 16),
 
                   // ✅ TOMBOL REGISTER
                   TextButton(

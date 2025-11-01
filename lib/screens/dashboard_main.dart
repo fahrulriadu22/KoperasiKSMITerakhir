@@ -92,11 +92,12 @@ class _DashboardMainState extends State<DashboardMain> {
     try {
       final result = await _apiService.getAllInbox();
       if (result['success'] == true) {
-        final inboxList = result['data'] ?? [];
+        final data = result['data'] ?? {};
+        final inboxList = data['inbox'] ?? [];
         final unreadCount = inboxList.where((item) {
-          // ✅ Handle berbagai format field is_read
-          final isRead = item['is_read'] ?? item['read'] ?? '0';
-          return isRead == '0' || isRead == 0 || isRead == false;
+          // ✅ Handle berbagai format field read_status
+          final readStatus = item['read_status'] ?? item['is_read'] ?? '0';
+          return readStatus == '0' || readStatus == 0 || readStatus == false;
         }).length;
         
         setState(() {
@@ -135,9 +136,8 @@ class _DashboardMainState extends State<DashboardMain> {
     setState(() => _selectedIndex = index);
   }
 
-  // ✅ Method untuk buka notifikasi - DISABLED KARENA INBOX SCREEN TIDAK ADA
+  // ✅ Method untuk buka notifikasi - SIMPLE VERSION
   void _openNotifications() {
-    // ✅ TAMPILKAN SNACKBAR INFORMASI dengan data real
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -149,38 +149,6 @@ class _DashboardMainState extends State<DashboardMain> {
         backgroundColor: _unreadNotifications > 0 ? Colors.orange : Colors.green,
       ),
     );
-  }
-
-  // ✅ Method untuk mark all as read
-  Future<void> _markAllAsRead() async {
-    try {
-      final result = await _apiService.getInboxReadAll();
-      if (result['success'] == true) {
-        setState(() {
-          _unreadNotifications = 0;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? 'Semua pesan ditandai sudah dibaca'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? 'Gagal menandai pesan sebagai dibaca'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
   }
 
   @override
@@ -222,7 +190,7 @@ class _DashboardMainState extends State<DashboardMain> {
     );
   }
 
-  // ✅ APP BAR DENGAN NOTIFIKASI - DIPERBAIKI
+  // ✅ APP BAR DENGAN NOTIFIKASI - VERSI SIMPLE COMPATIBLE
   AppBar _buildAppBar() {
     return AppBar(
       backgroundColor: Colors.green[800],
@@ -236,74 +204,43 @@ class _DashboardMainState extends State<DashboardMain> {
         ),
       ),
       actions: [
-        // ✅ Icon Notifikasi dengan Badge - SEKARANG DENGAN FITUR MARK AS READ
-        if (_unreadNotifications > 0)
-          PopupMenuButton<String>(
-            icon: Stack(
-              children: [
-                const Icon(Icons.notifications_rounded),
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(10),
+        // ✅ Icon Notifikasi dengan Badge - SIMPLE VERSION
+        Stack(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications_rounded),
+              onPressed: _openNotifications,
+              tooltip: _unreadNotifications > 0 
+                ? '$_unreadNotifications pesan belum dibaca' 
+                : 'Tidak ada notifikasi baru',
+            ),
+            if (_unreadNotifications > 0)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 16,
+                    minHeight: 16,
+                  ),
+                  child: Text(
+                    _unreadNotifications > 9 ? '9+' : _unreadNotifications.toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
                     ),
-                    constraints: const BoxConstraints(
-                      minWidth: 16,
-                      minHeight: 16,
-                    ),
-                    child: Text(
-                      _unreadNotifications > 9 ? '9+' : _unreadNotifications.toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
-              ],
-            ),
-            onSelected: (value) {
-              if (value == 'mark_read') {
-                _markAllAsRead();
-              } else if (value == 'view') {
-                _openNotifications();
-              }
-            },
-            itemBuilder: (BuildContext context) => [
-              PopupMenuItem<String>(
-                value: 'view',
-                child: Row(
-                  children: [
-                    const Icon(Icons.message, color: Colors.grey),
-                    const SizedBox(width: 8),
-                    Text('Lihat Notifikasi ($_unreadNotifications)'),
-                  ],
-                ),
               ),
-              PopupMenuItem<String>(
-                value: 'mark_read',
-                child: Row(
-                  children: [
-                    const Icon(Icons.mark_email_read, color: Colors.green),
-                    const SizedBox(width: 8),
-                    const Text('Tandai Semua Dibaca'),
-                  ],
-                ),
-              ),
-            ],
-          )
-        else
-          IconButton(
-            icon: const Icon(Icons.notifications_none_rounded),
-            onPressed: _openNotifications,
-            tooltip: 'Tidak ada notifikasi baru',
-          ),
+          ],
+        ),
         
         // ✅ Refresh Button
         IconButton(

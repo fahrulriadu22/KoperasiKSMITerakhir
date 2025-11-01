@@ -1,14 +1,39 @@
-name: Build APK
-on: [push]
+name: Build APK Koperasi KSMI
+
+on: 
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-      - run: flutter pub get
-      - run: flutter build apk --debug
-      - uses: actions/upload-artifact@v4
-        with:
-          name: app-debug
-          path: build/app/outputs/flutter-apk/
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.16.0'
+        
+    - name: Install dependencies
+      run: flutter pub get
+      
+    - name: Generate app icons
+      run: flutter pub run flutter_launcher_icons
+      
+    - name: Verify Flutter installation
+      run: flutter doctor
+      
+    - name: Build APK Debug
+      run: flutter build apk --debug --no-tree-shake-icons
+      
+    - name: Upload APK Debug
+      uses: actions/upload-artifact@v4
+      with:
+        name: koperasi-ksmi-debug-v1.0.0
+        path: build/app/outputs/flutter-apk/app-debug.apk
+        retention-days: 7

@@ -97,7 +97,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // ✅ LOAD DATA SALDO DAN ANGSURAN DARI API
+  // ✅ LOAD DATA SALDO DAN ANGSURAN DARI API - COMPATIBLE VERSION
   Future<void> _loadDataFromApi() async {
     try {
       setState(() => _isLoading = true);
@@ -163,7 +163,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _getApiValue('taqsith', _saldoData);
   }
 
-  // ✅ LOGOUT FUNCTION dengan session management
+  // ✅ LOGOUT FUNCTION dengan session management - COMPATIBLE
   Future<void> _logout() async {
     bool confirm = await showDialog(
       context: context,
@@ -195,7 +195,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ✅ REFRESH DATA FUNCTION
+  // ✅ REFRESH DATA FUNCTION - COMPATIBLE
   Future<void> _refreshData() async {
     // Refresh user data dari session
     await _loadCurrentUser();

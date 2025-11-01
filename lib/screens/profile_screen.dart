@@ -72,7 +72,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ✅ FITUR UPLOAD FOTO PROFILE - MENGGUNAKAN METHOD BARU
+  // ✅ FITUR UPLOAD FOTO PROFILE - COMPATIBLE DENGAN API SERVICE BARU
   Future<void> _uploadPhoto() async {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
@@ -85,7 +85,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (pickedFile != null) {
         _showUploadingDialog('Mengupload Foto Profile...');
 
-        // ✅ GUNAKAN METHOD uploadFoto DENGAN TYPE 'foto_diri'
+        // ✅ GUNAKAN METHOD uploadFoto DENGAN TYPE 'foto_diri' - COMPATIBLE
         final success = await _apiService.uploadFoto(
           type: 'foto_diri',
           filePath: pickedFile.path,
@@ -95,10 +95,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Navigator.pop(context);
 
         if (success) {
-          // ✅ Update local state
-          setState(() {
-            _currentUser['foto_diri'] = 'uploaded';
-          });
+          // ✅ Refresh user data untuk mendapatkan update terbaru
+          await _loadCurrentUser();
           
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -128,7 +126,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ✅ FITUR AMBIL FOTO DARI KAMERA
+  // ✅ FITUR AMBIL FOTO DARI KAMERA - COMPATIBLE
   Future<void> _takePhoto() async {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
@@ -141,7 +139,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (pickedFile != null) {
         _showUploadingDialog('Mengupload Foto Profile...');
 
-        // ✅ GUNAKAN METHOD uploadFoto DENGAN TYPE 'foto_diri'
+        // ✅ GUNAKAN METHOD uploadFoto DENGAN TYPE 'foto_diri' - COMPATIBLE
         final success = await _apiService.uploadFoto(
           type: 'foto_diri',
           filePath: pickedFile.path,
@@ -151,9 +149,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Navigator.pop(context);
 
         if (success) {
-          setState(() {
-            _currentUser['foto_diri'] = 'uploaded';
-          });
+          // ✅ Refresh user data untuk mendapatkan update terbaru
+          await _loadCurrentUser();
           
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -177,6 +174,108 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error saat mengambil foto: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // ✅ UPLOAD FOTO KTP
+  Future<void> _uploadKTP() async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 80,
+      );
+
+      if (pickedFile != null) {
+        _showUploadingDialog('Mengupload Foto KTP...');
+
+        final success = await _apiService.uploadFoto(
+          type: 'foto_ktp',
+          filePath: pickedFile.path,
+        );
+
+        if (!mounted) return;
+        Navigator.pop(context);
+
+        if (success) {
+          await _loadCurrentUser();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Foto KTP berhasil diupload ✅'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Gagal upload foto KTP'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error saat upload KTP: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // ✅ UPLOAD FOTO KK
+  Future<void> _uploadKK() async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 80,
+      );
+
+      if (pickedFile != null) {
+        _showUploadingDialog('Mengupload Foto KK...');
+
+        final success = await _apiService.uploadFoto(
+          type: 'foto_kk',
+          filePath: pickedFile.path,
+        );
+
+        if (!mounted) return;
+        Navigator.pop(context);
+
+        if (success) {
+          await _loadCurrentUser();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Foto KK berhasil diupload ✅'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Gagal upload foto KK'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error saat upload KK: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -250,7 +349,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ✅ LOGOUT FUNCTION
+  void _showDocumentOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Upload Dokumen',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[800],
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: Icon(Icons.credit_card, color: Colors.blue[700]),
+              title: const Text('Upload KTP'),
+              onTap: () {
+                Navigator.pop(context);
+                _uploadKTP();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.family_restroom, color: Colors.green[700]),
+              title: const Text('Upload Kartu Keluarga'),
+              onTap: () {
+                Navigator.pop(context);
+                _uploadKK();
+              },
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Batal'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ LOGOUT FUNCTION - COMPATIBLE
   Future<void> _logout() async {
     bool confirm = await showDialog(
       context: context,
@@ -281,7 +424,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ✅ REFRESH PROFILE DATA
+  // ✅ REFRESH PROFILE DATA - COMPATIBLE
   Future<void> _refreshProfile() async {
     await _loadCurrentUser();
     
@@ -427,6 +570,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 30),
+
+            // ✅ DOKUMEN SECTION
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.folder_open, color: Colors.orange[700]),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Dokumen',
+                          style: TextStyle(
+                            fontSize: 18, 
+                            fontWeight: FontWeight.bold
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 20),
+                    _buildDocumentStatus('KTP', _currentUser['foto_ktp']),
+                    _buildDocumentStatus('Kartu Keluarga', _currentUser['foto_kk']),
+                    _buildDocumentStatus('Foto Diri', _currentUser['foto_diri']),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _showDocumentOptions,
+                        icon: Icon(Icons.upload, color: Colors.green[700]),
+                        label: Text(
+                          'Upload Dokumen',
+                          style: TextStyle(color: Colors.green[700]),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
 
             // ✅ INFORMASI PRIBADI
             Card(
@@ -675,6 +863,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDocumentStatus(String docName, dynamic status) {
+    final isUploaded = status != null && status.toString().isNotEmpty && status != 'uploaded';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(
+            isUploaded ? Icons.check_circle : Icons.pending,
+            color: isUploaded ? Colors.green : Colors.orange,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              docName,
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: isUploaded ? Colors.green[50] : Colors.orange[50],
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: isUploaded ? Colors.green[200]! : Colors.orange[200]!,
+              ),
+            ),
+            child: Text(
+              isUploaded ? 'Terverifikasi' : 'Belum Upload',
+              style: TextStyle(
+                fontSize: 10,
+                color: isUploaded ? Colors.green[700] : Colors.orange[700],
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],

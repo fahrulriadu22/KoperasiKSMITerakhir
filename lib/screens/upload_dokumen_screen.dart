@@ -38,175 +38,88 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     print('   - Foto Diri: ${widget.user['foto_diri']}');
   }
 
-  // ✅ UPLOAD KTP - DENGAN DEBUG
+  // ✅ GENERIC UPLOAD METHOD
+  Future<void> _uploadDocument(String type, Function(File) setFile, Function(bool) setLoading) async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1200,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+
+      if (pickedFile != null) {
+        setState(() => setLoading(true));
+        
+        final file = File(pickedFile.path);
+        print('📤 Uploading $type: ${file.path}');
+        
+        final success = await _apiService.uploadFoto(
+          type: type,
+          filePath: pickedFile.path,
+        );
+
+        setState(() => setLoading(false));
+
+        if (success) {
+          setState(() => setFile(file));
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('$type berhasil diupload ✅'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Gagal upload $type'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => setLoading(false));
+      print('❌ Error upload $type: $e');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error upload $type: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // ✅ UPLOAD KTP
   Future<void> _uploadKTP() async {
-    try {
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1200,
-        maxHeight: 800,
-        imageQuality: 85,
-      );
-
-      if (pickedFile != null) {
-        setState(() => _isUploadingKTP = true);
-        
-        final file = File(pickedFile.path);
-        print('📤 Uploading KTP: ${file.path}');
-        
-        // ✅ GUNAKAN METHOD uploadFoto
-        final success = await _apiService.uploadFoto(
-          type: 'foto_ktp',
-          filePath: pickedFile.path,
-        );
-
-        setState(() => _isUploadingKTP = false);
-
-        if (success) {
-          setState(() {
-            _ktpFile = file;
-          });
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('KTP berhasil diupload ✅'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Gagal upload KTP'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      setState(() => _isUploadingKTP = false);
-      print('❌ Error upload KTP: $e');
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+    await _uploadDocument(
+      'foto_ktp',
+      (file) => _ktpFile = file,
+      (loading) => _isUploadingKTP = loading,
+    );
   }
 
-  // ✅ UPLOAD KK - DENGAN DEBUG
+  // ✅ UPLOAD KK
   Future<void> _uploadKK() async {
-    try {
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1200,
-        maxHeight: 800,
-        imageQuality: 85,
-      );
-
-      if (pickedFile != null) {
-        setState(() => _isUploadingKK = true);
-        
-        final file = File(pickedFile.path);
-        print('📤 Uploading KK: ${file.path}');
-        
-        final success = await _apiService.uploadFoto(
-          type: 'foto_kk',
-          filePath: pickedFile.path,
-        );
-
-        setState(() => _isUploadingKK = false);
-
-        if (success) {
-          setState(() {
-            _kkFile = file;
-          });
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Kartu Keluarga berhasil diupload ✅'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Gagal upload Kartu Keluarga'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      setState(() => _isUploadingKK = false);
-      print('❌ Error upload KK: $e');
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+    await _uploadDocument(
+      'foto_kk',
+      (file) => _kkFile = file,
+      (loading) => _isUploadingKK = loading,
+    );
   }
 
-  // ✅ UPLOAD FOTO DIRI - DENGAN DEBUG
+  // ✅ UPLOAD FOTO DIRI
   Future<void> _uploadFotoDiri() async {
-    try {
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1200,
-        maxHeight: 800,
-        imageQuality: 85,
-      );
-
-      if (pickedFile != null) {
-        setState(() => _isUploadingFotoDiri = true);
-        
-        final file = File(pickedFile.path);
-        print('📤 Uploading Foto Diri: ${file.path}');
-        
-        final success = await _apiService.uploadFoto(
-          type: 'foto_diri',
-          filePath: pickedFile.path,
-        );
-
-        setState(() => _isUploadingFotoDiri = false);
-
-        if (success) {
-          setState(() {
-            _fotoDiriFile = file;
-          });
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Foto diri berhasil diupload ✅'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Gagal upload foto diri'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      setState(() => _isUploadingFotoDiri = false);
-      print('❌ Error upload Foto Diri: $e');
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+    await _uploadDocument(
+      'foto_diri',
+      (file) => _fotoDiriFile = file,
+      (loading) => _isUploadingFotoDiri = loading,
+    );
   }
 
+  // ✅ LANJUT KE DASHBOARD
   void _lanjutKeDashboard() {
     print('🎯 Lanjut ke Dashboard');
     
@@ -216,10 +129,34 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     updatedUser['foto_kk'] = _kkFile != null ? 'uploaded' : null;
     updatedUser['foto_diri'] = _fotoDiriFile != null ? 'uploaded' : null;
 
-    Navigator.pushReplacement(
+    // ✅ Navigasi ke dashboard
+    Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(
-        builder: (_) => DashboardMain(user: updatedUser),
+      MaterialPageRoute(builder: (_) => DashboardMain(user: updatedUser)),
+      (route) => false,
+    );
+  }
+
+  // ✅ SHOW IMAGE SOURCE DIALOG
+  void _showImageSourceDialog(Function() onGallery) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pilih Sumber Gambar'),
+        content: const Text('Pilih gambar dari galeri'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              onGallery();
+            },
+            child: const Text('Galeri'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Batal'),
+          ),
+        ],
       ),
     );
   }
@@ -233,10 +170,16 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
 
     return Scaffold(
       backgroundColor: Colors.green[50],
+      appBar: AppBar(
+        title: const Text('Upload Dokumen'),
+        backgroundColor: Colors.green[800],
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
       body: SafeArea(
         child: Column(
           children: [
-            // HEADER - FIXED HEIGHT
+            // HEADER
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
@@ -291,7 +234,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
               ),
             ),
 
-            // CONTENT - SCROLLABLE
+            // CONTENT
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
@@ -299,39 +242,45 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                   children: [
                     // KTP CARD
                     _buildDokumenCard(
-                      title: 'KTP',
-                      description: 'Upload foto KTP yang jelas',
+                      title: 'KTP (Kartu Tanda Penduduk)',
+                      description: 'Upload foto KTP yang jelas dan terbaca\n• Pastikan foto tidak blur\n• Semua informasi terbaca jelas\n• Format JPG/PNG',
                       icon: Icons.credit_card,
                       color: Colors.blue,
                       isUploaded: isKTPUploaded,
                       isUploading: _isUploadingKTP,
-                      onUpload: _uploadKTP,
+                      onUpload: () => _showImageSourceDialog(_uploadKTP),
                     ),
                     const SizedBox(height: 16),
 
                     // KK CARD
                     _buildDokumenCard(
-                      title: 'Kartu Keluarga',
-                      description: 'Upload foto KK yang jelas',
+                      title: 'Kartu Keluarga (KK)',
+                      description: 'Upload foto KK yang jelas dan terbaca\n• Pastikan foto tidak blur\n• Semua halaman penting terbaca\n• Format JPG/PNG',
                       icon: Icons.family_restroom,
                       color: Colors.green,
                       isUploaded: isKKUploaded,
                       isUploading: _isUploadingKK,
-                      onUpload: _uploadKK,
+                      onUpload: () => _showImageSourceDialog(_uploadKK),
                     ),
                     const SizedBox(height: 16),
 
                     // FOTO DIRI CARD
                     _buildDokumenCard(
-                      title: 'Foto Diri',
-                      description: 'Upload pas foto terbaru',
+                      title: 'Foto Diri Terbaru',
+                      description: 'Upload pas foto terbaru\n• Latar belakang polos\n• Wajah terlihat jelas\n• Ekspresi netral\n• Format JPG/PNG',
                       icon: Icons.person,
                       color: Colors.orange,
                       isUploaded: isFotoDiriUploaded,
                       isUploading: _isUploadingFotoDiri,
-                      onUpload: _uploadFotoDiri,
+                      onUpload: () => _showImageSourceDialog(_uploadFotoDiri),
                     ),
                     const SizedBox(height: 32),
+
+                    // PREVIEW SECTION (jika ada file yang diupload)
+                    if (_ktpFile != null || _kkFile != null || _fotoDiriFile != null) ...[
+                      _buildPreviewSection(),
+                      const SizedBox(height: 16),
+                    ],
 
                     // TOMBOL LANJUT
                     SizedBox(
@@ -345,14 +294,24 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
+                          elevation: 2,
                         ),
-                        child: const Text(
-                          'Lanjut ke Dashboard',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                'Lanjut ke Dashboard',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                       ),
                     ),
 
@@ -372,7 +331,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Upload semua dokumen untuk melanjutkan',
+                                'Upload semua dokumen (KTP, KK, dan Foto Diri) untuk melanjutkan ke dashboard',
                                 style: TextStyle(
                                   color: Colors.orange[700],
                                   fontSize: 12,
@@ -389,6 +348,65 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ✅ PREVIEW SECTION
+  Widget _buildPreviewSection() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.photo_library, color: Colors.green[700]),
+                const SizedBox(width: 8),
+                Text(
+                  'Dokumen Terupload',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green[800],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (_ktpFile != null) _buildPreviewItem('KTP', _ktpFile!),
+            if (_kkFile != null) _buildPreviewItem('Kartu Keluarga', _kkFile!),
+            if (_fotoDiriFile != null) _buildPreviewItem('Foto Diri', _fotoDiriFile!),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPreviewItem(String title, File file) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle, color: Colors.green, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+          Text(
+            '${(file.lengthSync() / 1024).toStringAsFixed(1)} KB',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -465,15 +483,16 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
                     description,
                     style: TextStyle(
                       fontSize: 12,
                       color: Colors.grey[600],
+                      height: 1.4,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Icon(

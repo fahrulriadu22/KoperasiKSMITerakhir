@@ -85,7 +85,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
   bool _obscureText = true;
   bool _obscureConfirmText = true;
-  bool _agreedToTerms = false; // ✅ FIX: Tambah state untuk persetujuan
+  bool _agreedToTerms = false;
 
   @override
   void initState() {
@@ -93,62 +93,74 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _loadMasterData();
   }
 
-  // ✅ LOAD DATA PROVINSI, AGAMA, CABANG DARI API - FIXED
-// ✅ LOAD DATA PROVINSI, AGAMA, CABANG DARI API - DEEP DEBUG
-Future<void> _loadMasterData() async {
-  try {
-    setState(() => _isLoading = true);
-    
-    print('🔄 Loading master data...');
-    
-    // Load provinsi
-    final provinsiResult = await _apiService.getProvince();
-    print('📍 Provinsi result: ${provinsiResult['success']}');
-    print('📍 Provinsi data length: ${provinsiResult['data']?.length}');
-    if (provinsiResult['data'] != null && provinsiResult['data']!.isNotEmpty) {
-      print('📍 Sample provinsi: ${provinsiResult['data']![0]}');
-    }
+  // ✅ LOAD DATA PROVINSI, AGAMA, CABANG DARI API
+  Future<void> _loadMasterData() async {
+    try {
+      setState(() => _isLoading = true);
+      
+      print('🔄 ========== LOADING MASTER DATA ==========');
+      
+      // Load provinsi
+      print('📍 Loading provinsi...');
+      final provinsiResult = await _apiService.getProvince();
+      print('📍 Provinsi success: ${provinsiResult['success']}');
+      
+      if (provinsiResult['success'] == true && provinsiResult['data'] != null) {
+        _provinsiList = provinsiResult['data']!;
+        print('📍 Provinsi loaded: ${_provinsiList.length} items');
+      }
 
-    // Load master data untuk agama dan cabang
-    final masterResult = await _apiService.getMasterData();
-    print('📦 Master data success: ${masterResult['success']}');
-    print('📦 Master data keys: ${masterResult['data']?.keys}');
-    
-    if (masterResult['success'] == true && masterResult['data'] != null) {
-      final data = masterResult['data']!;
+      // Load master data untuk agama dan cabang
+      print('🕌 Loading master data (agama & cabang)...');
+      final masterResult = await _apiService.getMasterData();
+      print('🕌 Master success: ${masterResult['success']}');
       
-      // Debug agama
-      _agamaList = data['agama'] ?? [];
-      print('🕌 Agama list length: ${_agamaList.length}');
-      if (_agamaList.isNotEmpty) {
-        print('🕌 Sample agama:');
-        for (int i = 0; i < _agamaList.length && i < 3; i++) {
-          print('   - ${_agamaList[i]}');
-        }
+      if (masterResult['success'] == true && masterResult['data'] != null) {
+        final data = masterResult['data']!;
+        
+        _agamaList = data['agama'] ?? [];
+        _cabangList = data['cabang'] ?? [];
+        
+        print('🕌 Agama list: ${_agamaList.length} items');
+        print('🏢 Cabang list: ${_cabangList.length} items');
+        
+        setState(() {});
+      } else {
+        print('❌ Master data failed: ${masterResult['message']}');
+        _setupFallbackData();
       }
-      
-      // Debug cabang
-      _cabangList = data['cabang'] ?? [];
-      print('🏢 Cabang list length: ${_cabangList.length}');
-      if (_cabangList.isNotEmpty) {
-        print('🏢 Sample cabang:');
-        for (int i = 0; i < _cabangList.length && i < 3; i++) {
-          print('   - ${_cabangList[i]}');
-        }
-      }
-      
-      setState(() {});
-    } else {
-      print('❌ Master data failed: ${masterResult['message']}');
+    } catch (e) {
+      print('❌ Error loading master data: $e');
+      _setupFallbackData();
+    } finally {
+      setState(() => _isLoading = false);
     }
-  } catch (e) {
-    print('❌ Error loading master data: $e');
-  } finally {
-    setState(() => _isLoading = false);
   }
-}
 
-  // ✅ LOAD KOTA BERDASARKAN PROVINSI - FIXED
+  // ✅ FALLBACK DATA JIKA API TIDAK BISA
+  void _setupFallbackData() {
+    print('🔄 Setting up fallback data...');
+    
+    _agamaList = [
+      {'id': '1', 'nama': 'Islam'},
+      {'id': '2', 'nama': 'Kristen'},
+      {'id': '3', 'nama': 'Katolik'},
+      {'id': '4', 'nama': 'Hindu'},
+      {'id': '5', 'nama': 'Buddha'},
+      {'id': '6', 'nama': 'Konghucu'},
+    ];
+    
+    _cabangList = [
+      {'id': '1', 'nama': 'Cabang Pusat'},
+      {'id': '2', 'nama': 'Cabang Utama'},
+      {'id': '3', 'nama': 'Cabang Pembantu'},
+    ];
+    
+    setState(() {});
+    print('✅ Fallback data setup complete');
+  }
+
+  // ✅ LOAD KOTA BERDASARKAN PROVINSI
   Future<void> _loadKota(String idProvinsi, bool forKtp) async {
     try {
       final result = await _apiService.getRegency(idProvinsi);
@@ -168,7 +180,7 @@ Future<void> _loadMasterData() async {
     }
   }
 
-  // ✅ HANDLE REGISTER - FIXED
+  // ✅ HANDLE REGISTER
   void _handleRegister() async {
     if (!_validateAllForms()) return;
 
@@ -256,10 +268,12 @@ Future<void> _loadMasterData() async {
     }
   }
 
+  // ✅ FIXED: VALIDATE ALL FORMS - NULL SAFETY
   bool _validateAllForms() {
     for (int i = 0; i < _formKeys.length; i++) {
-      if (!_formKeys[i].currentState!.validate()) {
-        setState(() => _currentStep = i + (_currentStep == 0 ? 0 : 0)); // Adjust step logic
+      final formKey = _formKeys[i];
+      if (formKey.currentState != null && !formKey.currentState!.validate()) {
+        setState(() => _currentStep = i);
         return false;
       }
     }
@@ -316,7 +330,7 @@ Future<void> _loadMasterData() async {
     }
   }
 
-  // ✅ VALIDATION METHODS
+  // ✅ VALIDATION METHODS - FIXED NULL SAFETY
   String? _validateRequired(String? value, String fieldName) {
     if (value == null || value.isEmpty) {
       return '$fieldName wajib diisi';
@@ -364,6 +378,14 @@ Future<void> _loadMasterData() async {
     return null;
   }
 
+  // ✅ FIXED: VALIDATOR FOR DROPDOWN
+  String? _validateDropdown(String? value, String fieldName) {
+    if (value == null || value.isEmpty) {
+      return '$fieldName wajib dipilih';
+    }
+    return null;
+  }
+
   // ✅ STEP CONTENT
   Widget _buildStepContent(int step) {
     switch (step) {
@@ -384,7 +406,7 @@ Future<void> _loadMasterData() async {
     }
   }
 
-  // ✅ STEP 0: INFORMASI KOPERASI - FIXED
+  // ✅ STEP 0: INFORMASI KOPERASI
   Widget _buildInfoStep() {
     return SingleChildScrollView(
       child: Column(
@@ -490,7 +512,7 @@ Future<void> _loadMasterData() async {
     );
   }
 
-  // ✅ STEP 1: DATA UMUM - FIXED OVERFLOW
+  // ✅ STEP 1: DATA UMUM
   Widget _buildDataUmumStep() {
     return Form(
       key: _formKeys[0],
@@ -538,7 +560,6 @@ Future<void> _loadMasterData() async {
             LayoutBuilder(
               builder: (context, constraints) {
                 if (constraints.maxWidth > 600) {
-                  // Desktop/Tablet layout
                   return Row(
                     children: [
                       Expanded(
@@ -563,7 +584,6 @@ Future<void> _loadMasterData() async {
                     ],
                   );
                 } else {
-                  // Mobile layout
                   return Column(
                     children: [
                       _buildTextField(
@@ -608,95 +628,67 @@ Future<void> _loadMasterData() async {
               icon: Icons.fax_outlined,
               keyboardType: TextInputType.phone,
             ),
-            const SizedBox(height: 16), // Extra space for scrolling
+            const SizedBox(height: 16),
           ],
         ),
       ),
     );
   }
 
-  // ✅ STEP 2: IDENTITAS - FIXED DROPDOWN
+  // ✅ STEP 2: IDENTITAS - DENGAN DROPDOWN FIXED
   Widget _buildIdentitasStep() {
     return Form(
       key: _formKeys[1],
       child: SingleChildScrollView(
         child: Column(
           children: [
-_buildDropdown(
-  label: 'Agama *',
-  value: agamaIdController.text.isEmpty ? null : agamaIdController.text,
-  items: _agamaList.isNotEmpty 
-      ? _agamaList.map((agama) {
-          final id = agama['id']?.toString() ?? '';
-          final nama = agama['nama']?.toString() ?? 'Unknown';
-          return DropdownMenuItem(
-            value: id,
-            child: Text(nama),
-          );
-        }).toList()
-      : [
-          DropdownMenuItem(
-            value: 'empty',
-            child: Text(
-              _isLoading ? 'Loading agama...' : 'Data agama tidak tersedia',
-              style: const TextStyle(color: Colors.grey),
+            // ✅ AGAMA DROPDOWN - FIXED
+            _buildDropdownFormField(
+              label: 'Agama *',
+              value: agamaIdController.text.isEmpty ? null : agamaIdController.text,
+              items: _agamaList.map((agama) {
+                final id = agama['id']?.toString() ?? '';
+                final nama = agama['nama']?.toString() ?? 'Unknown';
+                return DropdownMenuItem(
+                  value: id,
+                  child: Text(nama),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    agamaIdController.text = value;
+                  });
+                }
+              },
+              validator: (value) => _validateDropdown(value, 'Agama'),
             ),
-          )
-        ],
-  onChanged: _agamaList.isNotEmpty ? (value) {
-    if (value != null) {
-      setState(() {
-        agamaIdController.text = value;
-      });
-      print('✅ Agama dipilih: $value');
-    }
-  } : null,
-  validator: (v) {
-    if (agamaIdController.text.isEmpty) {
-      return 'Pilih agama terlebih dahulu';
-    }
-    return null;
-  },
-),
             const SizedBox(height: 16),
-_buildDropdown(
-  label: 'Cabang *',
-  value: cabangIdController.text.isEmpty ? null : cabangIdController.text,
-  items: _cabangList.isNotEmpty
-      ? _cabangList.map((cabang) {
-          final id = cabang['id']?.toString() ?? '';
-          final nama = cabang['nama']?.toString() ?? 'Unknown';
-          return DropdownMenuItem(
-            value: id,
-            child: Text(nama),
-          );
-        }).toList()
-      : [
-          DropdownMenuItem(
-            value: 'empty',
-            child: Text(
-              _isLoading ? 'Loading cabang...' : 'Data cabang tidak tersedia',
-              style: const TextStyle(color: Colors.grey),
+
+            // ✅ CABANG DROPDOWN - FIXED
+            _buildDropdownFormField(
+              label: 'Cabang *',
+              value: cabangIdController.text.isEmpty ? null : cabangIdController.text,
+              items: _cabangList.map((cabang) {
+                final id = cabang['id']?.toString() ?? '';
+                final nama = cabang['nama']?.toString() ?? 'Unknown';
+                return DropdownMenuItem(
+                  value: id,
+                  child: Text(nama),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    cabangIdController.text = value;
+                  });
+                }
+              },
+              validator: (value) => _validateDropdown(value, 'Cabang'),
             ),
-          )
-        ],
-  onChanged: _cabangList.isNotEmpty ? (value) {
-    if (value != null) {
-      setState(() {
-        cabangIdController.text = value;
-      });
-      print('✅ Cabang dipilih: $value');
-    }
-  } : null,
-  validator: (v) {
-    if (cabangIdController.text.isEmpty) {
-      return 'Pilih cabang terlebih dahulu';
-    }
-    return null;
-  },
-),
             const SizedBox(height: 16),
-            _buildDropdown(
+
+            _buildDropdownFormField(
               label: 'Jenis Identitas *',
               value: jenisIdentitasController.text,
               items: const [
@@ -707,7 +699,7 @@ _buildDropdown(
               onChanged: (value) {
                 setState(() => jenisIdentitasController.text = value!);
               },
-              validator: (v) => _validateRequired(jenisIdentitasController.text, 'Jenis identitas'),
+              validator: (value) => _validateDropdown(value, 'Jenis identitas'),
             ),
             const SizedBox(height: 16),
             _buildTextField(
@@ -726,7 +718,7 @@ _buildDropdown(
               }, DateTime.now().add(const Duration(days: 365 * 5))),
             ),
             const SizedBox(height: 16),
-            _buildDropdown(
+            _buildDropdownFormField(
               label: 'Dari mana Anda mengetahui kami? *',
               value: sumberInformasiController.text.isEmpty ? null : sumberInformasiController.text,
               items: _sumberInfoList.map((sumber) {
@@ -738,7 +730,7 @@ _buildDropdown(
               onChanged: (value) {
                 setState(() => sumberInformasiController.text = value!);
               },
-              validator: (v) => _validateRequired(sumberInformasiController.text, 'Sumber informasi'),
+              validator: (value) => _validateDropdown(value, 'Sumber informasi'),
             ),
             const SizedBox(height: 16),
           ],
@@ -747,7 +739,7 @@ _buildDropdown(
     );
   }
 
-  // ✅ STEP 3: DATA KTP - FIXED DROPDOWN
+  // ✅ STEP 3: DATA KTP
   Widget _buildDataKtpStep() {
     return Form(
       key: _formKeys[2],
@@ -819,29 +811,27 @@ _buildDropdown(
               },
             ),
             const SizedBox(height: 16),
-            _buildDropdown(
+            _buildDropdownFormField(
               label: 'Provinsi *',
               value: _selectedProvinsiKtp,
-              items: _provinsiList.isNotEmpty
-                  ? _provinsiList.map((provinsi) {
-                      return DropdownMenuItem(
-                        value: provinsi['id'].toString(),
-                        child: Text(provinsi['nama']?.toString() ?? 'Unknown'),
-                      );
-                    }).toList()
-                  : [const DropdownMenuItem(value: 'loading', child: Text('Loading...'))],
-              onChanged: _provinsiList.isNotEmpty ? (value) {
+              items: _provinsiList.map((provinsi) {
+                return DropdownMenuItem(
+                  value: provinsi['id'].toString(),
+                  child: Text(provinsi['nama']?.toString() ?? 'Unknown'),
+                );
+              }).toList(),
+              onChanged: (value) {
                 setState(() {
                   _selectedProvinsiKtp = value;
                   _selectedKotaKtp = null;
                   _kotaListKtp = [];
                 });
                 if (value != null) _loadKota(value, true);
-              } : null,
-              validator: (v) => _selectedProvinsiKtp == null ? 'Provinsi wajib dipilih' : null,
+              },
+              validator: (value) => _validateDropdown(value, 'Provinsi'),
             ),
             const SizedBox(height: 16),
-            _buildDropdown(
+            _buildDropdownFormField(
               label: 'Kabupaten/Kota *',
               value: _selectedKotaKtp,
               items: _kotaListKtp.isNotEmpty
@@ -851,11 +841,18 @@ _buildDropdown(
                         child: Text(kota['nama']?.toString() ?? 'Unknown'),
                       );
                     }).toList()
-                  : [const DropdownMenuItem(value: 'empty', child: Text('Pilih provinsi dulu'))],
+                  : [
+                      const DropdownMenuItem(
+                        value: 'empty',
+                        child: Text('Pilih provinsi dulu'),
+                      )
+                    ],
               onChanged: _kotaListKtp.isNotEmpty ? (value) {
-                setState(() => _selectedKotaKtp = value);
+                if (value != 'empty') {
+                  setState(() => _selectedKotaKtp = value);
+                }
               } : null,
-              validator: (v) => _selectedKotaKtp == null ? 'Kabupaten/Kota wajib dipilih' : null,
+              validator: (value) => _validateDropdown(value, 'Kabupaten/Kota'),
             ),
             const SizedBox(height: 16),
             _buildTextField(
@@ -872,81 +869,56 @@ _buildDropdown(
     );
   }
 
-  // ✅ STEP 4: DATA DOMISILI - FIXED
-  Widget _buildDataDomisiliStep() {
-    return Form(
-      key: _formKeys[3],
-      child: SingleChildScrollView(
-        child: Column(
-          children: [
-            Card(
-              child: CheckboxListTile(
-                title: const Text('Sama dengan alamat KTP'),
-                value: _sameAsKtp,
-                onChanged: (value) {
-                  setState(() => _sameAsKtp = value!);
-                  if (value!) {
-                    domisiliAlamatController.text = ktpAlamatController.text;
-                    domisiliNoController.text = ktpNoController.text;
-                    domisiliRtController.text = ktpRtController.text;
-                    domisiliRwController.text = ktpRwController.text;
-                    domisiliPostalController.text = ktpPostalController.text;
-                    _selectedProvinsiDomisili = _selectedProvinsiKtp;
-                    _selectedKotaDomisili = _selectedKotaKtp;
-                  }
-                },
-              ),
+// ✅ STEP 4: DATA DOMISILI - FIXED NULL SAFETY
+Widget _buildDataDomisiliStep() {
+  return Form(
+    key: _formKeys[3],
+    child: SingleChildScrollView(
+      child: Column(
+        children: [
+          Card(
+            child: CheckboxListTile(
+              title: const Text('Sama dengan alamat KTP'),
+              value: _sameAsKtp,
+              onChanged: (value) {
+                setState(() => _sameAsKtp = value ?? false);
+                if (value ?? false) {
+                  domisiliAlamatController.text = ktpAlamatController.text;
+                  domisiliNoController.text = ktpNoController.text;
+                  domisiliRtController.text = ktpRtController.text;
+                  domisiliRwController.text = ktpRwController.text;
+                  domisiliPostalController.text = ktpPostalController.text;
+                  _selectedProvinsiDomisili = _selectedProvinsiKtp;
+                  _selectedKotaDomisili = _selectedKotaKtp;
+                }
+              },
             ),
-            const SizedBox(height: 16),
-            _buildTextField(
-              controller: domisiliAlamatController,
-              label: 'Alamat Saat Ini *',
-              icon: Icons.home_outlined,
-              maxLines: 2,
-              validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Alamat domisili'),
-              enabled: !_sameAsKtp,
-            ),
-            const SizedBox(height: 16),
-            _buildTextField(
-              controller: domisiliNoController,
-              label: 'No. Rumah *',
-              icon: Icons.house_outlined,
-              validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'No. Rumah'),
-              enabled: !_sameAsKtp,
-            ),
-            const SizedBox(height: 16),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                if (constraints.maxWidth > 600) {
-                  return Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: domisiliRtController,
-                          label: 'RT *',
-                          icon: Icons.numbers_outlined,
-                          keyboardType: TextInputType.number,
-                          validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RT'),
-                          enabled: !_sameAsKtp,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildTextField(
-                          controller: domisiliRwController,
-                          label: 'RW *',
-                          icon: Icons.numbers_outlined,
-                          keyboardType: TextInputType.number,
-                          validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RW'),
-                          enabled: !_sameAsKtp,
-                        ),
-                      ),
-                    ],
-                  );
-                } else {
-                  return Column(
-                    children: [
-                      _buildTextField(
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: domisiliAlamatController,
+            label: 'Alamat Saat Ini *',
+            icon: Icons.home_outlined,
+            maxLines: 2,
+            validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Alamat domisili'),
+            enabled: !_sameAsKtp,
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: domisiliNoController,
+            label: 'No. Rumah *',
+            icon: Icons.house_outlined,
+            validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'No. Rumah'),
+            enabled: !_sameAsKtp,
+          ),
+          const SizedBox(height: 16),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth > 600) {
+                return Row(
+                  children: [
+                    Expanded(
+                      child: _buildTextField(
                         controller: domisiliRtController,
                         label: 'RT *',
                         icon: Icons.numbers_outlined,
@@ -954,8 +926,10 @@ _buildDropdown(
                         validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RT'),
                         enabled: !_sameAsKtp,
                       ),
-                      const SizedBox(height: 16),
-                      _buildTextField(
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildTextField(
                         controller: domisiliRwController,
                         label: 'RW *',
                         icon: Icons.numbers_outlined,
@@ -963,73 +937,97 @@ _buildDropdown(
                         validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RW'),
                         enabled: !_sameAsKtp,
                       ),
-                    ],
-                  );
-                }
-              },
-            ),
-            const SizedBox(height: 16),
-            _buildDropdown(
-              label: 'Provinsi *',
-              value: _selectedProvinsiDomisili,
-              items: _provinsiList.isNotEmpty
-                  ? _provinsiList.map((provinsi) {
-                      return DropdownMenuItem(
-                        value: provinsi['id'].toString(),
-                        child: Text(provinsi['nama']?.toString() ?? 'Unknown'),
-                      );
-                    }).toList()
-                  : [const DropdownMenuItem(value: 'loading', child: Text('Loading...'))],
-              onChanged: _sameAsKtp || _provinsiList.isEmpty ? null : (value) {
-                setState(() {
-                  _selectedProvinsiDomisili = value;
-                  _selectedKotaDomisili = null;
-                  _kotaListDomisili = [];
-                });
-                if (value != null) _loadKota(value, false);
-              },
-              validator: _sameAsKtp ? null : (v) => _selectedProvinsiDomisili == null ? 'Provinsi wajib dipilih' : null,
-            ),
-            const SizedBox(height: 16),
-            // ✅ PERBAIKAN: Di bagian _buildDataKtpStep()
-            _buildDropdown(
-              label: 'Kabupaten/Kota *',
-              value: _selectedKotaKtp,
-              items: _kotaListKtp.isNotEmpty
-                  ? _kotaListKtp.map((kota) {
-                      return DropdownMenuItem(
-                        value: kota['id'].toString(),
-                        child: Text(kota['nama']?.toString() ?? 'Unknown'),
-                      );
-                    }).toList()
-                  : [
-                      DropdownMenuItem( // ✅ HAPUS CONST DI SINI
-                        value: 'empty',
-                        child: Text('Pilih provinsi dulu'), // ✅ HAPUS TERNARY OPERATOR
-                      )
-                    ],
-              onChanged: _kotaListKtp.isNotEmpty ? (value) {
-                setState(() => _selectedKotaKtp = value);
-              } : null,
-              validator: (v) => _selectedKotaKtp == null ? 'Kabupaten/Kota wajib dipilih' : null,
-            ),
-            const SizedBox(height: 16),
-            _buildTextField(
-              controller: domisiliPostalController,
-              label: 'Kode Pos *',
-              icon: Icons.markunread_mailbox_outlined,
-              keyboardType: TextInputType.number,
-              validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Kode Pos'),
-              enabled: !_sameAsKtp,
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
+                    ),
+                  ],
+                );
+              } else {
+                return Column(
+                  children: [
+                    _buildTextField(
+                      controller: domisiliRtController,
+                      label: 'RT *',
+                      icon: Icons.numbers_outlined,
+                      keyboardType: TextInputType.number,
+                      validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RT'),
+                      enabled: !_sameAsKtp,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildTextField(
+                      controller: domisiliRwController,
+                      label: 'RW *',
+                      icon: Icons.numbers_outlined,
+                      keyboardType: TextInputType.number,
+                      validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RW'),
+                      enabled: !_sameAsKtp,
+                    ),
+                  ],
+                );
+              }
+            },
+          ),
+          const SizedBox(height: 16),
+          _buildDropdownFormField(
+            label: 'Provinsi *',
+            value: _selectedProvinsiDomisili,
+            items: _provinsiList.map((provinsi) {
+              return DropdownMenuItem(
+                value: provinsi['id'].toString(),
+                child: Text(provinsi['nama']?.toString() ?? 'Unknown'),
+              );
+            }).toList(),
+            onChanged: _sameAsKtp ? null : (value) {
+              setState(() {
+                _selectedProvinsiDomisili = value;
+                _selectedKotaDomisili = null;
+                _kotaListDomisili = [];
+              });
+              if (value != null) _loadKota(value, false);
+            },
+            // ✅ FIXED: Tidak perlu ternary operator, validator sudah handle null
+            validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Provinsi'),
+          ),
+          const SizedBox(height: 16),
+          _buildDropdownFormField(
+            label: 'Kabupaten/Kota *',
+            value: _selectedKotaDomisili,
+            items: _kotaListDomisili.isNotEmpty
+                ? _kotaListDomisili.map((kota) {
+                    return DropdownMenuItem(
+                      value: kota['id'].toString(),
+                      child: Text(kota['nama']?.toString() ?? 'Unknown'),
+                    );
+                  }).toList()
+                : [
+                    const DropdownMenuItem(
+                      value: 'empty',
+                      child: Text('Pilih provinsi dulu'),
+                    )
+                  ],
+            onChanged: _sameAsKtp ? null : (value) {
+              if (value != null && value != 'empty') {
+                setState(() => _selectedKotaDomisili = value);
+              }
+            },
+            // ✅ FIXED: Tidak perlu ternary operator, validator sudah handle null
+            validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Kabupaten/Kota'),
+          ),
+          const SizedBox(height: 16),
+          _buildTextField(
+            controller: domisiliPostalController,
+            label: 'Kode Pos *',
+            icon: Icons.markunread_mailbox_outlined,
+            keyboardType: TextInputType.number,
+            validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Kode Pos'),
+            enabled: !_sameAsKtp,
+          ),
+          const SizedBox(height: 16),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
-  // ✅ STEP 5: DATA AHLI WARIS - FIXED
+  // ✅ STEP 5: DATA AHLI WARIS
   Widget _buildDataAhliWarisStep() {
     return Form(
       key: _formKeys[4],
@@ -1059,7 +1057,7 @@ _buildDropdown(
               validator: (v) => _selectedTanggalLahirAhliWaris == null ? 'Tanggal lahir ahli waris wajib diisi' : null,
             ),
             const SizedBox(height: 16),
-            _buildDropdown(
+            _buildDropdownFormField(
               label: 'Hubungan Keluarga *',
               value: hubunganController.text,
               items: const [
@@ -1071,7 +1069,7 @@ _buildDropdown(
               onChanged: (value) {
                 setState(() => hubunganController.text = value!);
               },
-              validator: (v) => _validateRequired(hubunganController.text, 'Hubungan keluarga'),
+              validator: (value) => _validateDropdown(value, 'Hubungan keluarga'),
             ),
             const SizedBox(height: 16),
           ],
@@ -1080,7 +1078,7 @@ _buildDropdown(
     );
   }
 
-  // ✅ WIDGET BUILDERS
+  // ✅ WIDGET BUILDERS - FIXED
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
@@ -1155,7 +1153,8 @@ _buildDropdown(
     );
   }
 
-  Widget _buildDropdown({
+  // ✅ FIXED: DROPDOWN FORM FIELD - PROPER VALIDATION
+  Widget _buildDropdownFormField({
     required String label,
     required String? value,
     required List<DropdownMenuItem<String>> items,
@@ -1173,8 +1172,30 @@ _buildDropdown(
         fillColor: Colors.white,
       ),
       validator: validator,
-      isExpanded: true,
     );
+  }
+
+  // ✅ FIXED: NAVIGATION BUTTON LOGIC
+  void _handleNextStep() {
+    if (_currentStep == 0) {
+      // Step 0: Info Koperasi - hanya butuh persetujuan
+      if (_agreedToTerms) {
+        setState(() => _currentStep++);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Anda harus menyetujui ketentuan terlebih dahulu')),
+        );
+      }
+    } else {
+      // Step 1-5: Validasi form
+      final formIndex = _currentStep - 1;
+      if (formIndex >= 0 && formIndex < _formKeys.length) {
+        final formKey = _formKeys[formIndex];
+        if (formKey.currentState != null && formKey.currentState!.validate()) {
+          setState(() => _currentStep++);
+        }
+      }
+    }
   }
 
   @override
@@ -1239,7 +1260,7 @@ _buildDropdown(
                     ),
                   ),
 
-                  // ✅ NAVIGATION BUTTONS - FIXED LOGIC
+                  // ✅ FIXED: NAVIGATION BUTTONS
                   Container(
                     padding: const EdgeInsets.all(16),
                     color: Colors.white,
@@ -1284,17 +1305,7 @@ _buildDropdown(
                                         ),
                                 )
                               : ElevatedButton(
-                                  onPressed: () {
-                                    if (_currentStep == 0) {
-                                      if (_agreedToTerms) {
-                                        setState(() => _currentStep++);
-                                      }
-                                    } else {
-                                      if (_formKeys[_currentStep - 1].currentState!.validate()) {
-                                        setState(() => _currentStep++);
-                                      }
-                                    }
-                                  },
+                                  onPressed: _handleNextStep,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green[800],
                                     shape: RoundedRectangleBorder(
