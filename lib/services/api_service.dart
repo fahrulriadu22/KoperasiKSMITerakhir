@@ -375,7 +375,7 @@ class ApiService {
     }
   }
 
-  // ✅ UPLOAD FOTO
+  // ✅ UPLOAD FOTO - OLD VERSION (KEEP FOR BACKWARD COMPATIBILITY)
   Future<bool> uploadFoto({
     required String type,
     required String filePath,
@@ -403,6 +403,80 @@ class ApiService {
       }
     } catch (e) {
       return false;
+    }
+  }
+
+  // ✅ UPLOAD FOTO - FIXED VERSION WITH BETTER ERROR HANDLING
+  Future<Map<String, dynamic>> uploadFotoFixed({
+    required String type,
+    required String filePath,
+  }) async {
+    try {
+      final headers = await getProtectedHeaders();
+      headers.remove('Content-Type'); // Important for multipart
+      
+      print('🔄 Uploading photo: type=$type, path=$filePath');
+      
+      var request = http.MultipartRequest(
+        'POST', 
+        Uri.parse('$baseUrl/users/setPhoto')
+      );
+      
+      request.headers.addAll(headers);
+      
+      // ✅ Add file with correct field name based on type
+      String fieldName;
+      switch (type) {
+        case 'foto_ktp':
+          fieldName = 'foto_ktp';
+          break;
+        case 'foto_kk':
+          fieldName = 'foto_kk';
+          break;
+        case 'foto_diri':
+        default:
+          fieldName = 'foto_diri';
+          break;
+      }
+      
+      request.files.add(await http.MultipartFile.fromPath(
+        fieldName, 
+        filePath,
+        filename: '${fieldName}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+
+      // ✅ Add type parameter to body
+      request.fields['type'] = type;
+
+      final response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+      
+      print('📤 Upload Response Status: ${response.statusCode}');
+      print('📤 Upload Response Body: $responseBody');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseBody);
+        print('✅ Upload success: ${data['status']}');
+        print('✅ Upload message: ${data['message']}');
+        
+        return {
+          'success': data['status'] == true,
+          'message': data['message'] ?? 'Upload berhasil',
+          'data': data
+        };
+      } else {
+        print('❌ Upload failed with status: ${response.statusCode}');
+        return {
+          'success': false,
+          'message': 'Upload gagal: ${response.statusCode}'
+        };
+      }
+    } catch (e) {
+      print('❌ Upload error: $e');
+      return {
+        'success': false,
+        'message': 'Error: $e'
+      };
     }
   }
 

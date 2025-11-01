@@ -48,6 +48,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final ApiService _apiService = ApiService();
   final ImagePicker _imagePicker = ImagePicker();
   bool _isLoading = true;
+  bool _isUploading = false;
 
   @override
   void initState() {
@@ -72,8 +73,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ✅ FITUR UPLOAD FOTO PROFILE - COMPATIBLE DENGAN API SERVICE BARU
-  Future<void> _uploadPhoto() async {
+  // ✅ PERBAIKAN: FITUR UPLOAD FOTO DENGAN HANDLE ERROR YANG LEBIH BAIK
+  Future<void> _uploadPhoto(String type, String typeName) async {
+    if (_isUploading) return;
+    
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
         source: ImageSource.gallery,
@@ -83,51 +86,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
 
       if (pickedFile != null) {
-        _showUploadingDialog('Mengupload Foto Profile...');
+        setState(() => _isUploading = true);
+        _showUploadingDialog('Mengupload $typeName...');
 
-        // ✅ GUNAKAN METHOD uploadFoto DENGAN TYPE 'foto_diri' - COMPATIBLE
-        final success = await _apiService.uploadFoto(
-          type: 'foto_diri',
+        print('📸 Selected file: ${pickedFile.path}');
+        print('📸 File size: ${File(pickedFile.path).lengthSync()} bytes');
+
+        // ✅ GUNAKAN METHOD UPLOAD FOTO YANG BARU
+        final result = await _apiService.uploadFotoFixed(
+          type: type,
           filePath: pickedFile.path,
         );
 
         if (!mounted) return;
-        Navigator.pop(context);
+        
+        Navigator.pop(context); // Tutup dialog
+        setState(() => _isUploading = false);
 
-        if (success) {
+        if (result['success'] == true) {
           // ✅ Refresh user data untuk mendapatkan update terbaru
           await _loadCurrentUser();
           
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Foto profile berhasil diupload ✅'),
+            SnackBar(
+              content: Text('$typeName berhasil diupload ✅'),
               backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Gagal upload foto'),
+            SnackBar(
+              content: Text('Gagal upload $typeName: ${result['message']}'),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
             ),
           );
         }
       }
     } catch (e) {
       if (!mounted) return;
-      Navigator.pop(context);
+      
+      Navigator.pop(context); // Tutup dialog
+      setState(() => _isUploading = false);
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error saat memilih foto: $e'),
+          content: Text('Error saat upload $typeName: $e'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
         ),
       );
     }
   }
 
-  // ✅ FITUR AMBIL FOTO DARI KAMERA - COMPATIBLE
-  Future<void> _takePhoto() async {
+  // ✅ PERBAIKAN: FITUR AMBIL FOTO DARI KAMERA
+  Future<void> _takePhoto(String type, String typeName) async {
+    if (_isUploading) return;
+    
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
         source: ImageSource.camera,
@@ -137,146 +153,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
 
       if (pickedFile != null) {
-        _showUploadingDialog('Mengupload Foto Profile...');
+        setState(() => _isUploading = true);
+        _showUploadingDialog('Mengupload $typeName...');
 
-        // ✅ GUNAKAN METHOD uploadFoto DENGAN TYPE 'foto_diri' - COMPATIBLE
-        final success = await _apiService.uploadFoto(
-          type: 'foto_diri',
+        print('📸 Taken photo: ${pickedFile.path}');
+
+        // ✅ GUNAKAN METHOD UPLOAD FOTO YANG BARU
+        final result = await _apiService.uploadFotoFixed(
+          type: type,
           filePath: pickedFile.path,
         );
 
         if (!mounted) return;
-        Navigator.pop(context);
+        
+        Navigator.pop(context); // Tutup dialog
+        setState(() => _isUploading = false);
 
-        if (success) {
+        if (result['success'] == true) {
           // ✅ Refresh user data untuk mendapatkan update terbaru
           await _loadCurrentUser();
           
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Foto profile berhasil diambil ✅'),
+            SnackBar(
+              content: Text('$typeName berhasil diambil ✅'),
               backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Gagal menyimpan foto'),
+            SnackBar(
+              content: Text('Gagal menyimpan $typeName: ${result['message']}'),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
             ),
           );
         }
       }
     } catch (e) {
       if (!mounted) return;
-      Navigator.pop(context);
+      
+      Navigator.pop(context); // Tutup dialog
+      setState(() => _isUploading = false);
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error saat mengambil foto: $e'),
+          content: Text('Error saat mengambil $typeName: $e'),
           backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  // ✅ UPLOAD FOTO KTP
-  Future<void> _uploadKTP() async {
-    try {
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 800,
-        maxHeight: 800,
-        imageQuality: 80,
-      );
-
-      if (pickedFile != null) {
-        _showUploadingDialog('Mengupload Foto KTP...');
-
-        final success = await _apiService.uploadFoto(
-          type: 'foto_ktp',
-          filePath: pickedFile.path,
-        );
-
-        if (!mounted) return;
-        Navigator.pop(context);
-
-        if (success) {
-          await _loadCurrentUser();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Foto KTP berhasil diupload ✅'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Gagal upload foto KTP'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.pop(context);
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error saat upload KTP: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  // ✅ UPLOAD FOTO KK
-  Future<void> _uploadKK() async {
-    try {
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 800,
-        maxHeight: 800,
-        imageQuality: 80,
-      );
-
-      if (pickedFile != null) {
-        _showUploadingDialog('Mengupload Foto KK...');
-
-        final success = await _apiService.uploadFoto(
-          type: 'foto_kk',
-          filePath: pickedFile.path,
-        );
-
-        if (!mounted) return;
-        Navigator.pop(context);
-
-        if (success) {
-          await _loadCurrentUser();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Foto KK berhasil diupload ✅'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Gagal upload foto KK'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.pop(context);
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error saat upload KK: $e'),
-          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
         ),
       );
     }
@@ -297,6 +221,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               style: TextStyle(
                 color: Colors.grey[800],
                 fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Harap tunggu...',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 12,
               ),
             ),
           ],
@@ -327,7 +259,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: const Text('Pilih dari Gallery'),
               onTap: () {
                 Navigator.pop(context);
-                _uploadPhoto();
+                _uploadPhoto('foto_diri', 'Foto Diri');
               },
             ),
             ListTile(
@@ -335,7 +267,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: const Text('Ambil Foto'),
               onTap: () {
                 Navigator.pop(context);
-                _takePhoto();
+                _takePhoto('foto_diri', 'Foto Diri');
               },
             ),
             const SizedBox(height: 8),
@@ -371,7 +303,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: const Text('Upload KTP'),
               onTap: () {
                 Navigator.pop(context);
-                _uploadKTP();
+                _uploadPhoto('foto_ktp', 'Foto KTP');
               },
             ),
             ListTile(
@@ -379,7 +311,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: const Text('Upload Kartu Keluarga'),
               onTap: () {
                 Navigator.pop(context);
-                _uploadKK();
+                _uploadPhoto('foto_kk', 'Foto KK');
               },
             ),
             const SizedBox(height: 8),
@@ -491,36 +423,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 children: [
                   GestureDetector(
-                    onTap: _showPhotoOptions,
+                    onTap: _isUploading ? null : _showPhotoOptions,
                     child: Stack(
                       children: [
                         CircleAvatar(
                           radius: 50,
                           backgroundColor: Colors.green[50],
-                          backgroundImage: _currentUser['foto_diri'] != null && _currentUser['foto_diri'] != 'uploaded'
+                          backgroundImage: _currentUser['foto_diri'] != null && 
+                                         _currentUser['foto_diri'].toString().isNotEmpty &&
+                                         _currentUser['foto_diri'] != 'uploaded'
                               ? NetworkImage(_currentUser['foto_diri']) // Jika ada URL dari server
                               : null,
-                          child: _currentUser['foto_diri'] == null || _currentUser['foto_diri'] == 'uploaded'
+                          child: _currentUser['foto_diri'] == null || 
+                                _currentUser['foto_diri'].toString().isEmpty ||
+                                _currentUser['foto_diri'] == 'uploaded'
                               ? Icon(Icons.person, size: 60, color: Colors.green[700])
                               : null,
                         ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.green[700],
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
+                        if (_isUploading)
+                          Positioned.fill(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.5),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              ),
                             ),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                              size: 16,
+                          )
+                        else
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.green[700],
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                              child: const Icon(
+                                Icons.camera_alt,
+                                color: Colors.white,
+                                size: 16,
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -560,9 +511,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Tap foto untuk mengubah',
+                    _isUploading ? 'Sedang mengupload...' : 'Tap foto untuk mengubah',
                     style: TextStyle(
-                      color: Colors.grey[500],
+                      color: _isUploading ? Colors.orange[700] : Colors.grey[500],
                       fontSize: 12,
                     ),
                   ),
@@ -601,11 +552,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
-                        onPressed: _showDocumentOptions,
-                        icon: Icon(Icons.upload, color: Colors.green[700]),
+                        onPressed: _isUploading ? null : _showDocumentOptions,
+                        icon: Icon(Icons.upload, color: _isUploading ? Colors.grey : Colors.green[700]),
                         label: Text(
-                          'Upload Dokumen',
-                          style: TextStyle(color: Colors.green[700]),
+                          _isUploading ? 'Sedang Upload...' : 'Upload Dokumen',
+                          style: TextStyle(color: _isUploading ? Colors.grey : Colors.green[700]),
                         ),
                       ),
                     ),
@@ -777,7 +728,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       side: BorderSide(color: Colors.green[700]!),
                     ),
-                    onPressed: () {
+                    onPressed: _isUploading ? null : () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -792,12 +743,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       );
                     },
-                    icon: Icon(Icons.edit, color: Colors.green[700]),
+                    icon: Icon(Icons.edit, color: _isUploading ? Colors.grey : Colors.green[700]),
                     label: Text(
                       'Edit Profil',
                       style: TextStyle(
                         fontSize: 16, 
-                        color: Colors.green[700],
+                        color: _isUploading ? Colors.grey : Colors.green[700],
                         fontWeight: FontWeight.w600
                       ),
                     ),
@@ -807,11 +758,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red[600],
+                      backgroundColor: _isUploading ? Colors.grey : Colors.red[600],
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    onPressed: _logout,
+                    onPressed: _isUploading ? null : _logout,
                     icon: const Icon(Icons.logout, color: Colors.white, size: 20),
                     label: const Text(
                       'Keluar',

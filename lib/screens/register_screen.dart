@@ -93,7 +93,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _loadMasterData();
   }
 
-  // ✅ LOAD DATA PROVINSI, AGAMA, CABANG DARI API
+  // ✅ PERBAIKAN: Load master data dengan error handling yang lebih baik
   Future<void> _loadMasterData() async {
     try {
       setState(() => _isLoading = true);
@@ -104,10 +104,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
       print('📍 Loading provinsi...');
       final provinsiResult = await _apiService.getProvince();
       print('📍 Provinsi success: ${provinsiResult['success']}');
+      print('📍 Provinsi data type: ${provinsiResult['data']?.runtimeType}');
       
-      if (provinsiResult['success'] == true && provinsiResult['data'] != null) {
-        _provinsiList = provinsiResult['data']!;
-        print('📍 Provinsi loaded: ${_provinsiList.length} items');
+      if (provinsiResult['success'] == true) {
+        final data = provinsiResult['data'];
+        if (data is List) {
+          _provinsiList = data;
+          print('📍 Provinsi loaded as List: ${_provinsiList.length} items');
+        } else if (data is Map) {
+          // Jika data berupa map, convert ke list
+          _provinsiList = data.entries.map((entry) {
+            return {
+              'id': entry.key.toString(),
+              'nama': entry.value.toString(),
+            };
+          }).toList();
+          print('📍 Provinsi converted from Map: ${_provinsiList.length} items');
+        } else {
+          print('📍 Provinsi data is null or empty');
+          _provinsiList = [];
+        }
+      } else {
+        print('❌ Provinsi failed: ${provinsiResult['message']}');
+        _provinsiList = [];
       }
 
       // Load master data untuk agama dan cabang
@@ -118,17 +137,45 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (masterResult['success'] == true && masterResult['data'] != null) {
         final data = masterResult['data']!;
         
-        _agamaList = data['agama'] ?? [];
-        _cabangList = data['cabang'] ?? [];
+        // ✅ FIX: Handle format agama
+        if (data['agama'] is List) {
+          _agamaList = data['agama'];
+          print('🕌 Agama loaded as List: ${_agamaList.length} items');
+        } else if (data['agama'] is Map) {
+          _agamaList = (data['agama'] as Map).entries.map((entry) {
+            return {
+              'id': entry.key.toString(),
+              'nama': entry.value.toString(),
+            };
+          }).toList();
+          print('🕌 Agama converted from Map: ${_agamaList.length} items');
+        } else {
+          print('🕌 Agama data is null or empty');
+          _agamaList = [];
+        }
         
-        print('🕌 Agama list: ${_agamaList.length} items');
-        print('🏢 Cabang list: ${_cabangList.length} items');
-        
-        setState(() {});
+        // ✅ FIX: Handle format cabang
+        if (data['cabang'] is List) {
+          _cabangList = data['cabang'];
+          print('🏢 Cabang loaded as List: ${_cabangList.length} items');
+        } else if (data['cabang'] is Map) {
+          _cabangList = (data['cabang'] as Map).entries.map((entry) {
+            return {
+              'id': entry.key.toString(),
+              'nama': entry.value.toString(),
+            };
+          }).toList();
+          print('🏢 Cabang converted from Map: ${_cabangList.length} items');
+        } else {
+          print('🏢 Cabang data is null or empty');
+          _cabangList = [];
+        }
       } else {
         print('❌ Master data failed: ${masterResult['message']}');
         _setupFallbackData();
       }
+      
+      setState(() {});
     } catch (e) {
       print('❌ Error loading master data: $e');
       _setupFallbackData();
@@ -140,6 +187,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // ✅ FALLBACK DATA JIKA API TIDAK BISA
   void _setupFallbackData() {
     print('🔄 Setting up fallback data...');
+    
+    // Fallback provinsi
+    _provinsiList = [
+      {'id': '35', 'nama': 'JAWA TIMUR'},
+      {'id': '11', 'nama': 'ACEH'},
+      {'id': '12', 'nama': 'SUMATERA UTARA'},
+      {'id': '13', 'nama': 'SUMATERA BARAT'},
+      {'id': '14', 'nama': 'RIAU'},
+      {'id': '31', 'nama': 'DKI JAKARTA'},
+    ];
     
     _agamaList = [
       {'id': '1', 'nama': 'Islam'},
@@ -160,23 +217,77 @@ class _RegisterScreenState extends State<RegisterScreen> {
     print('✅ Fallback data setup complete');
   }
 
-  // ✅ LOAD KOTA BERDASARKAN PROVINSI
+  // ✅ PERBAIKAN: Load kota dengan error handling
   Future<void> _loadKota(String idProvinsi, bool forKtp) async {
     try {
+      print('🏙️ Loading kota for provinsi: $idProvinsi, forKtp: $forKtp');
       final result = await _apiService.getRegency(idProvinsi);
+      
       if (result['success'] == true) {
-        setState(() {
-          if (forKtp) {
-            _kotaListKtp = result['data'] ?? [];
-          } else {
-            _kotaListDomisili = result['data'] ?? [];
-          }
-        });
+        final data = result['data'];
+        if (data is List) {
+          setState(() {
+            if (forKtp) {
+              _kotaListKtp = data;
+              _selectedKotaKtp = null; // Reset selected kota
+            } else {
+              _kotaListDomisili = data;
+              _selectedKotaDomisili = null; // Reset selected kota
+            }
+          });
+          print('🏙️ Kota loaded: ${data.length} items');
+        } else if (data is Map) {
+          final kotaList = data.entries.map((entry) {
+            return {
+              'id': entry.key.toString(),
+              'nama': entry.value.toString(),
+            };
+          }).toList();
+          setState(() {
+            if (forKtp) {
+              _kotaListKtp = kotaList;
+              _selectedKotaKtp = null;
+            } else {
+              _kotaListDomisili = kotaList;
+              _selectedKotaDomisili = null;
+            }
+          });
+          print('🏙️ Kota converted from Map: ${kotaList.length} items');
+        } else {
+          print('🏙️ Kota data is null or empty');
+          setState(() {
+            if (forKtp) {
+              _kotaListKtp = [];
+              _selectedKotaKtp = null;
+            } else {
+              _kotaListDomisili = [];
+              _selectedKotaDomisili = null;
+            }
+          });
+        }
       } else {
         print('❌ Failed to load kota: ${result['message']}');
+        setState(() {
+          if (forKtp) {
+            _kotaListKtp = [];
+            _selectedKotaKtp = null;
+          } else {
+            _kotaListDomisili = [];
+            _selectedKotaDomisili = null;
+          }
+        });
       }
     } catch (e) {
       print('❌ Error loading kota: $e');
+      setState(() {
+        if (forKtp) {
+          _kotaListKtp = [];
+          _selectedKotaKtp = null;
+        } else {
+          _kotaListDomisili = [];
+          _selectedKotaDomisili = null;
+        }
+      });
     }
   }
 
@@ -273,7 +384,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     for (int i = 0; i < _formKeys.length; i++) {
       final formKey = _formKeys[i];
       if (formKey.currentState != null && !formKey.currentState!.validate()) {
-        setState(() => _currentStep = i);
+        setState(() => _currentStep = i + 1); // +1 karena step 0 tidak pakai form
         return false;
       }
     }
@@ -378,9 +489,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
-  // ✅ FIXED: VALIDATOR FOR DROPDOWN
+  // ✅ PERBAIKAN: VALIDATOR FOR DROPDOWN - lebih fleksibel
   String? _validateDropdown(String? value, String fieldName) {
-    if (value == null || value.isEmpty) {
+    if (value == null || value.isEmpty || value == 'empty') {
       return '$fieldName wajib dipilih';
     }
     return null;
@@ -739,7 +850,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ✅ STEP 3: DATA KTP
+  // ✅ STEP 3: DATA KTP - DENGAN DROPDOWN PROVINSI & KOTA YANG FIXED
   Widget _buildDataKtpStep() {
     return Form(
       key: _formKeys[2],
@@ -811,50 +922,75 @@ class _RegisterScreenState extends State<RegisterScreen> {
               },
             ),
             const SizedBox(height: 16),
+            
+            // ✅ PROVINSI DROPDOWN - FIXED
             _buildDropdownFormField(
               label: 'Provinsi *',
               value: _selectedProvinsiKtp,
-              items: _provinsiList.map((provinsi) {
-                return DropdownMenuItem(
-                  value: provinsi['id'].toString(),
-                  child: Text(provinsi['nama']?.toString() ?? 'Unknown'),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedProvinsiKtp = value;
-                  _selectedKotaKtp = null;
-                  _kotaListKtp = [];
-                });
-                if (value != null) _loadKota(value, true);
-              },
-              validator: (value) => _validateDropdown(value, 'Provinsi'),
-            ),
-            const SizedBox(height: 16),
-            _buildDropdownFormField(
-              label: 'Kabupaten/Kota *',
-              value: _selectedKotaKtp,
-              items: _kotaListKtp.isNotEmpty
-                  ? _kotaListKtp.map((kota) {
+              items: _provinsiList.isNotEmpty
+                  ? _provinsiList.map((provinsi) {
+                      final id = provinsi['id']?.toString() ?? '';
+                      final nama = provinsi['nama']?.toString() ?? 'Unknown';
                       return DropdownMenuItem(
-                        value: kota['id'].toString(),
-                        child: Text(kota['nama']?.toString() ?? 'Unknown'),
+                        value: id,
+                        child: Text(nama),
                       );
                     }).toList()
                   : [
                       const DropdownMenuItem(
                         value: 'empty',
-                        child: Text('Pilih provinsi dulu'),
+                        child: Text('Loading provinsi...'),
                       )
                     ],
+              onChanged: _provinsiList.isNotEmpty ? (value) {
+                if (value != null && value != 'empty') {
+                  setState(() {
+                    _selectedProvinsiKtp = value;
+                    _selectedKotaKtp = null;
+                    _kotaListKtp = [];
+                  });
+                  _loadKota(value, true);
+                }
+              } : null,
+              validator: (value) => _validateDropdown(value, 'Provinsi'),
+            ),
+            const SizedBox(height: 16),
+            
+            // ✅ KOTA/KABUPATEN DROPDOWN - FIXED
+            _buildDropdownFormField(
+              label: 'Kabupaten/Kota *',
+              value: _selectedKotaKtp,
+              items: _kotaListKtp.isNotEmpty
+                  ? _kotaListKtp.map((kota) {
+                      final id = kota['id']?.toString() ?? '';
+                      final nama = kota['nama']?.toString() ?? 'Unknown';
+                      return DropdownMenuItem(
+                        value: id,
+                        child: Text(nama),
+                      );
+                    }).toList()
+                  : _selectedProvinsiKtp != null
+                      ? [
+                          const DropdownMenuItem(
+                            value: 'empty',
+                            child: Text('Loading kota...'),
+                          )
+                        ]
+                      : [
+                          const DropdownMenuItem(
+                            value: 'empty',
+                            child: Text('Pilih provinsi dulu'),
+                          )
+                        ],
               onChanged: _kotaListKtp.isNotEmpty ? (value) {
-                if (value != 'empty') {
+                if (value != null && value != 'empty') {
                   setState(() => _selectedKotaKtp = value);
                 }
               } : null,
               validator: (value) => _validateDropdown(value, 'Kabupaten/Kota'),
             ),
             const SizedBox(height: 16),
+            
             _buildTextField(
               controller: ktpPostalController,
               label: 'Kode Pos *',
@@ -869,56 +1005,81 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-// ✅ STEP 4: DATA DOMISILI - FIXED NULL SAFETY
-Widget _buildDataDomisiliStep() {
-  return Form(
-    key: _formKeys[3],
-    child: SingleChildScrollView(
-      child: Column(
-        children: [
-          Card(
-            child: CheckboxListTile(
-              title: const Text('Sama dengan alamat KTP'),
-              value: _sameAsKtp,
-              onChanged: (value) {
-                setState(() => _sameAsKtp = value ?? false);
-                if (value ?? false) {
-                  domisiliAlamatController.text = ktpAlamatController.text;
-                  domisiliNoController.text = ktpNoController.text;
-                  domisiliRtController.text = ktpRtController.text;
-                  domisiliRwController.text = ktpRwController.text;
-                  domisiliPostalController.text = ktpPostalController.text;
-                  _selectedProvinsiDomisili = _selectedProvinsiKtp;
-                  _selectedKotaDomisili = _selectedKotaKtp;
-                }
-              },
+  // ✅ STEP 4: DATA DOMISILI - DENGAN DROPDOWN FIXED
+  Widget _buildDataDomisiliStep() {
+    return Form(
+      key: _formKeys[3],
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            Card(
+              child: CheckboxListTile(
+                title: const Text('Sama dengan alamat KTP'),
+                value: _sameAsKtp,
+                onChanged: (value) {
+                  setState(() => _sameAsKtp = value ?? false);
+                  if (value ?? false) {
+                    domisiliAlamatController.text = ktpAlamatController.text;
+                    domisiliNoController.text = ktpNoController.text;
+                    domisiliRtController.text = ktpRtController.text;
+                    domisiliRwController.text = ktpRwController.text;
+                    domisiliPostalController.text = ktpPostalController.text;
+                    _selectedProvinsiDomisili = _selectedProvinsiKtp;
+                    _selectedKotaDomisili = _selectedKotaKtp;
+                  }
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: domisiliAlamatController,
-            label: 'Alamat Saat Ini *',
-            icon: Icons.home_outlined,
-            maxLines: 2,
-            validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Alamat domisili'),
-            enabled: !_sameAsKtp,
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: domisiliNoController,
-            label: 'No. Rumah *',
-            icon: Icons.house_outlined,
-            validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'No. Rumah'),
-            enabled: !_sameAsKtp,
-          ),
-          const SizedBox(height: 16),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth > 600) {
-                return Row(
-                  children: [
-                    Expanded(
-                      child: _buildTextField(
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: domisiliAlamatController,
+              label: 'Alamat Saat Ini *',
+              icon: Icons.home_outlined,
+              maxLines: 2,
+              validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Alamat domisili'),
+              enabled: !_sameAsKtp,
+            ),
+            const SizedBox(height: 16),
+            _buildTextField(
+              controller: domisiliNoController,
+              label: 'No. Rumah *',
+              icon: Icons.house_outlined,
+              validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'No. Rumah'),
+              enabled: !_sameAsKtp,
+            ),
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth > 600) {
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller: domisiliRtController,
+                          label: 'RT *',
+                          icon: Icons.numbers_outlined,
+                          keyboardType: TextInputType.number,
+                          validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RT'),
+                          enabled: !_sameAsKtp,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildTextField(
+                          controller: domisiliRwController,
+                          label: 'RW *',
+                          icon: Icons.numbers_outlined,
+                          keyboardType: TextInputType.number,
+                          validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RW'),
+                          enabled: !_sameAsKtp,
+                        ),
+                      ),
+                    ],
+                  );
+                } else {
+                  return Column(
+                    children: [
+                      _buildTextField(
                         controller: domisiliRtController,
                         label: 'RT *',
                         icon: Icons.numbers_outlined,
@@ -926,10 +1087,8 @@ Widget _buildDataDomisiliStep() {
                         validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RT'),
                         enabled: !_sameAsKtp,
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildTextField(
+                      const SizedBox(height: 16),
+                      _buildTextField(
                         controller: domisiliRwController,
                         label: 'RW *',
                         icon: Icons.numbers_outlined,
@@ -937,95 +1096,115 @@ Widget _buildDataDomisiliStep() {
                         validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RW'),
                         enabled: !_sameAsKtp,
                       ),
-                    ),
-                  ],
-                );
-              } else {
-                return Column(
-                  children: [
-                    _buildTextField(
-                      controller: domisiliRtController,
-                      label: 'RT *',
-                      icon: Icons.numbers_outlined,
-                      keyboardType: TextInputType.number,
-                      validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RT'),
-                      enabled: !_sameAsKtp,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildTextField(
-                      controller: domisiliRwController,
-                      label: 'RW *',
-                      icon: Icons.numbers_outlined,
-                      keyboardType: TextInputType.number,
-                      validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'RW'),
-                      enabled: !_sameAsKtp,
-                    ),
-                  ],
-                );
-              }
-            },
-          ),
-          const SizedBox(height: 16),
-          _buildDropdownFormField(
-            label: 'Provinsi *',
-            value: _selectedProvinsiDomisili,
-            items: _provinsiList.map((provinsi) {
-              return DropdownMenuItem(
-                value: provinsi['id'].toString(),
-                child: Text(provinsi['nama']?.toString() ?? 'Unknown'),
-              );
-            }).toList(),
-            onChanged: _sameAsKtp ? null : (value) {
-              setState(() {
-                _selectedProvinsiDomisili = value;
-                _selectedKotaDomisili = null;
-                _kotaListDomisili = [];
-              });
-              if (value != null) _loadKota(value, false);
-            },
-            // ✅ FIXED: Tidak perlu ternary operator, validator sudah handle null
-            validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Provinsi'),
-          ),
-          const SizedBox(height: 16),
-          _buildDropdownFormField(
-            label: 'Kabupaten/Kota *',
-            value: _selectedKotaDomisili,
-            items: _kotaListDomisili.isNotEmpty
-                ? _kotaListDomisili.map((kota) {
-                    return DropdownMenuItem(
-                      value: kota['id'].toString(),
-                      child: Text(kota['nama']?.toString() ?? 'Unknown'),
-                    );
-                  }).toList()
-                : [
-                    const DropdownMenuItem(
-                      value: 'empty',
-                      child: Text('Pilih provinsi dulu'),
-                    )
-                  ],
-            onChanged: _sameAsKtp ? null : (value) {
-              if (value != null && value != 'empty') {
-                setState(() => _selectedKotaDomisili = value);
-              }
-            },
-            // ✅ FIXED: Tidak perlu ternary operator, validator sudah handle null
-            validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Kabupaten/Kota'),
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: domisiliPostalController,
-            label: 'Kode Pos *',
-            icon: Icons.markunread_mailbox_outlined,
-            keyboardType: TextInputType.number,
-            validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Kode Pos'),
-            enabled: !_sameAsKtp,
-          ),
-          const SizedBox(height: 16),
-        ],
+                    ],
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+            
+            // ✅ PROVINSI DOMISILI DROPDOWN - FIXED
+            _buildDropdownFormField(
+              label: 'Provinsi *',
+              value: _selectedProvinsiDomisili,
+              items: _sameAsKtp
+                  ? [
+                      DropdownMenuItem(
+                        value: _selectedProvinsiKtp,
+                        child: Text(_provinsiList.firstWhere(
+                          (prov) => prov['id']?.toString() == _selectedProvinsiKtp,
+                          orElse: () => {'nama': 'Unknown'},
+                        )['nama']?.toString() ?? 'Unknown'),
+                      )
+                    ]
+                  : _provinsiList.isNotEmpty
+                      ? _provinsiList.map((provinsi) {
+                          final id = provinsi['id']?.toString() ?? '';
+                          final nama = provinsi['nama']?.toString() ?? 'Unknown';
+                          return DropdownMenuItem(
+                            value: id,
+                            child: Text(nama),
+                          );
+                        }).toList()
+                      : [
+                          const DropdownMenuItem(
+                            value: 'empty',
+                            child: Text('Loading provinsi...'),
+                          )
+                        ],
+              onChanged: _sameAsKtp ? null : (_provinsiList.isNotEmpty ? (value) {
+                if (value != null && value != 'empty') {
+                  setState(() {
+                    _selectedProvinsiDomisili = value;
+                    _selectedKotaDomisili = null;
+                    _kotaListDomisili = [];
+                  });
+                  _loadKota(value, false);
+                }
+              } : null),
+              validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Provinsi'),
+            ),
+            const SizedBox(height: 16),
+            
+            // ✅ KOTA DOMISILI DROPDOWN - FIXED
+            _buildDropdownFormField(
+              label: 'Kabupaten/Kota *',
+              value: _selectedKotaDomisili,
+              items: _sameAsKtp
+                  ? [
+                      DropdownMenuItem(
+                        value: _selectedKotaKtp,
+                        child: Text(_kotaListKtp.firstWhere(
+                          (kota) => kota['id']?.toString() == _selectedKotaKtp,
+                          orElse: () => {'nama': 'Unknown'},
+                        )['nama']?.toString() ?? 'Unknown'),
+                      )
+                    ]
+                  : _kotaListDomisili.isNotEmpty
+                      ? _kotaListDomisili.map((kota) {
+                          final id = kota['id']?.toString() ?? '';
+                          final nama = kota['nama']?.toString() ?? 'Unknown';
+                          return DropdownMenuItem(
+                            value: id,
+                            child: Text(nama),
+                          );
+                        }).toList()
+                      : _selectedProvinsiDomisili != null
+                          ? [
+                              const DropdownMenuItem(
+                                value: 'empty',
+                                child: Text('Loading kota...'),
+                              )
+                            ]
+                          : [
+                              const DropdownMenuItem(
+                                value: 'empty',
+                                child: Text('Pilih provinsi dulu'),
+                              )
+                            ],
+              onChanged: _sameAsKtp ? null : (_kotaListDomisili.isNotEmpty ? (value) {
+                if (value != null && value != 'empty') {
+                  setState(() => _selectedKotaDomisili = value);
+                }
+              } : null),
+              validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Kabupaten/Kota'),
+            ),
+            const SizedBox(height: 16),
+            
+            _buildTextField(
+              controller: domisiliPostalController,
+              label: 'Kode Pos *',
+              icon: Icons.markunread_mailbox_outlined,
+              keyboardType: TextInputType.number,
+              validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Kode Pos'),
+              enabled: !_sameAsKtp,
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   // ✅ STEP 5: DATA AHLI WARIS
   Widget _buildDataAhliWarisStep() {
@@ -1153,7 +1332,7 @@ Widget _buildDataDomisiliStep() {
     );
   }
 
-  // ✅ FIXED: DROPDOWN FORM FIELD - PROPER VALIDATION
+  // ✅ PERBAIKAN: DROPDOWN FORM FIELD - LEBIH ROBUST
   Widget _buildDropdownFormField({
     required String label,
     required String? value,
@@ -1172,6 +1351,7 @@ Widget _buildDataDomisiliStep() {
         fillColor: Colors.white,
       ),
       validator: validator,
+      isExpanded: true,
     );
   }
 

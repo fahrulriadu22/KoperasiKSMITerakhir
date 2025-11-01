@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/login_screen.dart';
 import 'screens/dashboard_main.dart';
+import 'screens/upload_dokumen_screen.dart';
 import 'services/api_service.dart';
 import 'services/firebase_service.dart';
 
@@ -111,17 +112,12 @@ void _handleNotificationData(Map<String, dynamic> data) {
   final body = data['body']?.toString() ?? 'Pesan baru';
   
   print('📢 Notification: $title - $body');
-  
-  // You can use a global key to show snackbars from anywhere
-  // ScaffoldMessenger.of(context).showSnackBar(...);
 }
 
 // ✅ Initialize Other Services
 Future<void> _initializeOtherServices() async {
   try {
     // Initialize other services here if needed
-    // Example: Analytics, Crashlytics, etc.
-    
     await Future.delayed(const Duration(milliseconds: 100));
     print('✅ Other services initialized');
   } catch (e) {
@@ -205,8 +201,8 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     }
   }
 
-  // ✅ Handle Login
-  void _handleLogin(Map<String, dynamic> userData) {
+  // ✅ Handle Login Success
+  void _handleLoginSuccess(Map<String, dynamic> userData) {
     setState(() {
       _isLoggedIn = true;
       _userData = userData;
@@ -214,6 +210,50 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     
     // Subscribe to topics after login
     _subscribeToUserTopics(userData);
+    
+    // ✅ CEK APAKAH USER SUDAH UPLOAD DOKUMEN
+    _checkDokumenStatus(userData);
+  }
+
+  // ✅ Check Dokumen Status untuk menentukan navigasi
+  void _checkDokumenStatus(Map<String, dynamic> userData) {
+    final bool hasKTP = userData['foto_ktp'] != null && userData['foto_ktp'].toString().isNotEmpty && userData['foto_ktp'] != 'uploaded';
+    final bool hasKK = userData['foto_kk'] != null && userData['foto_kk'].toString().isNotEmpty && userData['foto_kk'] != 'uploaded';
+    final bool hasFotoDiri = userData['foto_diri'] != null && userData['foto_diri'].toString().isNotEmpty && userData['foto_diri'] != 'uploaded';
+    
+    final bool allDokumenUploaded = hasKTP && hasKK && hasFotoDiri;
+    
+    print('📋 Dokumen Status:');
+    print('   - KTP: ${hasKTP ? "✅" : "❌"}');
+    print('   - KK: ${hasKK ? "✅" : "❌"}');
+    print('   - Foto Diri: ${hasFotoDiri ? "✅" : "❌"}');
+    print('   - All Uploaded: $allDokumenUploaded');
+    
+    if (!allDokumenUploaded) {
+      // Navigate to UploadDokumenScreen jika belum lengkap
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.of(navigatorKey.currentContext!).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => UploadDokumenScreen(user: userData),
+            ),
+            (route) => false,
+          );
+        }
+      });
+    } else {
+      // Langsung ke dashboard jika sudah lengkap
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.of(navigatorKey.currentContext!).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => DashboardMain(user: userData),
+            ),
+            (route) => false,
+          );
+        }
+      });
+    }
   }
 
   // ✅ Handle Logout
@@ -246,17 +286,19 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
       title: 'Koperasi KSMI',
       debugShowCheckedModeBanner: false,
       theme: _buildAppTheme(),
+      navigatorKey: navigatorKey,
+      scaffoldMessengerKey: scaffoldMessengerKey,
       
-      // ✅ Home based on auth status - FIXED: Remove SplashScreen reference
+      // ✅ Home based on auth status
       home: _isLoading
           ? _buildLoadingScreen()
           : _isLoggedIn
-              ? DashboardMain(user: _userData) // FIXED: Remove onLogout parameter
-              : LoginScreen(), // FIXED: Remove onLoginSuccess parameter
+              ? DashboardMain(user: _userData)
+              : LoginScreen(onLoginSuccess: _handleLoginSuccess),
     );
   }
 
-  // ✅ Loading Screen sebagai pengganti SplashScreen
+  // ✅ Loading Screen
   Widget _buildLoadingScreen() {
     return Scaffold(
       backgroundColor: Colors.green[50],
@@ -264,7 +306,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Logo atau icon loading
             Container(
               width: 100,
               height: 100,
@@ -304,7 +345,7 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     );
   }
 
-  // ✅ App Theme - FIXED: Remove CardTheme error
+  // ✅ App Theme
   ThemeData _buildAppTheme() {
     return ThemeData(
       primaryColor: Colors.green[800],
@@ -331,7 +372,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
         backgroundColor: Colors.green[700],
         foregroundColor: Colors.white,
       ),
-      // FIXED: Remove CardTheme to avoid error
       inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
@@ -370,7 +410,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
 
   @override
   void dispose() {
-    // Cleanup resources
     firebaseService.dispose();
     super.dispose();
   }

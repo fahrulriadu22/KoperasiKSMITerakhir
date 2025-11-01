@@ -180,7 +180,7 @@ class _DashboardMainState extends State<DashboardMain> {
     return PageStorage(
       bucket: _storageBucket,
       child: Scaffold(
-        appBar: _buildAppBar(), // ✅ Tambahkan AppBar dengan notifikasi
+        // ✅ DIHAPUS: AppBar dihapus sesuai permintaan
         body: IndexedStack(
           index: _selectedIndex,
           children: pages,
@@ -188,84 +188,6 @@ class _DashboardMainState extends State<DashboardMain> {
         bottomNavigationBar: _buildUniversalBottomNav(),
       ),
     );
-  }
-
-  // ✅ APP BAR DENGAN NOTIFIKASI - VERSI SIMPLE COMPATIBLE
-  AppBar _buildAppBar() {
-    return AppBar(
-      backgroundColor: Colors.green[800],
-      foregroundColor: Colors.white,
-      elevation: 2,
-      title: Text(
-        _getAppBarTitle(),
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 18,
-        ),
-      ),
-      actions: [
-        // ✅ Icon Notifikasi dengan Badge - SIMPLE VERSION
-        Stack(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.notifications_rounded),
-              onPressed: _openNotifications,
-              tooltip: _unreadNotifications > 0 
-                ? '$_unreadNotifications pesan belum dibaca' 
-                : 'Tidak ada notifikasi baru',
-            ),
-            if (_unreadNotifications > 0)
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  constraints: const BoxConstraints(
-                    minWidth: 16,
-                    minHeight: 16,
-                  ),
-                  child: Text(
-                    _unreadNotifications > 9 ? '9+' : _unreadNotifications.toString(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        
-        // ✅ Refresh Button
-        IconButton(
-          icon: const Icon(Icons.refresh_rounded),
-          onPressed: _refreshUserData,
-          tooltip: 'Refresh Data',
-        ),
-      ],
-    );
-  }
-
-  // ✅ Method untuk judul AppBar berdasarkan tab
-  String _getAppBarTitle() {
-    switch (_selectedIndex) {
-      case 0:
-        return 'Beranda KSMI';
-      case 1:
-        return 'Riwayat Tabungan';
-      case 2:
-        return 'Riwayat Taqsith';
-      case 3:
-        return 'Profil Saya';
-      default:
-        return 'Koperasi KSMI';
-    }
   }
 
   // ✅ UNIVERSAL BOTTOM NAVIGATION UNTUK SEMUA PLATFORM
