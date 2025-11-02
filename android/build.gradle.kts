@@ -1,7 +1,6 @@
-// ✅ PERBAIKI DENGAN SYNTAX YANG BENAR
+// ✅ PERBAIKI DENGAN SYNTAX KOTLIN DSL YANG BENAR
 buildscript {
-    // ✅ HAPUS 'ext' - di Kotlin DSL tidak pakai ext
-    val kotlinVersion = "1.9.24" // ✅ PAKAI 'val' langsung
+    val kotlinVersion = "1.9.24"
     
     repositories {
         google()
@@ -11,8 +10,6 @@ buildscript {
     dependencies {
         classpath("com.android.tools.build:gradle:8.4.0")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
-        // ✅ HAPUS GOOGLE SERVICES DULU UNTUK TEST
-        // classpath("com.google.gms:google-services:4.4.2")
     }
 }
 
@@ -23,12 +20,13 @@ allprojects {
     }
 }
 
-rootProject.buildDir = "../build"
+// ✅ PERBAIKI SYNTAX DI SINI - PAKAI File()
+rootProject.buildDir = file("../build")
 subprojects {
-    project.buildDir = "${rootProject.buildDir}/${project.name}"
+    project.buildDir = file("${rootProject.buildDir}/${project.name}")
 }
 subprojects {
-    project.evaluationDependsOn(':app')
+    project.evaluationDependsOn(":app") // ✅ PAKAI STRING, BUKAN CHARACTER LITERAL
 }
 
 tasks.register("clean", Delete::class) {
