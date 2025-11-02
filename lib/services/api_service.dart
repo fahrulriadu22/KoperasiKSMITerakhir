@@ -50,30 +50,36 @@ class ApiService {
     }
   }
 
-  // ✅ GET MULTIPART HEADERS UNTUK UPLOAD FILE
-  Future<Map<String, String>> getMultipartHeaders() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final userKey = prefs.getString('token');
-      
-      final headers = <String, String>{
-        'DEVICE-ID': _deviceId,
-        'DEVICE-TOKEN': _deviceToken,
-      };
-      
-      if (userKey != null && userKey.isNotEmpty) {
-        headers['x-api-key'] = userKey;
-      }
-      
-      return headers;
-    } catch (e) {
-      print('❌ Error getMultipartHeaders: $e');
-      return {
-        'DEVICE-ID': _deviceId,
-        'DEVICE-TOKEN': _deviceToken,
-      };
+// ✅ PERBAIKAN: Get multipart headers dengan token yang valid
+Future<Map<String, String>> getMultipartHeaders() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final userKey = prefs.getString('token');
+    
+    final headers = <String, String>{
+      'DEVICE-ID': _deviceId,
+      'DEVICE-TOKEN': _deviceToken,
+      // ✅ TAMBAHKAN Content-Type untuk multipart
+      'Content-Type': 'multipart/form-data',
+    };
+    
+    if (userKey != null && userKey.isNotEmpty) {
+      headers['x-api-key'] = userKey;
+      print('✅ Token found: ${userKey.substring(0, 10)}...');
+    } else {
+      print('❌ Token tidak ditemukan di SharedPreferences');
     }
+    
+    return headers;
+  } catch (e) {
+    print('❌ Error getMultipartHeaders: $e');
+    return {
+      'DEVICE-ID': _deviceId,
+      'DEVICE-TOKEN': _deviceToken,
+      'Content-Type': 'multipart/form-data',
+    };
   }
+}
 
   // ✅ METHOD UNTUK PILIH GAMBAR DARI GALLERY
   Future<String?> pickImageFromGallery() async {
@@ -143,145 +149,143 @@ class ApiService {
     }
   }
 
-  // ✅ UPLOAD FOTO YANG SUDAH DIPERBAIKI (SESUAI POSTMAN)
-  Future<Map<String, dynamic>> uploadFoto({
-    required String type,
-    required String filePath,
-  }) async {
-    try {
-      print('🚀 UPLOAD START: $type');
-      print('📁 File path: $filePath');
+// ✅ PERBAIKAN BESAR: Upload foto dengan endpoint dan field yang benar
+Future<Map<String, dynamic>> uploadFoto({
+  required String type,
+  required String filePath,
+}) async {
+  try {
+    print('🚀 UPLOAD START: $type');
+    print('📁 File path: $filePath');
+    
+    // ✅ VALIDASI FILE
+    File file = File(filePath);
+    if (!await file.exists()) {
+      return {
+        'success': false, 
+        'message': 'File tidak ditemukan: $filePath'
+      };
+    }
+
+    final fileSize = await file.length();
+    print('📁 File size: $fileSize bytes');
+    
+    if (fileSize == 0) {
+      return {
+        'success': false, 
+        'message': 'File kosong atau tidak dapat diakses'
+      };
+    }
+
+    if (fileSize > 5 * 1024 * 1024) {
+      return {
+        'success': false, 
+        'message': 'Ukuran file terlalu besar. Maksimal 5MB.'
+      };
+    }
+
+    // ✅ GET HEADERS - PASTIKAN TOKEN ADA
+    final headers = await getMultipartHeaders();
+    print('📤 Headers: $headers');
+
+    // ✅ BUAT MULTIPART REQUEST
+    var request = http.MultipartRequest(
+      'POST', 
+      Uri.parse('$baseUrl/users/setPhoto')
+    );
+    request.headers.addAll(headers);
+
+    // ✅ TAMBAHKAN FILE - COBA FIELD NAME YANG BERBEDA
+    final possibleFieldNames = ['file', 'foto', 'photo', 'image', 'upload', 'file_upload'];
+    bool fileAdded = false;
+    String usedFieldName = '';
+    
+    for (final fieldName in possibleFieldNames) {
+      try {
+        var multipartFile = await http.MultipartFile.fromPath(
+          fieldName,
+          filePath,
+          filename: '${type}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+        request.files.add(multipartFile);
+        fileAdded = true;
+        usedFieldName = fieldName;
+        print('✅ File berhasil dilampirkan dengan field: $fieldName');
+        break;
+      } catch (e) {
+        print('❌ Gagal dengan field $fieldName: $e');
+        continue;
+      }
+    }
+
+    if (!fileAdded) {
+      return {
+        'success': false, 
+        'message': 'Gagal menambahkan file ke request'
+      };
+    }
+
+    // ✅ TAMBAHKAN FORM FIELDS YANG DIPERLUKAN
+    request.fields['type'] = type;
+    
+    // ✅ TAMBAHKAN USER DATA JIKA DIPERLUKAN
+    final currentUser = await getCurrentUser();
+    if (currentUser != null) {
+      if (currentUser['user_id'] != null) {
+        request.fields['user_id'] = currentUser['user_id'].toString();
+      }
+      if (currentUser['username'] != null) {
+        request.fields['username'] = currentUser['username'].toString();
+      }
+      if (currentUser['user_key'] != null) {
+        request.fields['user_key'] = currentUser['user_key'].toString();
+      }
+    }
+
+    print('📤 Request fields: ${request.fields}');
+    print('📤 Files count: ${request.files.length}');
+    print('📤 Used field name: $usedFieldName');
+
+    // ✅ KIRIM REQUEST
+    print('🔄 Mengirim request ke: $baseUrl/users/setPhoto');
+    final response = await request.send().timeout(const Duration(seconds: 30));
+    
+    // ✅ BACA RESPONSE
+    final responseBody = await response.stream.bytesToString();
+    print('📡 Response Status: ${response.statusCode}');
+    print('📡 Response Body: $responseBody');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(responseBody);
       
-      // ✅ VALIDASI FILE LEBIH KETAT
-      File file = File(filePath);
-      if (!await file.exists()) {
-        print('❌ File tidak ditemukan: $filePath');
-        return {
-          'success': false, 
-          'message': 'File tidak ditemukan: $filePath'
-        };
-      }
-
-      // ✅ CEK UKURAN FILE
-      final fileSize = await file.length();
-      print('📁 File size: $fileSize bytes');
-      
-      if (fileSize == 0) {
-        return {
-          'success': false, 
-          'message': 'File kosong atau tidak dapat diakses'
-        };
-      }
-
-      if (fileSize > 5 * 1024 * 1024) {
-        return {
-          'success': false, 
-          'message': 'Ukuran file terlalu besar. Maksimal 5MB.'
-        };
-      }
-
-      // ✅ GET HEADERS
-      final headers = await getMultipartHeaders();
-      print('📤 Headers: $headers');
-
-      // ✅ BUAT MULTIPART REQUEST
-      var request = http.MultipartRequest(
-        'POST', 
-        Uri.parse('$baseUrl/users/setPhoto')
-      );
-      request.headers.addAll(headers);
-
-      // ✅ TAMBAHKAN FILE - COBA BERBAGAI FIELD NAME
-      final possibleFieldNames = ['file', 'foto', 'photo', 'image', 'upload'];
-      bool fileAdded = false;
-      String usedFieldName = '';
-      
-      for (final fieldName in possibleFieldNames) {
-        try {
-          var multipartFile = await http.MultipartFile.fromPath(
-            fieldName,
-            filePath,
-            filename: '${type}_${DateTime.now().millisecondsSinceEpoch}.jpg',
-          );
-          request.files.add(multipartFile);
-          fileAdded = true;
-          usedFieldName = fieldName;
-          print('✅ File berhasil dilampirkan dengan field: $fieldName');
-          break;
-        } catch (e) {
-          print('❌ Gagal dengan field $fieldName: $e');
-          continue;
-        }
-      }
-
-      if (!fileAdded) {
-        return {
-          'success': false, 
-          'message': 'Gagal menambahkan file ke request'
-        };
-      }
-
-      // ✅ TAMBAHKAN FORM FIELDS (SESUAI POSTMAN)
-      request.fields['type'] = type;
-      
-      // Tambahkan user data jika diperlukan
-      final currentUser = await getCurrentUser();
-      if (currentUser != null) {
-        if (currentUser['user_id'] != null) {
-          request.fields['user_id'] = currentUser['user_id'].toString();
-        }
-        if (currentUser['username'] != null) {
-          request.fields['username'] = currentUser['username'].toString();
-        }
-      }
-
-      print('📤 Request fields: ${request.fields}');
-      print('📤 Files count: ${request.files.length}');
-      print('📤 Used field name: $usedFieldName');
-
-      // ✅ KIRIM REQUEST
-      print('🔄 Mengirim request...');
-      final response = await request.send().timeout(const Duration(seconds: 30));
-      
-      // ✅ BACA RESPONSE
-      final responseBody = await response.stream.bytesToString();
-      print('📡 Response Status: ${response.statusCode}');
-      print('📡 Response Body: $responseBody');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(responseBody);
+      if (data['status'] == true) {
+        print('✅ UPLOAD SUCCESS');
         
-        if (data['status'] == true) {
-          print('✅ UPLOAD SUCCESS');
-          
-          // Update local storage jika perlu
-          await _updateUploadStatus(type, 'success');
-          
-          return {
-            'success': true,
-            'message': data['message'] ?? 'Upload berhasil',
-            'data': data
-          };
-        } else {
-          return {
-            'success': false,
-            'message': data['message'] ?? 'Upload gagal'
-          };
-        }
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Upload berhasil',
+          'data': data
+        };
       } else {
         return {
           'success': false,
-          'message': 'Server error ${response.statusCode}: $responseBody'
+          'message': data['message'] ?? 'Upload gagal'
         };
       }
-    } catch (e) {
-      print('❌ UPLOAD ERROR: $e');
+    } else {
       return {
         'success': false,
-        'message': 'Upload error: $e'
+        'message': 'Server error ${response.statusCode}: $responseBody'
       };
     }
+  } catch (e) {
+    print('❌ UPLOAD ERROR: $e');
+    return {
+      'success': false,
+      'message': 'Upload error: $e'
+    };
   }
+}
 
   // ✅ UPDATE STATUS UPLOAD DI LOCAL STORAGE
   Future<void> _updateUploadStatus(String type, String status) async {
@@ -746,86 +750,139 @@ class ApiService {
     }
   }
 
-  // ✅ UPLOAD BUKTI TRANSFER
-  Future<Map<String, dynamic>> uploadBuktiTransfer({
-    required String transaksiId,
-    required String filePath,
-    required String jenisTransaksi,
-  }) async {
-    try {
-      final headers = await getMultipartHeaders();
-      
-      File file = File(filePath);
-      if (!await file.exists()) {
-        return {
-          'success': false,
-          'message': 'File bukti transfer tidak ditemukan'
-        };
-      }
-      
-      final fileSize = await file.length();
-      if (fileSize > 5 * 1024 * 1024) {
-        return {
-          'success': false,
-          'message': 'Ukuran file terlalu besar. Maksimal 5MB.'
-        };
-      }
-      
-      var request = http.MultipartRequest(
-        'POST', 
-        Uri.parse('$baseUrl/transaction/uploadBukti')
-      );
-      
-      request.headers.addAll(headers);
-      
-      final fileExtension = filePath.toLowerCase().substring(filePath.lastIndexOf('.'));
-      request.files.add(await http.MultipartFile.fromPath(
-        'bukti_transfer',
-        filePath,
-        filename: 'bukti_${jenisTransaksi}_${DateTime.now().millisecondsSinceEpoch}$fileExtension',
-      ));
+// ✅ PERBAIKAN BESAR: Upload bukti transfer dengan endpoint yang benar
+Future<Map<String, dynamic>> uploadBuktiTransfer({
+  required String transaksiId,
+  required String filePath,
+  required String jenisTransaksi,
+}) async {
+  try {
+    print('🚀 UPLOAD BUKTI TRANSFER START');
+    print('📁 Transaksi ID: $transaksiId');
+    print('📁 Jenis: $jenisTransaksi');
+    print('📁 File path: $filePath');
+    
+    // ✅ VALIDASI FILE
+    File file = File(filePath);
+    if (!await file.exists()) {
+      return {
+        'success': false,
+        'message': 'File bukti transfer tidak ditemukan'
+      };
+    }
+    
+    final fileSize = await file.length();
+    if (fileSize > 5 * 1024 * 1024) {
+      return {
+        'success': false,
+        'message': 'Ukuran file terlalu besar. Maksimal 5MB.'
+      };
+    }
 
-      request.fields['transaksi_id'] = transaksiId;
-      request.fields['jenis_transaksi'] = jenisTransaksi;
+    // ✅ GET HEADERS
+    final headers = await getMultipartHeaders();
+    print('📤 Headers: $headers');
 
-      final response = await request.send().timeout(const Duration(seconds: 60));
-      final responseBody = await response.stream.bytesToString();
+    // ✅ PERBAIKAN: GUNAKAN ENDPOINT YANG BENAR
+    var request = http.MultipartRequest(
+      'POST', 
+      Uri.parse('$baseUrl/transaction/uploadBukti')
+    );
+    
+    request.headers.addAll(headers);
+    
+    // ✅ PERBAIKAN: TAMBAHKAN FILE DENGAN FIELD NAME YANG BENAR
+    final fileExtension = filePath.toLowerCase().substring(filePath.lastIndexOf('.'));
+    
+    // ✅ COBA BERBAGAI FIELD NAME UNTUK BUKTI TRANSFER
+    final possibleFieldNames = ['bukti_transfer', 'file', 'foto', 'bukti', 'transfer_proof'];
+    bool fileAdded = false;
+    
+    for (final fieldName in possibleFieldNames) {
+      try {
+        request.files.add(await http.MultipartFile.fromPath(
+          fieldName,
+          filePath,
+          filename: 'bukti_${jenisTransaksi}_${DateTime.now().millisecondsSinceEpoch}$fileExtension',
+        ));
+        fileAdded = true;
+        print('✅ File bukti berhasil dilampirkan dengan field: $fieldName');
+        break;
+      } catch (e) {
+        print('❌ Gagal dengan field $fieldName: $e');
+        continue;
+      }
+    }
+
+    if (!fileAdded) {
+      return {
+        'success': false,
+        'message': 'Gagal menambahkan file bukti ke request'
+      };
+    }
+
+    // ✅ PERBAIKAN: TAMBAHKAN FORM FIELDS YANG DIPERLUKAN
+    request.fields['transaksi_id'] = transaksiId;
+    request.fields['jenis_transaksi'] = jenisTransaksi;
+    
+    // ✅ TAMBAHKAN USER DATA JIKA DIPERLUKAN
+    final currentUser = await getCurrentUser();
+    if (currentUser != null) {
+      if (currentUser['user_id'] != null) {
+        request.fields['user_id'] = currentUser['user_id'].toString();
+      }
+      if (currentUser['username'] != null) {
+        request.fields['username'] = currentUser['username'].toString();
+      }
+    }
+
+    print('📤 Request fields: ${request.fields}');
+    print('📤 Files count: ${request.files.length}');
+
+    // ✅ KIRIM REQUEST
+    print('🔄 Mengirim request ke: $baseUrl/transaction/uploadBukti');
+    final response = await request.send().timeout(const Duration(seconds: 60));
+    final responseBody = await response.stream.bytesToString();
+    
+    print('📡 Response Status: ${response.statusCode}');
+    print('📡 Response Body: $responseBody');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(responseBody);
       
-      if (response.statusCode == 200) {
-        final data = jsonDecode(responseBody);
-        
-        if (data['status'] == true) {
-          return {
-            'success': true,
-            'message': data['message'] ?? 'Bukti transfer berhasil diupload',
-            'file_path': data['file_path']
-          };
-        } else {
-          return {
-            'success': false,
-            'message': data['message'] ?? 'Upload bukti transfer gagal'
-          };
-        }
-      } else if (response.statusCode == 401) {
-        await _clearToken();
+      if (data['status'] == true) {
         return {
-          'success': false,
-          'message': 'Sesi telah berakhir',
-          'token_expired': true
+          'success': true,
+          'message': data['message'] ?? 'Bukti transfer berhasil diupload',
+          'file_path': data['file_path'] ?? data['path'] ?? data['url']
         };
       } else {
         return {
           'success': false,
-          'message': 'Upload bukti transfer gagal: ${response.statusCode}'
+          'message': data['message'] ?? 'Upload bukti transfer gagal'
         };
       }
-    } catch (e) {
+    } else if (response.statusCode == 401) {
+      await _clearToken();
       return {
         'success': false,
-        'message': 'Error: $e'
+        'message': 'Sesi telah berakhir',
+        'token_expired': true
+      };
+    } else {
+      return {
+        'success': false,
+        'message': 'Upload bukti transfer gagal: ${response.statusCode} - $responseBody'
       };
     }
+  } catch (e) {
+    print('❌ UPLOAD BUKTI TRANSFER ERROR: $e');
+    return {
+      'success': false,
+      'message': 'Upload bukti transfer error: $e'
+    };
   }
+}
 
   // ✅ REGISTER METHOD
   Future<Map<String, dynamic>> register(Map<String, dynamic> userData) async {
