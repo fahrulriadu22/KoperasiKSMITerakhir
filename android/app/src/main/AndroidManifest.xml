@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.VIBRATE" /> <!-- ✅ TAMBAH INI -->
     
     <application
-        android:label="koperasi_fresh"
+        android:label="koperasi KSMI"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true"

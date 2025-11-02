@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.koperasi_ksmi_new"
+    namespace = "com.ksmi.koperasi"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 

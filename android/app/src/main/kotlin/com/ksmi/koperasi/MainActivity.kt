@@ -1,4 +1,4 @@
-package com.example.koperasi_fresh
+package com.ksmi.koperasi
 
 import io.flutter.embedding.android.FlutterActivity
 
