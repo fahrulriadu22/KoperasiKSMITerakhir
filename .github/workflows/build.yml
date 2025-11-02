@@ -3,78 +3,29 @@ name: Build APK Koperasi KSMI
 on: 
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 📥 Checkout code
+    - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: ⚙️ Setup Flutter
+    - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
         channel: 'stable'
-        cache: true
-        cache-key: flutter-v3-stable
         
-    - name: 📋 Show Flutter info
+    - name: Install dependencies and build
       run: |
-        echo "📱 Flutter Version:"
-        flutter --version
-        echo "🏥 Flutter Doctor:"
-        flutter doctor -v
+        flutter clean
+        flutter pub get
+        flutter build apk --release --no-tree-shake-icons
         
-    - name: 🧹 Clean project
-      run: flutter clean
-      
-    - name: 📦 Install dependencies
-      run: flutter pub get
-      
-    - name: 🎨 Generate app icons
-      run: flutter pub run flutter_launcher_icons:main
-      
-    - name: 🔧 Fix Android permissions
-      run: |
-        chmod +x android/gradlew
-        cd android && ./gradlew --version
-      
-    - name: 🏗️ Build APK Release
-      run: |
-        echo "🏗️ Building APK Release..."
-        flutter build apk --release --no-tree-shake-icons --no-shrink
-        
-    - name: 📁 List build files
-      run: |
-        echo "📱 Listing all APK files:"
-        find build/app/outputs -name "*.apk" -type f
-        ls -la build/app/outputs/flutter-apk/
-        echo "✅ Build completed successfully!"
-      
-    - name: ⬆️ Upload APK Release
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: koperasi-ksmi-release-apk
+        name: koperasi-ksmi-apk
         path: build/app/outputs/flutter-apk/app-release.apk
-        retention-days: 30
-        
-    - name: 📊 Upload Build Reports
-      uses: actions/upload-artifact@v4
-      with:
-        name: koperasi-ksmi-build-reports
-        path: |
-          build/app/**/*.txt
-          build/app/**/*.json
-        if-no-files-found: ignore
-        retention-days: 15
-        
-    - name: 🎉 Build Success Notification
-      if: success()
-      run: |
-        echo "🎉 APK Build Success!"
-        echo "📱 APK Location: build/app/outputs/flutter-apk/app-release.apk"
-        echo "📦 Artifacts will be available in the GitHub Actions summary"
