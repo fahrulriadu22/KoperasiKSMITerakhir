@@ -419,7 +419,7 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     );
   }
 
-  // ✅ PERBAIKAN: App theme yang benar - CardTheme (bukan CardThemeData)
+  // ✅ PERBAIKAN UTAMA: HAPUS CARD THEME DARI THEME DATA
   ThemeData _buildAppTheme() {
     return ThemeData(
       primaryColor: Colors.green[800],
@@ -478,17 +478,8 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
         labelStyle: TextStyle(color: Colors.grey[700]),
         hintStyle: TextStyle(color: Colors.grey[500]),
       ),
-      // ✅ PERBAIKAN: CardTheme yang benar (bukan CardThemeData)
-      cardTheme: CardTheme(
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        margin: const EdgeInsets.all(8),
-        color: Colors.white,
-        shadowColor: Colors.black.withOpacity(0.1),
-        surfaceTintColor: Colors.white,
-      ),
+      // ✅ PERBAIKAN: HAPUS CARD THEME UNTUK SEKARANG
+      // cardTheme: CardThemeData(...) - DIHAPUS KARENA MENYEBABKAN ERROR
       buttonTheme: ButtonThemeData(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
