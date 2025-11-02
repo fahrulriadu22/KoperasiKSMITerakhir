@@ -303,6 +303,30 @@ Future<Map<String, dynamic>> uploadFoto({
     }
   }
 
+  // ✅ METHOD UNTUK TEST ENDPOINT UPLOAD
+Future<Map<String, dynamic>> testUploadEndpoint() async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/users/setPhoto'),
+      headers: headers,
+      body: 'type=test&user_id=1',
+    ).timeout(const Duration(seconds: 10));
+
+    print('🧪 Test endpoint response: ${response.statusCode}');
+    print('🧪 Test endpoint body: ${response.body}');
+    
+    return {
+      'status_code': response.statusCode,
+      'body': response.body
+    };
+  } catch (e) {
+    print('❌ Test endpoint error: $e');
+    return {'error': e.toString()};
+  }
+}
+
   // ✅ UPLOAD DOKUMEN (UNTUK PDF, DOC, DLL)
   Future<Map<String, dynamic>> uploadDokumen({
     required String jenisDokumen,
@@ -387,6 +411,7 @@ Future<Map<String, dynamic>> uploadFoto({
       };
     }
   }
+  
 
   // ✅ LOGIN METHOD
   Future<Map<String, dynamic>> login(String username, String password) async {

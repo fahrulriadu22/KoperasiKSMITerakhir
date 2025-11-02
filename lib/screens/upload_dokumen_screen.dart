@@ -35,6 +35,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
   void initState() {
     super.initState();
     _loadExistingFiles();
+    testUpload(); // ✅ TEST ENDPOINT
   }
 
   void _loadExistingFiles() {
@@ -43,6 +44,11 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     print('   - KK: ${widget.user['foto_kk']}');
     print('   - Foto Diri: ${widget.user['foto_diri']}');
   }
+
+  void testUpload() async {
+  final result = await _apiService.testUploadEndpoint();
+  print('🧪 TEST RESULT: $result');
+}
 
 // ✅ PERBAIKAN: Tambahkan validasi file type
 Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool) setLoading) async {
