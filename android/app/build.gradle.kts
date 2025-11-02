@@ -10,7 +10,6 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        // ✅ TAMBAH INI (BARIS 1)
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -26,6 +25,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // ✅ TAMBAH INI JUGA
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -39,7 +40,7 @@ flutter {
     source = "../.."
 }
 
-// ✅ TAMBAH INI (BARIS 2)
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    // ✅ UPDATE KE VERSI 2.1.4
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
