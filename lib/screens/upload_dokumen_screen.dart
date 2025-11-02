@@ -1,17 +1,148 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'dashboard_main.dart';
 
+// ✅ DIO SERVICE UNTUK UPLOAD
+class DioService {
+  static const String baseUrl = 'http://demo.bsdeveloper.id/api';
+  
+  String _deviceId = '12341231313131';
+  String _deviceToken = '1234232423424';
+
+  Dio get dio => Dio(BaseOptions(
+    baseUrl: baseUrl,
+    connectTimeout: const Duration(seconds: 30),
+    receiveTimeout: const Duration(seconds: 30),
+  ));
+
+  // ✅ GET HEADERS DENGAN DIO
+  Future<Map<String, dynamic>> _getHeaders() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userKey = prefs.getString('token');
+      
+      final headers = {
+        'DEVICE-ID': _deviceId,
+        'DEVICE-TOKEN': _deviceToken,
+        'Content-Type': 'multipart/form-data',
+      };
+      
+      if (userKey != null && userKey.isNotEmpty) {
+        headers['x-api-key'] = userKey;
+      }
+      
+      return headers;
+    } catch (e) {
+      return {
+        'DEVICE-ID': _deviceId,
+        'DEVICE-TOKEN': _deviceToken,
+        'Content-Type': 'multipart/form-data',
+      };
+    }
+  }
+
+  // ✅ UPLOAD FOTO DENGAN DIO
+  Future<Map<String, dynamic>> uploadFotoWithDio({
+    required String type,
+    required String filePath,
+  }) async {
+    try {
+      print('🚀 DIO UPLOAD START: $type');
+      
+      final headers = await _getHeaders();
+      final file = File(filePath);
+      
+      if (!await file.exists()) {
+        return {'success': false, 'message': 'File tidak ditemukan'};
+      }
+
+      // ✅ BUAT FORM DATA DENGAN DIO
+      FormData formData = FormData.fromMap({
+        'type': type,
+        'file': await MultipartFile.fromFile(
+          filePath,
+          filename: '${type}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ),
+      });
+
+      // ✅ TAMBAH USER DATA JIKA ADA
+      final prefs = await SharedPreferences.getInstance();
+      final userString = prefs.getString('user');
+      if (userString != null) {
+        final userData = jsonDecode(userString);
+        if (userData['user_id'] != null) {
+          formData.fields.add(MapEntry('user_id', userData['user_id'].toString()));
+        }
+        if (userData['username'] != null) {
+          formData.fields.add(MapEntry('username', userData['username'].toString()));
+        }
+      }
+
+      print('📤 DIO Headers: $headers');
+      print('📤 DIO Form data fields: ${formData.fields}');
+      print('📤 DIO Files: ${formData.files}');
+
+      // ✅ KIRIM DENGAN DIO
+      final response = await dio.post(
+        '/users/setPhoto',
+        data: formData,
+        options: Options(headers: headers),
+      );
+
+      print('📡 DIO Response: ${response.statusCode}');
+      print('📡 DIO Data: ${response.data}');
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data['status'] == true) {
+          return {
+            'success': true,
+            'message': data['message'] ?? 'Upload berhasil',
+            'data': data
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Upload gagal'
+          };
+        }
+      } else {
+        return {
+          'success': false,
+          'message': 'Server error ${response.statusCode}'
+        };
+      }
+    } catch (e) {
+      print('❌ DIO UPLOAD ERROR: $e');
+      if (e is DioException) {
+        print('❌ DIO Error Response: ${e.response?.data}');
+        print('❌ DIO Error Status: ${e.response?.statusCode}');
+        return {
+          'success': false,
+          'message': 'Upload error: ${e.response?.data?['message'] ?? e.message}'
+        };
+      }
+      return {
+        'success': false,
+        'message': 'Upload error: $e'
+      };
+    }
+  }
+}
+
 class UploadDokumenScreen extends StatefulWidget {
   final Map<String, dynamic> user;
-  final VoidCallback? onDocumentsComplete; // ✅ TAMBAH PARAMETER CALLBACK
+  final VoidCallback? onDocumentsComplete;
 
   const UploadDokumenScreen({
     super.key, 
     required this.user,
-    this.onDocumentsComplete, // ✅ TAMBAH PARAMETER CALLBACK
+    this.onDocumentsComplete,
   });
 
   @override
@@ -20,6 +151,7 @@ class UploadDokumenScreen extends StatefulWidget {
 
 class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
   final ApiService _apiService = ApiService();
+  final DioService _dioService = DioService(); // ✅ DIO SERVICE
   final ImagePicker _imagePicker = ImagePicker();
   
   File? _ktpFile;
@@ -35,7 +167,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
   void initState() {
     super.initState();
     _loadExistingFiles();
-    testUpload(); // ✅ TEST ENDPOINT
+    _runDebug();
   }
 
   void _loadExistingFiles() {
@@ -45,138 +177,174 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     print('   - Foto Diri: ${widget.user['foto_diri']}');
   }
 
-  void testUpload() async {
-  final result = await _apiService.testUploadEndpoint();
-  print('🧪 TEST RESULT: $result');
-}
+  void _runDebug() async {
+    print('🛠️ RUNNING UPLOAD DEBUG...');
+    await _apiService.debugUploadSystem();
+  }
 
-// ✅ PERBAIKAN: Tambahkan validasi file type
-Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool) setLoading) async {
-  try {
-    final XFile? pickedFile = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1200,
-      maxHeight: 800,
-      imageQuality: 85,
-    );
+  // ✅ METHOD UPLOAD DENGAN FALLBACK (HTTP + DIO)
+  Future<void> _uploadDocumentWithFallback(String type, Function(File?) setFile, Function(bool) setLoading) async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1200,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
 
-    if (pickedFile != null) {
-      setState(() {
-        setLoading(true);
-        _uploadError = null;
-      });
-      
-      final file = File(pickedFile.path);
-      print('📤 Uploading $type: ${file.path}');
-      print('📤 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
-      print('📤 File exists: ${await file.exists()}');
-      
-      // ✅ PERBAIKAN: Validasi file sebelum upload
-      if (!await file.exists()) {
-        throw Exception('File tidak ditemukan');
-      }
+      if (pickedFile != null) {
+        setState(() {
+          setLoading(true);
+          _uploadError = null;
+        });
 
-      // ✅ PERBAIKAN: Check file size (max 5MB)
-      final fileSize = file.lengthSync();
-      if (fileSize > 5 * 1024 * 1024) {
-        throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
-      }
-
-      // ✅ PERBAIKAN BARU: Validasi file type
-      final fileExtension = pickedFile.path.toLowerCase().split('.').last;
-      if (!['jpg', 'jpeg', 'png', 'heic'].contains(fileExtension)) {
-        throw Exception('Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.');
-      }
-
-      print('🔄 Calling API uploadFoto with type: $type');
-      print('🔄 File path: ${pickedFile.path}');
-      
-      // ✅ PERBAIKAN: Upload dengan timeout dan error handling yang lebih baik
-      final result = await _apiService.uploadFoto(
-        type: type,
-        filePath: pickedFile.path,
-      ).timeout(const Duration(seconds: 30)); // ✅ TAMBAH TIMEOUT
-
-      setState(() => setLoading(false));
-
-      print('📤 Upload result for $type: ${result['success']}');
-      print('📤 Upload message: ${result['message']}');
-      print('📤 Upload data: ${result['file_path']}');
-      print('📤 Token expired: ${result['token_expired']}');
-
-      if (result['success'] == true) {
-        setState(() => setFile(file));
+        final file = File(pickedFile.path);
+        print('📤 Uploading $type: ${file.path}');
+        print('📤 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_getDocumentName(type)} berhasil diupload ✅'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        // ✅ VALIDASI FILE
+        if (!await file.exists()) {
+          throw Exception('File tidak ditemukan');
+        }
 
-        // ✅ CEK JIKA SEMUA DOKUMEN SUDAH DIUPLOAD
-        _checkAllDocumentsUploaded();
-      } else {
-        // ✅ PERBAIKAN: Handle token expired
-        if (result['token_expired'] == true) {
-          _showTokenExpiredDialog();
+        final fileSize = file.lengthSync();
+        if (fileSize > 5 * 1024 * 1024) {
+          throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
+        }
+
+        final fileExtension = pickedFile.path.toLowerCase().split('.').last;
+        if (!['jpg', 'jpeg', 'png', 'heic'].contains(fileExtension)) {
+          throw Exception('Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.');
+        }
+
+        // ✅ COBA UPLOAD DENGAN HTTP PACKAGE DULU
+        print('🔄 Trying HTTP package upload...');
+        final httpResult = await _apiService.uploadFoto(
+          type: type,
+          filePath: pickedFile.path,
+        ).timeout(const Duration(seconds: 30));
+
+        if (httpResult['success'] == true) {
+          // ✅ HTTP BERHASIL
+          _handleUploadSuccess(file, type, httpResult, setFile, setLoading);
           return;
         }
-        
-        setState(() => setFile(null));
-        final errorMessage = result['message'] ?? 'Gagal upload ${_getDocumentName(type)}';
-        
-        print('❌ Upload failed: $errorMessage');
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
+
+        // ✅ JIKA HTTP GAGAL, COBA DIO
+        print('🔄 HTTP failed, trying DIO upload...');
+        final dioResult = await _dioService.uploadFotoWithDio(
+          type: type,
+          filePath: pickedFile.path,
         );
+
+        if (dioResult['success'] == true) {
+          // ✅ DIO BERHASIL
+          _handleUploadSuccess(file, type, dioResult, setFile, setLoading);
+        } else {
+          // ✅ KEDUANYA GAGAL
+          _handleUploadFailure(type, dioResult['message'] ?? 'Upload gagal', setLoading);
+        }
       }
-    } else {
-      print('❌ No file selected');
+    } catch (e) {
+      _handleUploadFailure(type, 'Error: $e', setLoading);
     }
-  } catch (e) {
+  }
+
+  void _handleUploadSuccess(File file, String type, Map<String, dynamic> result, Function(File?) setFile, Function(bool) setLoading) {
+    setState(() {
+      setFile(file);
+      setLoading(false);
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${_getDocumentName(type)} berhasil diupload ✅'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+
+    _checkAllDocumentsUploaded();
+  }
+
+  void _handleUploadFailure(String type, String error, Function(bool) setLoading) {
     setState(() {
       setLoading(false);
-      setFile(null);
-      _uploadError = 'Error upload ${_getDocumentName(type)}: $e';
+      _uploadError = 'Error upload ${_getDocumentName(type)}: $error';
     });
-    
-    print('❌ Error upload $type: $e');
-    print('❌ Error type: ${e.runtimeType}');
-    
-    // ✅ PERBAIKAN: User-friendly error messages
-    String userMessage = 'Terjadi kesalahan saat upload';
-    if (e.toString().contains('File tidak ditemukan')) {
-      userMessage = 'File tidak ditemukan';
-    } else if (e.toString().contains('Ukuran file terlalu besar')) {
-      userMessage = 'Ukuran file terlalu besar. Maksimal 5MB.';
-    } else if (e.toString().contains('Format file tidak didukung')) {
-      userMessage = 'Format file tidak didukung. Gunakan JPG/PNG.';
-    } else if (e.toString().contains('timeout')) {
-      userMessage = 'Upload timeout, coba lagi';
-    } else if (e.toString().contains('permission')) {
-      userMessage = 'Izin akses galeri/kamera ditolak';
-    } else if (e.toString().contains('SocketException')) {
-      userMessage = 'Tidak ada koneksi internet';
-    } else if (e.toString().contains('HttpException')) {
-      userMessage = 'Gagal terhubung ke server';
-    }
+
+    print('❌ Upload failed: $error');
     
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$userMessage (${_getDocumentName(type)})'),
+        content: Text('Gagal upload ${_getDocumentName(type)}: $error'),
         backgroundColor: Colors.red,
         duration: const Duration(seconds: 4),
       ),
     );
   }
-}
+
+  // ✅ METHOD UPLOAD DARI KAMERA DENGAN FALLBACK
+  Future<void> _takePhotoWithFallback(String type, Function(File?) setFile, Function(bool) setLoading) async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1200,
+        maxHeight: 800,
+        imageQuality: 85,
+      );
+
+      if (pickedFile != null) {
+        setState(() {
+          setLoading(true);
+          _uploadError = null;
+        });
+
+        final file = File(pickedFile.path);
+        print('📸 Taking photo for $type: ${file.path}');
+        
+        // ✅ VALIDASI FILE
+        if (!await file.exists()) {
+          throw Exception('File tidak ditemukan');
+        }
+
+        final fileSize = file.lengthSync();
+        if (fileSize > 5 * 1024 * 1024) {
+          throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
+        }
+
+        // ✅ COBA UPLOAD DENGAN HTTP PACKAGE DULU
+        print('🔄 Trying HTTP package upload from camera...');
+        final httpResult = await _apiService.uploadFoto(
+          type: type,
+          filePath: pickedFile.path,
+        ).timeout(const Duration(seconds: 30));
+
+        if (httpResult['success'] == true) {
+          // ✅ HTTP BERHASIL
+          _handleUploadSuccess(file, type, httpResult, setFile, setLoading);
+          return;
+        }
+
+        // ✅ JIKA HTTP GAGAL, COBA DIO
+        print('🔄 HTTP failed, trying DIO upload from camera...');
+        final dioResult = await _dioService.uploadFotoWithDio(
+          type: type,
+          filePath: pickedFile.path,
+        );
+
+        if (dioResult['success'] == true) {
+          // ✅ DIO BERHASIL
+          _handleUploadSuccess(file, type, dioResult, setFile, setLoading);
+        } else {
+          // ✅ KEDUANYA GAGAL
+          _handleUploadFailure(type, dioResult['message'] ?? 'Upload gagal', setLoading);
+        }
+      }
+    } catch (e) {
+      _handleUploadFailure(type, 'Error: $e', setLoading);
+    }
+  }
 
   // ✅ PERBAIKAN: METHOD UNTUK HANDLE TOKEN EXPIRED
   void _showTokenExpiredDialog() {
@@ -190,7 +358,6 @@ Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool
           TextButton(
             onPressed: () {
               Navigator.of(context).popUntil((route) => route.isFirst);
-              // Navigate to login screen
               Navigator.pushReplacementNamed(context, '/login');
             },
             child: const Text('Login Kembali'),
@@ -205,7 +372,6 @@ Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool
     final bool allUploaded = _ktpFile != null && _kkFile != null && _fotoDiriFile != null;
     if (allUploaded) {
       print('🎉 Semua dokumen sudah diupload!');
-      // Otomatis panggil callback setelah 2 detik
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) {
           _proceedToDashboard();
@@ -226,7 +392,7 @@ Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool
 
   // ✅ UPLOAD KTP
   Future<void> _uploadKTP() async {
-    await _uploadDocument(
+    await _uploadDocumentWithFallback(
       'foto_ktp',
       (file) => _ktpFile = file,
       (loading) => _isUploadingKTP = loading,
@@ -235,7 +401,7 @@ Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool
 
   // ✅ UPLOAD KK
   Future<void> _uploadKK() async {
-    await _uploadDocument(
+    await _uploadDocumentWithFallback(
       'foto_kk',
       (file) => _kkFile = file,
       (loading) => _isUploadingKK = loading,
@@ -244,7 +410,34 @@ Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool
 
   // ✅ UPLOAD FOTO DIRI
   Future<void> _uploadFotoDiri() async {
-    await _uploadDocument(
+    await _uploadDocumentWithFallback(
+      'foto_diri',
+      (file) => _fotoDiriFile = file,
+      (loading) => _isUploadingFotoDiri = loading,
+    );
+  }
+
+  // ✅ UPLOAD KTP DARI KAMERA
+  Future<void> _takePhotoKTP() async {
+    await _takePhotoWithFallback(
+      'foto_ktp',
+      (file) => _ktpFile = file,
+      (loading) => _isUploadingKTP = loading,
+    );
+  }
+
+  // ✅ UPLOAD KK DARI KAMERA
+  Future<void> _takePhotoKK() async {
+    await _takePhotoWithFallback(
+      'foto_kk',
+      (file) => _kkFile = file,
+      (loading) => _isUploadingKK = loading,
+    );
+  }
+
+  // ✅ UPLOAD FOTO DIRI DARI KAMERA
+  Future<void> _takePhotoFotoDiri() async {
+    await _takePhotoWithFallback(
       'foto_diri',
       (file) => _fotoDiriFile = file,
       (loading) => _isUploadingFotoDiri = loading,
@@ -285,7 +478,6 @@ Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool
   void _lanjutKeDashboard() {
     print('🎯 Lanjut ke Dashboard');
     
-    // Konfirmasi sebelum lanjut
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -311,12 +503,11 @@ Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool
     );
   }
 
-  // ✅ PERBAIKAN BESAR: PROCEED TO DASHBOARD DENGAN BETTER HANDLING
+  // ✅ PROCEED TO DASHBOARD
   void _proceedToDashboard() {
     print('🚀 Starting proceed to dashboard...');
     setState(() => _isLoading = true);
     
-    // Update user data dengan status dokumen
     final updatedUser = Map<String, dynamic>.from(widget.user);
     updatedUser['foto_ktp'] = _ktpFile != null ? 'uploaded' : (widget.user['foto_ktp'] ?? 'pending');
     updatedUser['foto_kk'] = _kkFile != null ? 'uploaded' : (widget.user['foto_kk'] ?? 'pending');
@@ -326,14 +517,11 @@ Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool
     print('   - KTP: ${updatedUser['foto_ktp']}');
     print('   - KK: ${updatedUser['foto_kk']}');
     print('   - Foto Diri: ${updatedUser['foto_diri']}');
-    print('   - Callback available: ${widget.onDocumentsComplete != null}');
 
-    // ✅ PERBAIKAN: Delay untuk memastikan UI update
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
         setState(() => _isLoading = false);
         
-        // ✅ PERBAIKAN: PANGGIL CALLBACK JIKA ADA, JIKA TIDAK NAVIGASI LANGSUNG
         if (widget.onDocumentsComplete != null) {
           print('📞 Memanggil callback onDocumentsComplete...');
           widget.onDocumentsComplete!();
@@ -348,7 +536,6 @@ Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool
             print('✅ Navigation to dashboard successful');
           } catch (e) {
             print('❌ Navigation error: $e');
-            // Fallback navigation
             Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(builder: (_) => DashboardMain(user: widget.user)),
@@ -416,120 +603,6 @@ Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool
       ),
     );
   }
-
-// ✅ PERBAIKAN: Take photo from camera dengan better error handling
-Future<void> _takePhoto(String type, Function(File?) setFile, Function(bool) setLoading) async {
-  try {
-    final XFile? pickedFile = await _imagePicker.pickImage(
-      source: ImageSource.camera,
-      maxWidth: 1200,
-      maxHeight: 800,
-      imageQuality: 85,
-    );
-
-    if (pickedFile != null) {
-      setState(() {
-        setLoading(true);
-        _uploadError = null;
-      });
-      
-      final file = File(pickedFile.path);
-      print('📸 Taking photo for $type: ${file.path}');
-      print('📸 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
-      
-      // ✅ PERBAIKAN: Validasi file sebelum upload
-      if (!await file.exists()) {
-        throw Exception('File tidak ditemukan');
-      }
-
-      // ✅ PERBAIKAN: Check file size (max 5MB)
-      final fileSize = file.lengthSync();
-      if (fileSize > 5 * 1024 * 1024) {
-        throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
-      }
-
-      print('🔄 Calling API uploadFoto from camera...');
-      final result = await _apiService.uploadFoto(
-        type: type,
-        filePath: pickedFile.path,
-      ).timeout(const Duration(seconds: 30)); // ✅ TAMBAH TIMEOUT
-
-      setState(() => setLoading(false));
-
-      print('📸 Camera result for $type: ${result['success']}');
-      print('📸 Camera message: ${result['message']}');
-
-      if (result['success'] == true) {
-        setState(() => setFile(file));
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_getDocumentName(type)} berhasil diambil ✅'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-
-        // ✅ CEK JIKA SEMUA DOKUMEN SUDAH DIUPLOAD
-        _checkAllDocumentsUploaded();
-      } else {
-        // ✅ PERBAIKAN: Handle token expired
-        if (result['token_expired'] == true) {
-          _showTokenExpiredDialog();
-          return;
-        }
-        
-        setState(() => setFile(null));
-        final errorMessage = result['message'] ?? 'Gagal mengambil ${_getDocumentName(type)}';
-        
-        print('❌ Camera upload failed: $errorMessage');
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } else {
-      print('❌ No photo taken');
-    }
-  } catch (e) {
-    setState(() {
-      setLoading(false);
-      setFile(null);
-      _uploadError = 'Error mengambil ${_getDocumentName(type)}: $e';
-    });
-    
-    print('❌ Error take photo $type: $e');
-    print('❌ Error type: ${e.runtimeType}');
-    
-    // ✅ PERBAIKAN: User-friendly error messages untuk kamera
-    String userMessage = 'Terjadi kesalahan saat mengambil foto';
-    if (e.toString().contains('File tidak ditemukan')) {
-      userMessage = 'File tidak ditemukan';
-    } else if (e.toString().contains('Ukuran file terlalu besar')) {
-      userMessage = 'Ukuran file terlalu besar. Maksimal 5MB.';
-    } else if (e.toString().contains('timeout')) {
-      userMessage = 'Upload timeout, coba lagi';
-    } else if (e.toString().contains('permission')) {
-      userMessage = 'Izin akses kamera ditolak';
-    } else if (e.toString().contains('CameraAccessDenied')) {
-      userMessage = 'Akses kamera ditolak. Izinkan di pengaturan.';
-    } else if (e.toString().contains('SocketException')) {
-      userMessage = 'Tidak ada koneksi internet';
-    }
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$userMessage (${_getDocumentName(type)})'),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 4),
-      ),
-    );
-  }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -667,7 +740,7 @@ Future<void> _takePhoto(String type, Function(File?) setFile, Function(bool) set
                       color: Colors.blue,
                       isUploaded: isKTPUploaded,
                       isUploading: _isUploadingKTP,
-                      onUpload: () => _showImageSourceDialog(_uploadKTP, () => _takePhoto('foto_ktp', (file) => _ktpFile = file, (loading) => _isUploadingKTP = loading)),
+                      onUpload: () => _showImageSourceDialog(_uploadKTP, _takePhotoKTP),
                     ),
                     const SizedBox(height: 16),
 
@@ -679,7 +752,7 @@ Future<void> _takePhoto(String type, Function(File?) setFile, Function(bool) set
                       color: Colors.green,
                       isUploaded: isKKUploaded,
                       isUploading: _isUploadingKK,
-                      onUpload: () => _showImageSourceDialog(_uploadKK, () => _takePhoto('foto_kk', (file) => _kkFile = file, (loading) => _isUploadingKK = loading)),
+                      onUpload: () => _showImageSourceDialog(_uploadKK, _takePhotoKK),
                     ),
                     const SizedBox(height: 16),
 
@@ -691,11 +764,11 @@ Future<void> _takePhoto(String type, Function(File?) setFile, Function(bool) set
                       color: Colors.orange,
                       isUploaded: isFotoDiriUploaded,
                       isUploading: _isUploadingFotoDiri,
-                      onUpload: () => _showImageSourceDialog(_uploadFotoDiri, () => _takePhoto('foto_diri', (file) => _fotoDiriFile = file, (loading) => _isUploadingFotoDiri = loading)),
+                      onUpload: () => _showImageSourceDialog(_uploadFotoDiri, _takePhotoFotoDiri),
                     ),
                     const SizedBox(height: 32),
 
-                    // PREVIEW SECTION (jika ada file yang diupload)
+                    // PREVIEW SECTION
                     if (_ktpFile != null || _kkFile != null || _fotoDiriFile != null) ...[
                       _buildPreviewSection(),
                       const SizedBox(height: 16),

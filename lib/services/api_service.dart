@@ -327,6 +327,61 @@ Future<Map<String, dynamic>> testUploadEndpoint() async {
   }
 }
 
+// ✅ METHOD DEBUG: Cek status token dan connectivity
+Future<Map<String, dynamic>> debugUploadSystem() async {
+  try {
+    print('🐛 === DEBUG UPLOAD SYSTEM START ===');
+    
+    // 1. CEK TOKEN
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    final user = prefs.getString('user');
+    
+    print('🔐 Token status: ${token != null ? "EXISTS (${token.length} chars)" : "NULL"}');
+    print('👤 User data: ${user != null ? "EXISTS" : "NULL"}');
+    if (user != null) {
+      try {
+        final userData = jsonDecode(user);
+        print('👤 User ID: ${userData['user_id']}');
+        print('👤 Username: ${userData['username']}');
+      } catch (e) {
+        print('❌ Error parsing user data: $e');
+      }
+    }
+
+    // 2. CEK KONEKSI KE SERVER
+    try {
+      final connectivityResult = await http.get(
+        Uri.parse('$baseUrl/'),
+      ).timeout(const Duration(seconds: 5));
+      print('🌐 Server connectivity: ${connectivityResult.statusCode}');
+    } catch (e) {
+      print('❌ Server connectivity FAILED: $e');
+    }
+
+    // 3. TEST ENDPOINT UPLOAD DENGAN GET (untuk cek apakah endpoint ada)
+    try {
+      final testResponse = await http.post(
+        Uri.parse('$baseUrl/users/setPhoto'),
+        headers: getAuthHeaders(),
+        body: 'test=1',
+      ).timeout(const Duration(seconds: 10));
+      
+      print('🧪 Upload endpoint test: ${testResponse.statusCode}');
+      print('🧪 Upload endpoint response: ${testResponse.body}');
+    } catch (e) {
+      print('❌ Upload endpoint test FAILED: $e');
+    }
+
+    print('🐛 === DEBUG UPLOAD SYSTEM END ===');
+    
+    return {'success': true, 'message': 'Debug completed'};
+  } catch (e) {
+    print('❌ Debug system error: $e');
+    return {'success': false, 'message': 'Debug failed: $e'};
+  }
+}
+
   // ✅ UPLOAD DOKUMEN (UNTUK PDF, DOC, DLL)
   Future<Map<String, dynamic>> uploadDokumen({
     required String jenisDokumen,
