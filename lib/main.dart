@@ -200,56 +200,55 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     _checkDokumenStatusAndNavigate(userData);
   }
 
-// ✅ PERBAIKAN: Check dokumen status dengan better logic
-void _checkDokumenStatusAndNavigate(Map<String, dynamic> userData) {
-  try {
-    print('📄 Checking document status for navigation...');
-    
-    final fotoKtp = userData['foto_ktp']?.toString() ?? '';
-    final fotoKk = userData['foto_kk']?.toString() ?? '';
-    final fotoDiri = userData['foto_diri']?.toString() ?? '';
-    
-    final bool hasKTP = fotoKtp.isNotEmpty && fotoKtp != 'uploaded' && fotoKtp != 'null';
-    final bool hasKK = fotoKk.isNotEmpty && fotoKk != 'uploaded' && fotoKk != 'null';
-    final bool hasFotoDiri = fotoDiri.isNotEmpty && fotoDiri != 'uploaded' && fotoDiri != 'null';
-    
-    final bool allDokumenUploaded = hasKTP && hasKK && hasFotoDiri;
-    
-    print('''
+  // ✅ PERBAIKAN: Check dokumen status dengan better logic
+  void _checkDokumenStatusAndNavigate(Map<String, dynamic> userData) {
+    try {
+      print('📄 Checking document status for navigation...');
+      
+      final fotoKtp = userData['foto_ktp']?.toString() ?? '';
+      final fotoKk = userData['foto_kk']?.toString() ?? '';
+      final fotoDiri = userData['foto_diri']?.toString() ?? '';
+      
+      final bool hasKTP = fotoKtp.isNotEmpty && fotoKtp != 'uploaded' && fotoKtp != 'null';
+      final bool hasKK = fotoKk.isNotEmpty && fotoKk != 'uploaded' && fotoKk != 'null';
+      final bool hasFotoDiri = fotoDiri.isNotEmpty && fotoDiri != 'uploaded' && fotoDiri != 'null';
+      
+      final bool allDokumenUploaded = hasKTP && hasKK && hasFotoDiri;
+      
+      print('''
     📄 Document Status Check:
       - KTP: $hasKTP ($fotoKtp)
       - KK: $hasKK ($fotoKk)  
       - Foto Diri: $hasFotoDiri ($fotoDiri)
       - All Complete: $allDokumenUploaded
     ''');
-    
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && navigatorKey.currentState?.context != null) {
-        if (!allDokumenUploaded) {
-          print('📱 Navigating to UploadDokumenScreen');
-          navigatorKey.currentState!.pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (context) => UploadDokumenScreen(
-                user: userData,
-                // ✅ PERBAIKAN: HAPUS parameter onDocumentsComplete karena tidak ada di UploadDokumenScreen
+      
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && navigatorKey.currentState?.context != null) {
+          if (!allDokumenUploaded) {
+            print('📱 Navigating to UploadDokumenScreen');
+            navigatorKey.currentState!.pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (context) => UploadDokumenScreen(
+                  user: userData,
+                ),
               ),
-            ),
-            (route) => false,
-          );
+              (route) => false,
+            );
+          } else {
+            print('📱 Navigating directly to Dashboard');
+            _navigateToDashboard(userData);
+          }
         } else {
-          print('📱 Navigating directly to Dashboard');
-          _navigateToDashboard(userData);
+          print('❌ Navigator not ready for navigation');
         }
-      } else {
-        print('❌ Navigator not ready for navigation');
-      }
-    });
-  } catch (e) {
-    print('❌ Error checking document status: $e');
-    // Fallback: langsung ke dashboard jika ada error
-    _navigateToDashboard(userData);
+      });
+    } catch (e) {
+      print('❌ Error checking document status: $e');
+      // Fallback: langsung ke dashboard jika ada error
+      _navigateToDashboard(userData);
+    }
   }
-}
 
   // ✅ PERBAIKAN: Navigate to dashboard dengan safety check
   void _navigateToDashboard(Map<String, dynamic> userData) {
@@ -265,54 +264,54 @@ void _checkDokumenStatusAndNavigate(Map<String, dynamic> userData) {
     });
   }
 
-// ✅ PERBAIKAN: Handle logout dengan better cleanup
-Future<void> _handleLogout() async {
-  try {
-    print('🚪 Handling logout...');
-    
-    // ✅ TAMPILKAN LOADING DULU
-    setState(() => _isLoading = true);
-    
-    final userId = _userData['user_id']?.toString() ?? _userData['id']?.toString();
-    if (userId != null && userId.isNotEmpty) {
-      try {
-        await firebaseService.unsubscribeFromTopic('user_$userId');
-        print('🔔 Unsubscribed from user topic');
-      } catch (e) {
-        print('❌ Error unsubscribing from topic: $e');
+  // ✅ PERBAIKAN: Handle logout dengan better cleanup
+  Future<void> _handleLogout() async {
+    try {
+      print('🚪 Handling logout...');
+      
+      // ✅ TAMPILKAN LOADING DULU
+      setState(() => _isLoading = true);
+      
+      final userId = _userData['user_id']?.toString() ?? _userData['id']?.toString();
+      if (userId != null && userId.isNotEmpty) {
+        try {
+          await firebaseService.unsubscribeFromTopic('user_$userId');
+          print('🔔 Unsubscribed from user topic');
+        } catch (e) {
+          print('❌ Error unsubscribing from topic: $e');
+        }
       }
+      
+      // ✅ LOGOUT DARI API
+      final logoutResult = await _apiService.logout();
+      print('🔐 Logout API result: ${logoutResult['success']}');
+      
+      // ✅ CLEAR STATE
+      setState(() {
+        _isLoggedIn = false;
+        _userData = {};
+      });
+      
+      // ✅ NAVIGASI KE LOGIN DENGAN DELAY
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        if (mounted) {
+          _navigateToLogin();
+        }
+      });
+      
+    } catch (e) {
+      print('❌ Error during logout: $e');
+      
+      // ✅ FALLBACK: CLEAR STATE MESKIPUN ERROR
+      setState(() {
+        _isLoading = false;
+        _isLoggedIn = false;
+        _userData = {};
+      });
+      
+      _navigateToLogin();
     }
-    
-    // ✅ LOGOUT DARI API
-    final logoutResult = await _apiService.logout();
-    print('🔐 Logout API result: ${logoutResult['success']}');
-    
-    // ✅ CLEAR STATE
-    setState(() {
-      _isLoggedIn = false;
-      _userData = {};
-    });
-    
-    // ✅ NAVIGASI KE LOGIN DENGAN DELAY
-    Future.delayed(const Duration(milliseconds: 1000), () {
-      if (mounted) {
-        _navigateToLogin();
-      }
-    });
-    
-  } catch (e) {
-    print('❌ Error during logout: $e');
-    
-    // ✅ FALLBACK: CLEAR STATE MESKIPUN ERROR
-    setState(() {
-      _isLoading = false;
-      _isLoggedIn = false;
-      _userData = {};
-    });
-    
-    _navigateToLogin();
   }
-}
 
   // ✅ PERBAIKAN: Navigate to login dengan safety check
   void _navigateToLogin() {
@@ -420,7 +419,7 @@ Future<void> _handleLogout() async {
     );
   }
 
-  // ✅ PERBAIKAN 2: App theme yang diperbaiki - CardTheme yang benar
+  // ✅ PERBAIKAN: App theme yang benar - CardTheme (bukan CardThemeData)
   ThemeData _buildAppTheme() {
     return ThemeData(
       primaryColor: Colors.green[800],
@@ -479,8 +478,8 @@ Future<void> _handleLogout() async {
         labelStyle: TextStyle(color: Colors.grey[700]),
         hintStyle: TextStyle(color: Colors.grey[500]),
       ),
-      // ✅ PERBAIKAN: CardTheme yang benar (CardThemeData bukan CardTheme)
-      cardTheme: CardThemeData(
+      // ✅ PERBAIKAN: CardTheme yang benar (bukan CardThemeData)
+      cardTheme: CardTheme(
         elevation: 2,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
