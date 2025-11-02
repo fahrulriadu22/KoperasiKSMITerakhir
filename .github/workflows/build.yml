@@ -3,7 +3,9 @@ name: Build APK Koperasi KSMI
 on: 
   push:
     branches: [ main, master ]
-  workflow_dispatch: # ✅ Tambah manual trigger
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch: # ✅ Manual trigger
 
 jobs:
   build:
@@ -13,10 +15,22 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '11'
+      
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: '3.35.7'
+        flutter-version: '3.22.4' # ✅ VERSI STABIL
+        channel: 'stable'
+        
+    - name: Show Flutter info
+      run: |
+        flutter --version
+        flutter doctor -v
         
     - name: Clean project
       run: flutter clean
@@ -25,28 +39,35 @@ jobs:
       run: flutter pub get
       
     - name: Generate app icons
-      run: flutter pub run flutter_launcher_icons
+      run: flutter pub run flutter_launcher_icons:main
+      
+    - name: Fix Android permissions
+      run: |
+        chmod +x android/gradlew
+        cd android && ./gradlew --version
       
     - name: Build APK Release
-      run: flutter build apk --release --no-shrink
+      run: |
+        flutter build apk --release --no-shrink --verbose
       
     - name: List build files
       run: |
         echo "📱 Listing all APK files:"
         find build/app/outputs -name "*.apk" -type f
         ls -la build/app/outputs/flutter-apk/
+        echo "📦 Build completed successfully!"
       
     - name: Upload APK Release
       uses: actions/upload-artifact@v4
       with:
-        name: koperasi-ksmi-release
+        name: koperasi-ksmi-release-apk
         path: build/app/outputs/flutter-apk/app-release.apk
         retention-days: 30
         
-    - name: Upload APK Debug (if exists)
+    - name: Upload APK Debug
       uses: actions/upload-artifact@v4
       with:
-        name: koperasi-ksmi-debug
+        name: koperasi-ksmi-debug-apk
         path: build/app/outputs/flutter-apk/app-debug.apk
         if-no-files-found: ignore
         retention-days: 30
@@ -54,7 +75,17 @@ jobs:
     - name: Upload App Bundle
       uses: actions/upload-artifact@v4
       with:
-        name: koperasi-ksmi-bundle
+        name: koperasi-ksmi-app-bundle
         path: build/app/outputs/bundle/
         if-no-files-found: ignore
         retention-days: 30
+        
+    - name: Upload Build Reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: koperasi-ksmi-build-reports
+        path: |
+          build/app/**/*.txt
+          build/app/**/*.json
+        if-no-files-found: ignore
+        retention-days: 15

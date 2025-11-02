@@ -1,18 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- ✅ TAMBAH PERMISSIONS DI SINI -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
     
     <application
         android:label="koperasi_fresh"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:requestLegacyExternalStorage="true"> <!-- ✅ TAMBAH INI -->
+        android:requestLegacyExternalStorage="true">
         
         <activity
             android:name=".MainActivity"
@@ -34,15 +32,14 @@
             </intent-filter>
         </activity>
         
-        <!-- Don't delete the meta-data below. -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
             
-        <!-- ✅ TAMBAH META-DATA UNTUK GOOGLE SERVICES -->
-        <meta-data
+        <!-- ❌ HAPUS META-DATA FIREBASE -->
+        <!-- <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"/> <!-- GANTI DENGAN APP ID ANDA -->
+            android:value="ca-app-pub-3940256099942544~3347511713"/> -->
     </application>
     
     <queries>

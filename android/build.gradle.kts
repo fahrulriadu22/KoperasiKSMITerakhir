@@ -1,5 +1,8 @@
+// ✅ PERBAIKI DENGAN SYNTAX YANG BENAR
 buildscript {
-    ext.kotlin_version = "1.9.24"
+    // ✅ HAPUS 'ext' - di Kotlin DSL tidak pakai ext
+    val kotlinVersion = "1.9.24" // ✅ PAKAI 'val' langsung
+    
     repositories {
         google()
         mavenCentral()
@@ -7,8 +10,9 @@ buildscript {
 
     dependencies {
         classpath("com.android.tools.build:gradle:8.4.0")
-        classpath("com.google.gms:google-services:4.4.2") // ✅ TAMBAH DI SINI JUGA
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+        // ✅ HAPUS GOOGLE SERVICES DULU UNTUK TEST
+        // classpath("com.google.gms:google-services:4.4.2")
     }
 }
 
@@ -19,7 +23,7 @@ allprojects {
     }
 }
 
-rootProject.buildDir = '../build'
+rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
 }

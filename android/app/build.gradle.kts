@@ -1,34 +1,15 @@
-// ✅ TAMBAH INI DI BARIS PALING ATAS
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath("com.android.tools.build:gradle:8.4.0")
-        classpath("com.google.gms:google-services:4.4.2") // ✅ TAMBAH INI
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24")
-    }
-}
-
+// ✅ HAPUS SEMUA FIREBASE/GOOGLE SERVICES DULU
 plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services") // ✅ SEKARANG SUDAH BISA
-}
-
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
+    // ❌ HAPUS DULU: id("com.google.gms.google-services")
 }
 
 android {
     namespace = "com.example.koperasi_fresh"
-    compileSdk = 34 // ✅ SET MANUAL, JANGAN PAKAI flutter.compileSdkVersion
-    ndkVersion = "26.1.10909125" // ✅ SET MANUAL
+    compileSdk = 34
+    ndkVersion = "26.1.10909125"
 
     compileOptions {
         coreLibraryDesugaringEnabled = true
@@ -42,10 +23,10 @@ android {
 
     defaultConfig {
         applicationId = "com.example.koperasi_fresh"
-        minSdk = 21 // ✅ SET MANUAL
-        targetSdk = 34 // ✅ SET MANUAL
-        versionCode = 1 // ✅ SET MANUAL
-        versionName = "1.0.0" // ✅ SET MANUAL
+        minSdk = 21
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0.0"
         multiDexEnabled = true
     }
 
@@ -54,6 +35,10 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             isShrinkResources = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
         debug {
             signingConfig = signingConfigs.getByName("debug")
@@ -67,6 +52,7 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
-    implementation(platform("com.google.firebase:firebase-bom:33.0.0"))
-    implementation("com.google.firebase:firebase-analytics")
+    // ❌ HAPUS DULU Firebase dependencies
+    // implementation(platform("com.google.firebase:firebase-bom:33.0.0"))
+    // implementation("com.google.firebase:firebase-analytics")
 }
