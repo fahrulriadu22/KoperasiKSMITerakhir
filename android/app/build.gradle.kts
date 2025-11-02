@@ -25,13 +25,15 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        // ✅ TAMBAH INI JUGA
         multiDexEnabled = true
     }
 
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
+            // ✅ MATIKAN MINIFY & SHRINK
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
@@ -41,6 +43,5 @@ flutter {
 }
 
 dependencies {
-    // ✅ UPDATE KE VERSI 2.1.4
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

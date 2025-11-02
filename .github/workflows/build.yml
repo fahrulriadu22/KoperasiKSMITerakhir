@@ -18,11 +18,10 @@ jobs:
       with:
         channel: 'stable'
         
-    - name: Install dependencies and build
+    - name: Build APK Release
       run: |
-        flutter clean
-        flutter pub get
-        flutter build apk --release --no-tree-shake-icons
+        echo "🏗️ Building APK Release..."
+        flutter build apk --release --no-shrink --no-tree-shake-icons
         
     - name: Upload APK
       uses: actions/upload-artifact@v4
