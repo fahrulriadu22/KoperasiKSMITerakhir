@@ -29,6 +29,7 @@ android {
         release {
             signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
@@ -36,5 +37,3 @@ android {
 flutter {
     source = "../.."
 }
-
-// ✅ TIDAK ADA DEPENDENCIES TAMBAHAN
