@@ -56,6 +56,11 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
   bool _hasError = false;
   String _errorMessage = '';
   late String _selectedTabunganType;
+  
+  // ✅ TAMBAHKAN: State untuk upload bukti
+  bool _isUploadingBukti = false;
+  String? _uploadErrorBukti;
+  Map<String, dynamic>? _selectedTransaksiForUpload;
 
   // ✅ Daftar jenis tabungan sesuai dengan API response
   final List<Map<String, dynamic>> _tabunganTypes = [
@@ -158,6 +163,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
                   'bukti_pembayaran': null,
                   'is_saldo': true,
                   'is_setoran': true,
+                  'can_upload_bukti': false, // Saldo tidak bisa upload bukti
                 });
               }
               
@@ -183,6 +189,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
                         'bukti_pembayaran': null,
                         'is_saldo': false,
                         'is_setoran': isSetoran,
+                        'can_upload_bukti': isSetoran, // Hanya setoran yang bisa upload bukti
                         'raw_data': history, // Simpan data asli untuk referensi
                       });
                     }
@@ -272,6 +279,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         'bukti_pembayaran': null,
         'is_saldo': false,
         'is_setoran': true,
+        'can_upload_bukti': true,
       },
       {
         'id': 'wajib-demo',
@@ -284,6 +292,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         'bukti_pembayaran': null,
         'is_saldo': false,
         'is_setoran': true,
+        'can_upload_bukti': true,
       },
       {
         'id': 'sitabung-demo',
@@ -296,6 +305,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         'bukti_pembayaran': null,
         'is_saldo': false,
         'is_setoran': true,
+        'can_upload_bukti': true,
       },
       {
         'id': 'sitabung-penarikan-demo',
@@ -308,6 +318,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         'bukti_pembayaran': null,
         'is_saldo': false,
         'is_setoran': false,
+        'can_upload_bukti': false,
       },
     ];
   }
@@ -440,17 +451,33 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     
     try {
       final dateTime = DateTime.parse(tanggal);
-      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
     } catch (e) {
       return tanggal.length > 10 ? tanggal.substring(0, 10) : tanggal;
     }
   }
 
-  // ✅ PERBAIKAN: Upload bukti pembayaran
+  // ✅ PERBAIKAN BESAR: Upload bukti pembayaran dengan better handling
   Future<void> _uploadBuktiPembayaran(Map<String, dynamic> transaksi) async {
+    if (_isUploadingBukti) return;
+    
     try {
+      // ✅ SIMPAN TRANSAKSI YANG DIPILIH
+      setState(() {
+        _selectedTransaksiForUpload = transaksi;
+        _isUploadingBukti = true;
+        _uploadErrorBukti = null;
+      });
+
+      // ✅ TAMPILKAN DIALOG PILIHAN SUMBER GAMBAR
+      final imageSource = await _showImageSourceDialog();
+      if (imageSource == null) {
+        setState(() => _isUploadingBukti = false);
+        return;
+      }
+
       final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
+        source: imageSource,
         maxWidth: 1200,
         maxHeight: 1600,
         imageQuality: 90,
@@ -459,52 +486,183 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
       if (pickedFile != null) {
         _showUploadingDialog('Mengupload Bukti Pembayaran...');
 
+        // ✅ VALIDASI FILE SEBELUM UPLOAD
+        final file = File(pickedFile.path);
+        if (!await file.exists()) {
+          throw Exception('File tidak ditemukan');
+        }
+
+        final fileSize = file.lengthSync();
+        if (fileSize > 5 * 1024 * 1024) {
+          throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
+        }
+
+        // ✅ CHECK FILE EXTENSION
+        final allowedExtensions = ['.jpg', '.jpeg', '.png'];
+        final fileExtension = pickedFile.path.toLowerCase().substring(pickedFile.path.lastIndexOf('.'));
+        if (!allowedExtensions.any((ext) => fileExtension == ext)) {
+          throw Exception('Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.');
+        }
+
+        print('📤 Uploading bukti untuk transaksi: ${transaksi['id']}');
+        print('📤 File: ${pickedFile.path}');
+        print('📤 Size: ${(fileSize / 1024).toStringAsFixed(2)} KB');
+
+        // ✅ UPLOAD KE API
         final result = await _apiService.uploadBuktiTransfer(
           transaksiId: transaksi['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
           filePath: pickedFile.path,
           jenisTransaksi: transaksi['jenis_tabungan']?.toString() ?? 'sukarela',
-        );
+        ).timeout(const Duration(seconds: 30));
 
         if (!mounted) return;
-        Navigator.pop(context);
+        Navigator.pop(context); // Tutup dialog upload
+
+        setState(() => _isUploadingBukti = false);
 
         if (result['success'] == true) {
+          // ✅ UPDATE STATUS TRANSAKSI DI LOCAL STATE
           if (mounted) {
             setState(() {
               transaksi['bukti_pembayaran'] = result['file_path'] ?? pickedFile.path;
-              transaksi['status_verifikasi'] = 'menunggu';
+              transaksi['status_verifikasi'] = 'menunggu_verifikasi';
             });
           }
           
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Bukti pembayaran berhasil diupload ✅'),
+              content: Text('✅ Bukti pembayaran berhasil diupload!'),
               backgroundColor: Colors.green,
               duration: Duration(seconds: 3),
             ),
           );
+          
+          // ✅ REFRESH DATA SETELAH UPLOAD
+          Future.delayed(const Duration(seconds: 2), () {
+            _loadRiwayatTabungan();
+          });
+          
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Gagal upload bukti: ${result['message']}'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+          // ✅ HANDLE TOKEN EXPIRED
+          if (result['token_expired'] == true) {
+            _showTokenExpiredDialog();
+            return;
+          }
+          
+          final errorMessage = result['message'] ?? 'Gagal upload bukti pembayaran';
+          _showErrorSnackBar(errorMessage);
         }
+      } else {
+        setState(() => _isUploadingBukti = false);
       }
     } catch (e) {
       if (!mounted) return;
-      Navigator.pop(context);
+      Navigator.pop(context); // Tutup dialog upload
+      setState(() => _isUploadingBukti = false);
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error upload: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      print('❌ Error upload bukti: $e');
+      
+      // ✅ User-friendly error messages
+      String userMessage = 'Terjadi kesalahan saat upload';
+      if (e.toString().contains('File tidak ditemukan')) {
+        userMessage = 'File tidak ditemukan';
+      } else if (e.toString().contains('Ukuran file terlalu besar')) {
+        userMessage = 'Ukuran file terlalu besar. Maksimal 5MB.';
+      } else if (e.toString().contains('Format file tidak didukung')) {
+        userMessage = 'Format file tidak didukung. Gunakan JPG/PNG.';
+      } else if (e.toString().contains('timeout')) {
+        userMessage = 'Upload timeout, coba lagi';
+      } else if (e.toString().contains('permission')) {
+        userMessage = 'Izin akses galeri/kamera ditolak';
+      } else if (e.toString().contains('SocketException')) {
+        userMessage = 'Tidak ada koneksi internet';
+      }
+      
+      _showErrorSnackBar('$userMessage (Bukti Pembayaran)');
     }
+  }
+
+  // ✅ DIALOG PILIHAN SUMBER GAMBAR
+  Future<ImageSource?> _showImageSourceDialog() async {
+    return await showDialog<ImageSource>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Pilih Sumber Gambar'),
+        content: const Text('Pilih sumber untuk mengambil bukti pembayaran'),
+        actions: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(context, ImageSource.camera),
+                  icon: const Icon(Icons.camera_alt),
+                  label: const Text('Kamera'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[700],
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(context, ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library),
+                  label: const Text('Galeri'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[700],
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Batal'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ TOKEN EXPIRED DIALOG
+  void _showTokenExpiredDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Sesi Berakhir'),
+        content: const Text('Sesi login Anda telah berakhir. Silakan login kembali.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+              Navigator.pushReplacementNamed(context, '/login');
+            },
+            child: const Text('Login Kembali'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ ERROR SNACKBAR
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
 
   // ✅ Uploading dialog
@@ -528,6 +686,14 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
               ),
               textAlign: TextAlign.center,
             ),
+            const SizedBox(height: 8),
+            const Text(
+              'Harap tunggu...',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 12,
+              ),
+            ),
           ],
         ),
       ),
@@ -538,6 +704,8 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
   Widget _getStatusVerifikasi(Map<String, dynamic> transaksi) {
     final status = transaksi['status_verifikasi']?.toString() ?? 'terverifikasi';
     final isSaldo = transaksi['is_saldo'] == true;
+    final hasBukti = transaksi['bukti_pembayaran'] != null && 
+                    transaksi['bukti_pembayaran'].toString().isNotEmpty;
 
     if (isSaldo) {
       return Container(
@@ -565,9 +733,35 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
       );
     }
 
-    Color color = Colors.green;
-    String text = 'Terverifikasi';
-    IconData icon = Icons.verified;
+    Color color;
+    String text;
+    IconData icon;
+
+    switch (status.toLowerCase()) {
+      case 'menunggu_verifikasi':
+        color = Colors.orange;
+        text = 'Menunggu Verifikasi';
+        icon = Icons.schedule;
+        break;
+      case 'ditolak':
+        color = Colors.red;
+        text = 'Ditolak';
+        icon = Icons.cancel;
+        break;
+      case 'terverifikasi':
+      default:
+        color = Colors.green;
+        text = 'Terverifikasi';
+        icon = Icons.verified;
+        break;
+    }
+
+    // Jika ada bukti tapi status masih terverifikasi, tampilkan "Bukti Terupload"
+    if (hasBukti && status == 'terverifikasi') {
+      color = Colors.blue;
+      text = 'Buksi Terupload';
+      icon = Icons.upload;
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -590,6 +784,60 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ✅ WIDGET TOMBOL UPLOAD BUKTI
+  Widget _buildUploadBuktiButton(Map<String, dynamic> transaksi) {
+    final canUpload = transaksi['can_upload_bukti'] == true;
+    final hasBukti = transaksi['bukti_pembayaran'] != null && 
+                    transaksi['bukti_pembayaran'].toString().isNotEmpty;
+    final isUploadingThis = _isUploadingBukti && _selectedTransaksiForUpload?['id'] == transaksi['id'];
+
+    if (!canUpload) {
+      return const SizedBox.shrink();
+    }
+
+    if (isUploadingThis) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: () => _uploadBuktiPembayaran(transaksi),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: hasBukti ? Colors.blue[50] : Colors.orange[50],
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: hasBukti ? Colors.blue[200]! : Colors.orange[200]!),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              hasBukti ? Icons.visibility : Icons.upload,
+              color: hasBukti ? Colors.blue : Colors.orange,
+              size: 12,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              hasBukti ? 'Lihat Bukti' : 'Upload Bukti',
+              style: TextStyle(
+                color: hasBukti ? Colors.blue : Colors.orange,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -743,6 +991,37 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
             ),
           ),
 
+          // ✅ ERROR MESSAGE UPLOAD
+          if (_uploadErrorBukti != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                border: Border(bottom: BorderSide(color: Colors.red[100]!)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.red[700], size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _uploadErrorBukti!,
+                      style: TextStyle(
+                        color: Colors.red[700],
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: Colors.red[700], size: 16),
+                    onPressed: () => setState(() => _uploadErrorBukti = null),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
           // ✅ Jenis Tabungan Filter
           Container(
             height: 100,
@@ -875,6 +1154,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
                                 final tanggal = _formatTanggal(transaksi['tanggal']?.toString());
                                 final jenisTransaksi = transaksi['jenis_transaksi']?.toString() ?? 'Transaksi';
                                 final isSaldo = transaksi['is_saldo'] == true;
+                                final canUploadBukti = transaksi['can_upload_bukti'] == true;
 
                                 return Card(
                                   margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -951,7 +1231,13 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                               const SizedBox(height: 4),
-                                              _getStatusVerifikasi(transaksi),
+                                              Row(
+                                                children: [
+                                                  _getStatusVerifikasi(transaksi),
+                                                  const SizedBox(width: 8),
+                                                  if (canUploadBukti) _buildUploadBuktiButton(transaksi),
+                                                ],
+                                              ),
                                             ],
                                           ),
                                         ),
@@ -979,6 +1265,14 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
                                                   fontWeight: FontWeight.w600,
                                                 ),
                                               ),
+                                              if (hasBukti) ...[
+                                                const SizedBox(height: 4),
+                                                Icon(
+                                                  Icons.receipt_long,
+                                                  color: Colors.blue,
+                                                  size: 16,
+                                                ),
+                                              ],
                                             ],
                                           ),
                                         ),

@@ -2,12 +2,15 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
 
 class ApiService {
   static const String baseUrl = 'http://demo.bsdeveloper.id/api';
   
   String _deviceId = '12341231313131';
   String _deviceToken = '1234232423424';
+
+  final ImagePicker _imagePicker = ImagePicker();
 
   // ✅ GET AUTH HEADERS UNTUK REQUEST TANPA TOKEN
   Map<String, String> getAuthHeaders() {
@@ -72,62 +75,156 @@ class ApiService {
     }
   }
 
-  // ✅ PERBAIKAN: UPLOAD FOTO DENGAN HANDLE RESPONSE YANG TIDAK LENGKAP
+  // ✅ METHOD UNTUK PILIH GAMBAR DARI GALLERY
+  Future<String?> pickImageFromGallery() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 80,
+      );
+      
+      if (image != null) {
+        print('📁 Image selected: ${image.path}');
+        
+        // Validasi file exists
+        File file = File(image.path);
+        if (await file.exists()) {
+          final fileSize = await file.length();
+          print('📁 File size: $fileSize bytes');
+          
+          if (fileSize > 0) {
+            return image.path;
+          } else {
+            print('❌ File kosong');
+            return null;
+          }
+        } else {
+          print('❌ File tidak ditemukan');
+          return null;
+        }
+      } else {
+        print('❌ User cancel pemilihan gambar');
+        return null;
+      }
+    } catch (e) {
+      print('❌ Error pick image: $e');
+      return null;
+    }
+  }
+
+  // ✅ METHOD UNTUK AMBIL FOTO DARI KAMERA
+  Future<String?> takePhotoFromCamera() async {
+    try {
+      final XFile? photo = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 80,
+      );
+      
+      if (photo != null) {
+        print('📸 Photo taken: ${photo.path}');
+        
+        // Validasi file exists
+        File file = File(photo.path);
+        if (await file.exists()) {
+          return photo.path;
+        } else {
+          print('❌ File tidak ditemukan');
+          return null;
+        }
+      }
+      return null;
+    } catch (e) {
+      print('❌ Error take photo: $e');
+      return null;
+    }
+  }
+
+  // ✅ UPLOAD FOTO YANG SUDAH DIPERBAIKI (SESUAI POSTMAN)
   Future<Map<String, dynamic>> uploadFoto({
     required String type,
     required String filePath,
   }) async {
     try {
       print('🚀 UPLOAD START: $type');
+      print('📁 File path: $filePath');
       
-      // Validasi file
+      // ✅ VALIDASI FILE LEBIH KETAT
       File file = File(filePath);
       if (!await file.exists()) {
-        return {'success': false, 'message': 'File tidak ditemukan'};
+        print('❌ File tidak ditemukan: $filePath');
+        return {
+          'success': false, 
+          'message': 'File tidak ditemukan: $filePath'
+        };
       }
 
-      // Check file size
+      // ✅ CEK UKURAN FILE
       final fileSize = await file.length();
-      if (fileSize > 5 * 1024 * 1024) {
-        return {'success': false, 'message': 'Ukuran file terlalu besar. Maksimal 5MB.'};
+      print('📁 File size: $fileSize bytes');
+      
+      if (fileSize == 0) {
+        return {
+          'success': false, 
+          'message': 'File kosong atau tidak dapat diakses'
+        };
       }
 
-      // Get headers
+      if (fileSize > 5 * 1024 * 1024) {
+        return {
+          'success': false, 
+          'message': 'Ukuran file terlalu besar. Maksimal 5MB.'
+        };
+      }
+
+      // ✅ GET HEADERS
       final headers = await getMultipartHeaders();
-      
-      // Create request
+      print('📤 Headers: $headers');
+
+      // ✅ BUAT MULTIPART REQUEST
       var request = http.MultipartRequest(
         'POST', 
         Uri.parse('$baseUrl/users/setPhoto')
       );
       request.headers.addAll(headers);
 
-      // Add file - coba field name yang berbeda
-      final possibleFieldNames = ['file', 'foto', 'photo', 'image', type];
+      // ✅ TAMBAHKAN FILE - COBA BERBAGAI FIELD NAME
+      final possibleFieldNames = ['file', 'foto', 'photo', 'image', 'upload'];
       bool fileAdded = false;
+      String usedFieldName = '';
       
       for (final fieldName in possibleFieldNames) {
         try {
-          request.files.add(await http.MultipartFile.fromPath(
+          var multipartFile = await http.MultipartFile.fromPath(
             fieldName,
             filePath,
-          ));
-          print('📤 Using field name: $fieldName');
+            filename: '${type}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          );
+          request.files.add(multipartFile);
           fileAdded = true;
+          usedFieldName = fieldName;
+          print('✅ File berhasil dilampirkan dengan field: $fieldName');
           break;
         } catch (e) {
-          print('❌ Failed with field $fieldName: $e');
+          print('❌ Gagal dengan field $fieldName: $e');
+          continue;
         }
       }
 
       if (!fileAdded) {
-        return {'success': false, 'message': 'Gagal menambahkan file ke request'};
+        return {
+          'success': false, 
+          'message': 'Gagal menambahkan file ke request'
+        };
       }
 
-      // Add required fields
+      // ✅ TAMBAHKAN FORM FIELDS (SESUAI POSTMAN)
       request.fields['type'] = type;
       
-      // Add user_id if available
+      // Tambahkan user data jika diperlukan
       final currentUser = await getCurrentUser();
       if (currentUser != null) {
         if (currentUser['user_id'] != null) {
@@ -139,14 +236,17 @@ class ApiService {
       }
 
       print('📤 Request fields: ${request.fields}');
-      print('📤 File count: ${request.files.length}');
+      print('📤 Files count: ${request.files.length}');
+      print('📤 Used field name: $usedFieldName');
 
-      // Send request
+      // ✅ KIRIM REQUEST
+      print('🔄 Mengirim request...');
       final response = await request.send().timeout(const Duration(seconds: 30));
-      final responseBody = await response.stream.bytesToString();
       
-      print('📡 RESPONSE STATUS: ${response.statusCode}');
-      print('📡 RESPONSE BODY: $responseBody');
+      // ✅ BACA RESPONSE
+      final responseBody = await response.stream.bytesToString();
+      print('📡 Response Status: ${response.statusCode}');
+      print('📡 Response Body: $responseBody');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(responseBody);
@@ -154,34 +254,13 @@ class ApiService {
         if (data['status'] == true) {
           print('✅ UPLOAD SUCCESS');
           
-          // ✅ PERBAIKAN: Handle response tanpa file_path
-          String fileUrl = '';
-          
-          // Cari file_path di berbagai kemungkinan key
-          if (data['file_path'] != null) {
-            fileUrl = data['file_path'].toString();
-          } else if (data['file_url'] != null) {
-            fileUrl = data['file_url'].toString();
-          } else if (data['url'] != null) {
-            fileUrl = data['url'].toString();
-          } else if (data['image_url'] != null) {
-            fileUrl = data['image_url'].toString();
-          } else if (data['path'] != null) {
-            fileUrl = data['path'].toString();
-          }
-          
-          // Update local storage meskipun tidak ada file_path
-          if (fileUrl.isNotEmpty) {
-            await _updateUserPhoto(type, fileUrl);
-          } else {
-            // Jika tidak ada file_path, set flag bahwa upload berhasil
-            await _updateUserPhoto(type, 'uploaded');
-          }
+          // Update local storage jika perlu
+          await _updateUploadStatus(type, 'success');
           
           return {
             'success': true,
             'message': data['message'] ?? 'Upload berhasil',
-            'file_path': fileUrl
+            'data': data
           };
         } else {
           return {
@@ -204,22 +283,104 @@ class ApiService {
     }
   }
 
-  // ✅ UPDATE: Handle berbagai status upload
-  Future<void> _updateUserPhoto(String type, String status) async {
+  // ✅ UPDATE STATUS UPLOAD DI LOCAL STORAGE
+  Future<void> _updateUploadStatus(String type, String status) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final userString = prefs.getString('user');
       if (userString != null) {
         final userData = jsonDecode(userString);
-        
-        // Simpan status upload
-        userData[type] = status;
-        
+        userData['${type}_upload_status'] = status;
         await prefs.setString('user', jsonEncode(userData));
         print('✅ Local storage updated for $type: $status');
       }
     } catch (e) {
-      print('❌ Error updating user photo locally: $e');
+      print('❌ Error updating upload status: $e');
+    }
+  }
+
+  // ✅ UPLOAD DOKUMEN (UNTUK PDF, DOC, DLL)
+  Future<Map<String, dynamic>> uploadDokumen({
+    required String jenisDokumen,
+    required String filePath,
+  }) async {
+    try {
+      print('🚀 UPLOAD DOKUMEN: $jenisDokumen');
+      print('📁 File path: $filePath');
+      
+      // Validasi file
+      File file = File(filePath);
+      if (!await file.exists()) {
+        return {
+          'success': false, 
+          'message': 'File tidak ditemukan'
+        };
+      }
+
+      final fileSize = await file.length();
+      if (fileSize > 10 * 1024 * 1024) { // 10MB untuk dokumen
+        return {
+          'success': false, 
+          'message': 'Ukuran file terlalu besar. Maksimal 10MB.'
+        };
+      }
+
+      // Get headers
+      final headers = await getMultipartHeaders();
+      
+      var request = http.MultipartRequest(
+        'POST', 
+        Uri.parse('$baseUrl/users/uploadDokumen')
+      );
+      request.headers.addAll(headers);
+
+      // Tambahkan file
+      final fileExtension = filePath.split('.').last.toLowerCase();
+      request.files.add(await http.MultipartFile.fromPath(
+        'dokumen',
+        filePath,
+        filename: '${jenisDokumen}_${DateTime.now().millisecondsSinceEpoch}.$fileExtension',
+      ));
+
+      // Tambahkan fields
+      request.fields['jenis_dokumen'] = jenisDokumen;
+      
+      final currentUser = await getCurrentUser();
+      if (currentUser != null && currentUser['user_id'] != null) {
+        request.fields['user_id'] = currentUser['user_id'].toString();
+      }
+
+      // Kirim request
+      final response = await request.send().timeout(const Duration(seconds: 60));
+      final responseBody = await response.stream.bytesToString();
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseBody);
+        
+        if (data['status'] == true) {
+          return {
+            'success': true,
+            'message': data['message'] ?? 'Dokumen berhasil diupload',
+            'data': data
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Upload dokumen gagal'
+          };
+        }
+      } else {
+        return {
+          'success': false,
+          'message': 'Upload dokumen gagal: ${response.statusCode}'
+        };
+      }
+    } catch (e) {
+      print('❌ UPLOAD DOKUMEN ERROR: $e');
+      return {
+        'success': false,
+        'message': 'Upload dokumen error: $e'
+      };
     }
   }
 
@@ -666,7 +827,7 @@ class ApiService {
     }
   }
 
-  // ✅ METHOD LAINNYA...
+  // ✅ REGISTER METHOD
   Future<Map<String, dynamic>> register(Map<String, dynamic> userData) async {
     try {
       final headers = getAuthHeaders();
@@ -709,6 +870,7 @@ class ApiService {
     }
   }
 
+  // ✅ GET MASTER DATA
   Future<Map<String, dynamic>> getMasterData() async {
     try {
       final headers = getAuthHeaders();
@@ -740,6 +902,7 @@ class ApiService {
     }
   }
 
+  // ✅ GET PROVINCE
   Future<Map<String, dynamic>> getProvince() async {
     try {
       final headers = getAuthHeaders();
@@ -786,6 +949,7 @@ class ApiService {
     }
   }
 
+  // ✅ GET REGENCY
   Future<Map<String, dynamic>> getRegency(String idProvince) async {
     try {
       final headers = getAuthHeaders();
@@ -832,6 +996,7 @@ class ApiService {
     }
   }
 
+  // ✅ INSERT INBOX
   Future<Map<String, dynamic>> insertInbox({
     required String subject,
     required String keterangan,
@@ -868,6 +1033,7 @@ class ApiService {
     }
   }
 
+  // ✅ GET ALL INBOX
   Future<Map<String, dynamic>> getAllInbox() async {
     try {
       final headers = await getProtectedHeaders();
@@ -907,6 +1073,7 @@ class ApiService {
     }
   }
 
+  // ✅ CHANGE PASSWORD
   Future<Map<String, dynamic>> changePassword(String oldPass, String newPass, String newPassConf) async {
     try {
       final headers = await getProtectedHeaders();
@@ -937,6 +1104,7 @@ class ApiService {
     }
   }
 
+  // ✅ CHECK USER EXIST
   Future<Map<String, dynamic>> checkUserExist(String username, String email) async {
     try {
       final headers = getAuthHeaders();
@@ -967,6 +1135,7 @@ class ApiService {
     }
   }
 
+  // ✅ UPDATE USER PROFILE
   Future<Map<String, dynamic>> updateUserProfile(Map<String, dynamic> profileData) async {
     try {
       final headers = await getProtectedHeaders();
@@ -1017,6 +1186,7 @@ class ApiService {
     }
   }
 
+  // ✅ GET RIWAYAT ANGSURAN
   Future<Map<String, dynamic>> getRiwayatAngsuran() async {
     try {
       final headers = await getProtectedHeaders();

@@ -44,125 +44,133 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     print('   - Foto Diri: ${widget.user['foto_diri']}');
   }
 
-  // ✅ PERBAIKAN BESAR: UPLOAD METHOD DENGAN DEBUG DETAIL
-  Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool) setLoading) async {
-    try {
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1200,
-        maxHeight: 800,
-        imageQuality: 85,
-      );
+// ✅ PERBAIKAN: Tambahkan validasi file type
+Future<void> _uploadDocument(String type, Function(File?) setFile, Function(bool) setLoading) async {
+  try {
+    final XFile? pickedFile = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1200,
+      maxHeight: 800,
+      imageQuality: 85,
+    );
 
-      if (pickedFile != null) {
-        setState(() {
-          setLoading(true);
-          _uploadError = null;
-        });
-        
-        final file = File(pickedFile.path);
-        print('📤 Uploading $type: ${file.path}');
-        print('📤 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
-        print('📤 File exists: ${await file.exists()}');
-        
-        // ✅ PERBAIKAN: Validasi file sebelum upload
-        if (!await file.exists()) {
-          throw Exception('File tidak ditemukan');
-        }
-
-        // ✅ PERBAIKAN: Check file size (max 5MB)
-        final fileSize = file.lengthSync();
-        if (fileSize > 5 * 1024 * 1024) {
-          throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
-        }
-
-        print('🔄 Calling API uploadFoto with type: $type');
-        print('🔄 File path: ${pickedFile.path}');
-        
-        // ✅ PERBAIKAN: Upload dengan timeout dan error handling yang lebih baik
-        final result = await _apiService.uploadFoto(
-          type: type,
-          filePath: pickedFile.path,
-        );
-
-        setState(() => setLoading(false));
-
-        print('📤 Upload result for $type: ${result['success']}');
-        print('📤 Upload message: ${result['message']}');
-        print('📤 Upload data: ${result['file_path']}');
-        print('📤 Token expired: ${result['token_expired']}');
-
-        if (result['success'] == true) {
-          setState(() => setFile(file));
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${_getDocumentName(type)} berhasil diupload ✅'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-
-          // ✅ CEK JIKA SEMUA DOKUMEN SUDAH DIUPLOAD
-          _checkAllDocumentsUploaded();
-        } else {
-          // ✅ PERBAIKAN: Handle token expired
-          if (result['token_expired'] == true) {
-            _showTokenExpiredDialog();
-            return;
-          }
-          
-          setState(() => setFile(null));
-          final errorMessage = result['message'] ?? 'Gagal upload ${_getDocumentName(type)}';
-          
-          print('❌ Upload failed: $errorMessage');
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
-      } else {
-        print('❌ No file selected');
-      }
-    } catch (e) {
+    if (pickedFile != null) {
       setState(() {
-        setLoading(false);
-        setFile(null);
-        _uploadError = 'Error upload ${_getDocumentName(type)}: $e';
+        setLoading(true);
+        _uploadError = null;
       });
       
-      print('❌ Error upload $type: $e');
-      print('❌ Error type: ${e.runtimeType}');
+      final file = File(pickedFile.path);
+      print('📤 Uploading $type: ${file.path}');
+      print('📤 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
+      print('📤 File exists: ${await file.exists()}');
       
-      // ✅ PERBAIKAN: User-friendly error messages
-      String userMessage = 'Terjadi kesalahan saat upload';
-      if (e.toString().contains('File tidak ditemukan')) {
-        userMessage = 'File tidak ditemukan';
-      } else if (e.toString().contains('Ukuran file terlalu besar')) {
-        userMessage = 'Ukuran file terlalu besar. Maksimal 5MB.';
-      } else if (e.toString().contains('timeout')) {
-        userMessage = 'Upload timeout, coba lagi';
-      } else if (e.toString().contains('permission')) {
-        userMessage = 'Izin akses galeri ditolak';
-      } else if (e.toString().contains('SocketException')) {
-        userMessage = 'Tidak ada koneksi internet';
-      } else if (e.toString().contains('HttpException')) {
-        userMessage = 'Gagal terhubung ke server';
+      // ✅ PERBAIKAN: Validasi file sebelum upload
+      if (!await file.exists()) {
+        throw Exception('File tidak ditemukan');
       }
+
+      // ✅ PERBAIKAN: Check file size (max 5MB)
+      final fileSize = file.lengthSync();
+      if (fileSize > 5 * 1024 * 1024) {
+        throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
+      }
+
+      // ✅ PERBAIKAN BARU: Validasi file type
+      final fileExtension = pickedFile.path.toLowerCase().split('.').last;
+      if (!['jpg', 'jpeg', 'png', 'heic'].contains(fileExtension)) {
+        throw Exception('Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.');
+      }
+
+      print('🔄 Calling API uploadFoto with type: $type');
+      print('🔄 File path: ${pickedFile.path}');
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$userMessage (${_getDocumentName(type)})'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      // ✅ PERBAIKAN: Upload dengan timeout dan error handling yang lebih baik
+      final result = await _apiService.uploadFoto(
+        type: type,
+        filePath: pickedFile.path,
+      ).timeout(const Duration(seconds: 30)); // ✅ TAMBAH TIMEOUT
+
+      setState(() => setLoading(false));
+
+      print('📤 Upload result for $type: ${result['success']}');
+      print('📤 Upload message: ${result['message']}');
+      print('📤 Upload data: ${result['file_path']}');
+      print('📤 Token expired: ${result['token_expired']}');
+
+      if (result['success'] == true) {
+        setState(() => setFile(file));
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_getDocumentName(type)} berhasil diupload ✅'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+
+        // ✅ CEK JIKA SEMUA DOKUMEN SUDAH DIUPLOAD
+        _checkAllDocumentsUploaded();
+      } else {
+        // ✅ PERBAIKAN: Handle token expired
+        if (result['token_expired'] == true) {
+          _showTokenExpiredDialog();
+          return;
+        }
+        
+        setState(() => setFile(null));
+        final errorMessage = result['message'] ?? 'Gagal upload ${_getDocumentName(type)}';
+        
+        print('❌ Upload failed: $errorMessage');
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } else {
+      print('❌ No file selected');
     }
+  } catch (e) {
+    setState(() {
+      setLoading(false);
+      setFile(null);
+      _uploadError = 'Error upload ${_getDocumentName(type)}: $e';
+    });
+    
+    print('❌ Error upload $type: $e');
+    print('❌ Error type: ${e.runtimeType}');
+    
+    // ✅ PERBAIKAN: User-friendly error messages
+    String userMessage = 'Terjadi kesalahan saat upload';
+    if (e.toString().contains('File tidak ditemukan')) {
+      userMessage = 'File tidak ditemukan';
+    } else if (e.toString().contains('Ukuran file terlalu besar')) {
+      userMessage = 'Ukuran file terlalu besar. Maksimal 5MB.';
+    } else if (e.toString().contains('Format file tidak didukung')) {
+      userMessage = 'Format file tidak didukung. Gunakan JPG/PNG.';
+    } else if (e.toString().contains('timeout')) {
+      userMessage = 'Upload timeout, coba lagi';
+    } else if (e.toString().contains('permission')) {
+      userMessage = 'Izin akses galeri/kamera ditolak';
+    } else if (e.toString().contains('SocketException')) {
+      userMessage = 'Tidak ada koneksi internet';
+    } else if (e.toString().contains('HttpException')) {
+      userMessage = 'Gagal terhubung ke server';
+    }
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$userMessage (${_getDocumentName(type)})'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
+}
 
   // ✅ PERBAIKAN: METHOD UNTUK HANDLE TOKEN EXPIRED
   void _showTokenExpiredDialog() {
@@ -403,97 +411,119 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     );
   }
 
-  // ✅ PERBAIKAN: Take photo from camera dengan better error handling
-  Future<void> _takePhoto(String type, Function(File?) setFile, Function(bool) setLoading) async {
-    try {
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1200,
-        maxHeight: 800,
-        imageQuality: 85,
-      );
+// ✅ PERBAIKAN: Take photo from camera dengan better error handling
+Future<void> _takePhoto(String type, Function(File?) setFile, Function(bool) setLoading) async {
+  try {
+    final XFile? pickedFile = await _imagePicker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1200,
+      maxHeight: 800,
+      imageQuality: 85,
+    );
 
-      if (pickedFile != null) {
-        setState(() {
-          setLoading(true);
-          _uploadError = null;
-        });
-        
-        final file = File(pickedFile.path);
-        print('📸 Taking photo for $type: ${file.path}');
-        print('📸 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
-        
-        // ✅ PERBAIKAN: Validasi file sebelum upload
-        if (!await file.exists()) {
-          throw Exception('File tidak ditemukan');
-        }
-
-        print('🔄 Calling API uploadFoto from camera...');
-        final result = await _apiService.uploadFoto(
-          type: type,
-          filePath: pickedFile.path,
-        );
-
-        setState(() => setLoading(false));
-
-        print('📸 Camera result for $type: ${result['success']}');
-        print('📸 Camera message: ${result['message']}');
-
-        if (result['success'] == true) {
-          setState(() => setFile(file));
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${_getDocumentName(type)} berhasil diambil ✅'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-
-          // ✅ CEK JIKA SEMUA DOKUMEN SUDAH DIUPLOAD
-          _checkAllDocumentsUploaded();
-        } else {
-          // ✅ PERBAIKAN: Handle token expired
-          if (result['token_expired'] == true) {
-            _showTokenExpiredDialog();
-            return;
-          }
-          
-          setState(() => setFile(null));
-          final errorMessage = result['message'] ?? 'Gagal mengambil ${_getDocumentName(type)}';
-          
-          print('❌ Camera upload failed: $errorMessage');
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
-      } else {
-        print('❌ No photo taken');
-      }
-    } catch (e) {
+    if (pickedFile != null) {
       setState(() {
-        setLoading(false);
-        setFile(null);
-        _uploadError = 'Error mengambil ${_getDocumentName(type)}: $e';
+        setLoading(true);
+        _uploadError = null;
       });
       
-      print('❌ Error take photo $type: $e');
-      print('❌ Error type: ${e.runtimeType}');
+      final file = File(pickedFile.path);
+      print('📸 Taking photo for $type: ${file.path}');
+      print('📸 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error mengambil ${_getDocumentName(type)}: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      // ✅ PERBAIKAN: Validasi file sebelum upload
+      if (!await file.exists()) {
+        throw Exception('File tidak ditemukan');
+      }
+
+      // ✅ PERBAIKAN: Check file size (max 5MB)
+      final fileSize = file.lengthSync();
+      if (fileSize > 5 * 1024 * 1024) {
+        throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
+      }
+
+      print('🔄 Calling API uploadFoto from camera...');
+      final result = await _apiService.uploadFoto(
+        type: type,
+        filePath: pickedFile.path,
+      ).timeout(const Duration(seconds: 30)); // ✅ TAMBAH TIMEOUT
+
+      setState(() => setLoading(false));
+
+      print('📸 Camera result for $type: ${result['success']}');
+      print('📸 Camera message: ${result['message']}');
+
+      if (result['success'] == true) {
+        setState(() => setFile(file));
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_getDocumentName(type)} berhasil diambil ✅'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+
+        // ✅ CEK JIKA SEMUA DOKUMEN SUDAH DIUPLOAD
+        _checkAllDocumentsUploaded();
+      } else {
+        // ✅ PERBAIKAN: Handle token expired
+        if (result['token_expired'] == true) {
+          _showTokenExpiredDialog();
+          return;
+        }
+        
+        setState(() => setFile(null));
+        final errorMessage = result['message'] ?? 'Gagal mengambil ${_getDocumentName(type)}';
+        
+        print('❌ Camera upload failed: $errorMessage');
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } else {
+      print('❌ No photo taken');
     }
+  } catch (e) {
+    setState(() {
+      setLoading(false);
+      setFile(null);
+      _uploadError = 'Error mengambil ${_getDocumentName(type)}: $e';
+    });
+    
+    print('❌ Error take photo $type: $e');
+    print('❌ Error type: ${e.runtimeType}');
+    
+    // ✅ PERBAIKAN: User-friendly error messages untuk kamera
+    String userMessage = 'Terjadi kesalahan saat mengambil foto';
+    if (e.toString().contains('File tidak ditemukan')) {
+      userMessage = 'File tidak ditemukan';
+    } else if (e.toString().contains('Ukuran file terlalu besar')) {
+      userMessage = 'Ukuran file terlalu besar. Maksimal 5MB.';
+    } else if (e.toString().contains('timeout')) {
+      userMessage = 'Upload timeout, coba lagi';
+    } else if (e.toString().contains('permission')) {
+      userMessage = 'Izin akses kamera ditolak';
+    } else if (e.toString().contains('CameraAccessDenied')) {
+      userMessage = 'Akses kamera ditolak. Izinkan di pengaturan.';
+    } else if (e.toString().contains('SocketException')) {
+      userMessage = 'Tidak ada koneksi internet';
+    }
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$userMessage (${_getDocumentName(type)})'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
+}
 
   @override
   Widget build(BuildContext context) {
