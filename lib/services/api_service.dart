@@ -72,97 +72,111 @@ class ApiService {
     }
   }
 
-  // ✅ PERBAIKAN BESAR: UPLOAD FOTO YANG BENAR
+  // ✅ PERBAIKAN: UPLOAD FOTO DENGAN HANDLE RESPONSE YANG TIDAK LENGKAP
   Future<Map<String, dynamic>> uploadFoto({
     required String type,
     required String filePath,
   }) async {
     try {
-      print('🚀 START UPLOAD FOTO');
-      print('📁 Type: $type');
-      print('📁 File path: $filePath');
-
-      // ✅ VALIDASI FILE SEBELUM UPLOAD
+      print('🚀 UPLOAD START: $type');
+      
+      // Validasi file
       File file = File(filePath);
       if (!await file.exists()) {
-        print('❌ File tidak ditemukan: $filePath');
-        return {
-          'success': false,
-          'message': 'File tidak ditemukan'
-        };
+        return {'success': false, 'message': 'File tidak ditemukan'};
       }
-      
-      // ✅ CHECK FILE SIZE (max 5MB)
+
+      // Check file size
       final fileSize = await file.length();
-      print('📊 File size: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB');
       if (fileSize > 5 * 1024 * 1024) {
-        return {
-          'success': false,
-          'message': 'Ukuran file terlalu besar. Maksimal 5MB.'
-        };
-      }
-      
-      // ✅ CHECK FILE EXTENSION
-      final allowedExtensions = ['.jpg', '.jpeg', '.png'];
-      final fileExtension = filePath.toLowerCase().substring(filePath.lastIndexOf('.'));
-      if (!allowedExtensions.any((ext) => filePath.toLowerCase().endsWith(ext))) {
-        return {
-          'success': false,
-          'message': 'Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.'
-        };
+        return {'success': false, 'message': 'Ukuran file terlalu besar. Maksimal 5MB.'};
       }
 
-      // ✅ GET HEADERS
+      // Get headers
       final headers = await getMultipartHeaders();
-      print('🔑 Headers: $headers');
-
-      // ✅ BUAT MULTIPART REQUEST
+      
+      // Create request
       var request = http.MultipartRequest(
         'POST', 
         Uri.parse('$baseUrl/users/setPhoto')
       );
-      
-      // ✅ SET HEADERS
       request.headers.addAll(headers);
-      
-      // ✅ TAMBAHKAN FILE - PERBAIKAN FIELD NAME
-      final fileFieldName = _getFileFieldName(type);
-      print('📤 Using field name: $fileFieldName');
-      
-      request.files.add(await http.MultipartFile.fromPath(
-        fileFieldName, // Field name untuk file
-        filePath,
-        filename: '${type}_${DateTime.now().millisecondsSinceEpoch}$fileExtension',
-      ));
 
-      // ✅ TAMBAHKAN FIELD LAINNYA
+      // Add file - coba field name yang berbeda
+      final possibleFieldNames = ['file', 'foto', 'photo', 'image', type];
+      bool fileAdded = false;
+      
+      for (final fieldName in possibleFieldNames) {
+        try {
+          request.files.add(await http.MultipartFile.fromPath(
+            fieldName,
+            filePath,
+          ));
+          print('📤 Using field name: $fieldName');
+          fileAdded = true;
+          break;
+        } catch (e) {
+          print('❌ Failed with field $fieldName: $e');
+        }
+      }
+
+      if (!fileAdded) {
+        return {'success': false, 'message': 'Gagal menambahkan file ke request'};
+      }
+
+      // Add required fields
       request.fields['type'] = type;
       
-      // ✅ TAMBAH USER ID JIKA DIPERLUKAN
+      // Add user_id if available
       final currentUser = await getCurrentUser();
-      if (currentUser != null && currentUser['user_id'] != null) {
-        request.fields['user_id'] = currentUser['user_id'].toString();
+      if (currentUser != null) {
+        if (currentUser['user_id'] != null) {
+          request.fields['user_id'] = currentUser['user_id'].toString();
+        }
+        if (currentUser['username'] != null) {
+          request.fields['username'] = currentUser['username'].toString();
+        }
       }
 
       print('📤 Request fields: ${request.fields}');
-      print('📤 Request files: ${request.files.length}');
+      print('📤 File count: ${request.files.length}');
 
-      // ✅ KIRIM REQUEST
-      final response = await request.send().timeout(const Duration(seconds: 60));
+      // Send request
+      final response = await request.send().timeout(const Duration(seconds: 30));
       final responseBody = await response.stream.bytesToString();
       
-      print('📡 Upload Response Status: ${response.statusCode}');
-      print('📡 Upload Response Body: $responseBody');
-      
+      print('📡 RESPONSE STATUS: ${response.statusCode}');
+      print('📡 RESPONSE BODY: $responseBody');
+
       if (response.statusCode == 200) {
         final data = jsonDecode(responseBody);
         
         if (data['status'] == true) {
-          print('✅ UPLOAD BERHASIL');
+          print('✅ UPLOAD SUCCESS');
           
-          // ✅ UPDATE DATA LOCAL
-          final fileUrl = data['file_path'] ?? data['url'] ?? data['image_url'] ?? '';
-          await _updateUserPhoto(type, fileUrl);
+          // ✅ PERBAIKAN: Handle response tanpa file_path
+          String fileUrl = '';
+          
+          // Cari file_path di berbagai kemungkinan key
+          if (data['file_path'] != null) {
+            fileUrl = data['file_path'].toString();
+          } else if (data['file_url'] != null) {
+            fileUrl = data['file_url'].toString();
+          } else if (data['url'] != null) {
+            fileUrl = data['url'].toString();
+          } else if (data['image_url'] != null) {
+            fileUrl = data['image_url'].toString();
+          } else if (data['path'] != null) {
+            fileUrl = data['path'].toString();
+          }
+          
+          // Update local storage meskipun tidak ada file_path
+          if (fileUrl.isNotEmpty) {
+            await _updateUserPhoto(type, fileUrl);
+          } else {
+            // Jika tidak ada file_path, set flag bahwa upload berhasil
+            await _updateUserPhoto(type, 'uploaded');
+          }
           
           return {
             'success': true,
@@ -170,196 +184,39 @@ class ApiService {
             'file_path': fileUrl
           };
         } else {
-          print('❌ Upload gagal - Server response: ${data['message']}');
           return {
             'success': false,
             'message': data['message'] ?? 'Upload gagal'
           };
         }
-      } else if (response.statusCode == 400) {
-        print('❌ ERROR 400 - Bad Request');
-        print('❌ Response body: $responseBody');
-        
-        // ✅ COBA ENDPOINT ALTERNATIF
-        return await _tryAlternativeUpload(type, filePath, responseBody);
-      } else if (response.statusCode == 401) {
-        await _clearToken();
-        return {
-          'success': false,
-          'message': 'Sesi telah berakhir',
-          'token_expired': true
-        };
       } else {
-        print('❌ Upload gagal dengan status: ${response.statusCode}');
         return {
           'success': false,
-          'message': 'Upload gagal: ${response.statusCode} - $responseBody'
+          'message': 'Server error ${response.statusCode}: $responseBody'
         };
       }
     } catch (e) {
-      print('❌ Upload Foto Error: $e');
-      if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
-        return {
-          'success': false,
-          'message': 'Upload timeout, coba lagi'
-        };
-      }
+      print('❌ UPLOAD ERROR: $e');
       return {
         'success': false,
-        'message': 'Error: $e'
+        'message': 'Upload error: $e'
       };
     }
   }
 
-  // ✅ COBA ENDPOINT ALTERNATIF JIKA GAGAL
-  Future<Map<String, dynamic>> _tryAlternativeUpload(String type, String filePath, String originalResponse) async {
-    try {
-      print('🔄 Mencoba endpoint alternatif...');
-      
-      // ✅ COBA ENDPOINT LAIN
-      final alternativeEndpoints = [
-        '$baseUrl/users/uploadPhoto',
-        '$baseUrl/users/upload',
-        '$baseUrl/upload/photo',
-      ];
-      
-      for (final endpoint in alternativeEndpoints) {
-        print('🔄 Mencoba endpoint: $endpoint');
-        
-        final headers = await getMultipartHeaders();
-        var request = http.MultipartRequest('POST', Uri.parse(endpoint));
-        request.headers.addAll(headers);
-        
-        // ✅ COBA BERBAGAI FIELD NAME
-        final possibleFieldNames = ['file', 'photo', 'image', 'foto', type];
-        for (final fieldName in possibleFieldNames) {
-          try {
-            request.files.clear();
-            request.files.add(await http.MultipartFile.fromPath(
-              fieldName,
-              filePath,
-            ));
-            
-            request.fields['type'] = type;
-            
-            final currentUser = await getCurrentUser();
-            if (currentUser != null && currentUser['user_id'] != null) {
-              request.fields['user_id'] = currentUser['user_id'].toString();
-            }
-            
-            final response = await request.send().timeout(const Duration(seconds: 30));
-            final responseBody = await response.stream.bytesToString();
-            
-            if (response.statusCode == 200) {
-              final data = jsonDecode(responseBody);
-              if (data['status'] == true) {
-                print('✅ BERHASIL dengan endpoint: $endpoint, field: $fieldName');
-                
-                final fileUrl = data['file_path'] ?? data['url'] ?? data['image_url'] ?? '';
-                await _updateUserPhoto(type, fileUrl);
-                
-                return {
-                  'success': true,
-                  'message': data['message'] ?? 'Upload berhasil',
-                  'file_path': fileUrl
-                };
-              }
-            }
-          } catch (e) {
-            print('❌ Gagal dengan field $fieldName: $e');
-          }
-        }
-      }
-      
-      // ✅ JIKA SEMUA GAGAL, GUNAKAN BASE64
-      return await _tryBase64Upload(type, filePath);
-      
-    } catch (e) {
-      print('❌ Semua endpoint alternatif gagal: $e');
-      return {
-        'success': false,
-        'message': 'Semua metode upload gagal. Error: $e\nOriginal: $originalResponse'
-      };
-    }
-  }
-
-  // ✅ COBA UPLOAD DENGAN BASE64 JIKA MULTIPART GAGAL
-  Future<Map<String, dynamic>> _tryBase64Upload(String type, String filePath) async {
-    try {
-      print('🔄 Mencoba upload dengan Base64...');
-      
-      final file = File(filePath);
-      final bytes = await file.readAsBytes();
-      final base64Image = base64Encode(bytes);
-      final fileExtension = filePath.toLowerCase().substring(filePath.lastIndexOf('.'));
-      
-      final headers = await getProtectedHeaders();
-      final currentUser = await getCurrentUser();
-      
-      final body = {
-        'type': type,
-        'image_data': base64Image,
-        'file_extension': fileExtension.replaceAll('.', ''),
-        'user_id': currentUser?['user_id']?.toString() ?? '',
-      };
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/users/uploadBase64'),
-        headers: headers,
-        body: body,
-      ).timeout(const Duration(seconds: 30));
-      
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['status'] == true) {
-          print('✅ BERHASIL dengan Base64 upload');
-          
-          final fileUrl = data['file_path'] ?? data['url'] ?? '';
-          await _updateUserPhoto(type, fileUrl);
-          
-          return {
-            'success': true,
-            'message': data['message'] ?? 'Upload berhasil',
-            'file_path': fileUrl
-          };
-        }
-      }
-      
-      return {
-        'success': false,
-        'message': 'Base64 upload juga gagal'
-      };
-      
-    } catch (e) {
-      print('❌ Base64 upload gagal: $e');
-      return {
-        'success': false,
-        'message': 'Base64 upload gagal: $e'
-      };
-    }
-  }
-
-  // ✅ HELPER: DAPATKAN FIELD NAME YANG TEPAT
-  String _getFileFieldName(String type) {
-    final fieldMap = {
-      'foto_diri': ['foto_diri', 'foto', 'file', 'photo', 'image'],
-      'foto_ktp': ['foto_ktp', 'ktp', 'file', 'document'],
-      'foto_kk': ['foto_kk', 'kk', 'file', 'document'],
-    };
-    
-    return fieldMap[type]?.first ?? 'file';
-  }
-
-  // ✅ UPDATE USER PHOTO DI LOCAL STORAGE
-  Future<void> _updateUserPhoto(String type, String filePath) async {
+  // ✅ UPDATE: Handle berbagai status upload
+  Future<void> _updateUserPhoto(String type, String status) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final userString = prefs.getString('user');
       if (userString != null) {
         final userData = jsonDecode(userString);
-        userData[type] = filePath;
+        
+        // Simpan status upload
+        userData[type] = status;
+        
         await prefs.setString('user', jsonEncode(userData));
-        print('✅ Local storage updated for $type: $filePath');
+        print('✅ Local storage updated for $type: $status');
       }
     } catch (e) {
       print('❌ Error updating user photo locally: $e');
