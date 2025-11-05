@@ -25,9 +25,10 @@
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@mipmap/ic_launcher" />
             
-        <meta-data
+        <!-- ❌ HAPUS BARIS INI - color/green tidak ada -->
+        <!-- <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
-            android:resource="@color/green" />
+            android:resource="@color/green" /> -->
         
         <activity
             android:name=".MainActivity"
