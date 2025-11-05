@@ -2,7 +2,7 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services") // ✅ TAMBAH INI
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -21,10 +21,9 @@ android {
     }
 
     defaultConfig {
-        // ✅ UBAH INI - jangan pakai com.example
         applicationId = "com.ksmi.koperasi"
-        minSdk = 21 // ✅ PASTIKAN MIN SDK 21
-        targetSdk = 33 // ✅ TURUNKAN KE 33 (lebih stabil)
+        minSdk = 21
+        targetSdk = 33
         versionCode = 1
         versionName = "1.0.0"
         multiDexEnabled = true
@@ -33,7 +32,6 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
-            // ✅ MATIKAN MINIFY & SHRINK
             isMinifyEnabled = false
             isShrinkResources = false
         }
@@ -45,13 +43,12 @@ flutter {
 }
 
 dependencies {
-    // ✅ PERBAIKI SYNTAX KOTLIN DSL - gunakan tanda kurung bukan kutip
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24")
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-messaging")
     
-    // ✅ PERBAIKI SYNTAX JUGA
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    // ✅ PERBAIKI VERSI DESUGAR - update ke 2.1.4
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     implementation("androidx.multidex:multidex:2.0.1")
 }

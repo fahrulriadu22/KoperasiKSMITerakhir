@@ -7,9 +7,10 @@ buildscript {
     }
 
     dependencies {
-        classpath("com.android.tools.build:gradle:8.4.0")
+        // ✅ UPDATE GRADLE VERSION
+        classpath("com.android.tools.build:gradle:8.6.0")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
-        classpath("com.google.gms:google-services:4.4.2") // ✅ TAMBAH INI
+        classpath("com.google.gms:google-services:4.4.2")
     }
 }
 
