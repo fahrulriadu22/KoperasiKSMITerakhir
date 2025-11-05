@@ -57,58 +57,101 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ✅ HANDLE LOGIN PROCESS
-  Future<void> _handleLogin() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    if (mounted) {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = '';
-      });
+  // ✅ FIXED: LOGIN METHOD YANG BENAR
+  void _handleLogin() async {
+    // Validasi form
+    if (!_formKey.currentState!.validate()) {
+      return;
     }
 
-    final input = _inputController.text.trim();
-    final password = _passwordController.text.trim();
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
 
     try {
-      final result = await _apiService.login(input, password);
+      final result = await _apiService.login(
+        _inputController.text.trim(), 
+        _passwordController.text
+      );
+
+      setState(() {
+        _isLoading = false;
+      });
 
       if (result['success'] == true) {
-        if (!mounted) return;
+        // ✅ LOGIN SUKSES
+        print('✅ Login successful for user: ${result['user']?['user_name']}');
         
-        final user = result['user'];
-        final token = result['token'];
+        // Dapatkan user data dari result atau dari storage
+        Map<String, dynamic> userData = result['user'] ?? {};
+        if (userData.isEmpty) {
+          userData = await _apiService.getCurrentUserForUpload() ?? {};
+        }
         
-        print('✅ Login successful for user: ${user?['username']}');
-        print('🔑 Token: ${token?.substring(0, 10)}...');
+        _handleSuccessfulLogin(userData);
+      } else {
+        // ✅ LOGIN GAGAL - TAMPILKAN ERROR YANG USER-FRIENDLY
+        final errorCode = result['error_code'];
+        String errorMessage = result['message'] ?? 'Login gagal';
         
-        // ✅ SIMPAN DATA LOGIN DENGAN LENGKAP
-        await _apiService.saveLoginData({
-          'token': token,
-          'user': user,
-          'message': result['message']
+        // ✅ CUSTOM MESSAGE BERDASARKAN ERROR CODE
+        switch (errorCode) {
+          case 'LOGIN_FAILED':
+            errorMessage = 'Username atau password salah';
+            break;
+          case 'NO_INTERNET':
+            errorMessage = 'Tidak ada koneksi internet';
+            break;
+          case 'TIMEOUT':
+            errorMessage = 'Server tidak merespons. Coba lagi.';
+            break;
+          case 'UNAUTHORIZED':
+            errorMessage = 'Akun tidak terdaftar atau tidak aktif';
+            break;
+          case 'SERVER_ERROR':
+            errorMessage = 'Server sedang gangguan. Silakan coba lagi nanti.';
+            break;
+          default:
+            // Jika tidak ada error code khusus, gunakan message dari server
+            if (errorMessage.toLowerCase().contains('username') || 
+                errorMessage.toLowerCase().contains('password')) {
+              errorMessage = 'Username atau password salah';
+            }
+        }
+        
+        setState(() {
+          _errorMessage = errorMessage;
         });
         
-        _handleSuccessfulLogin(user!);
-        
-      } else {
-        if (mounted) {
-          setState(() {
-            _errorMessage = result['message'] ?? 'Login gagal. Silakan coba lagi.';
-          });
-        }
+        // ✅ TAMPILKAN DIALOG ERROR
+        _showErrorDialog(errorMessage);
       }
     } catch (e) {
-      print('❌ Login error: $e');
-      if (mounted) {
-        setState(() {
-          _errorMessage = _getErrorMessage(e);
-        });
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Terjadi kesalahan: ${e.toString()}';
+      });
+      
+      _showErrorDialog(_errorMessage);
     }
+  }
+
+  // ✅ METHOD UNTUK MENAMPILKAN ERROR DIALOG
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Login Gagal'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   // ✅ HANDLE SUCCESSFUL LOGIN
@@ -161,53 +204,53 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-// ✅ FIX: CEK STATUS DOKUMEN YANG BENAR
-Map<String, dynamic> _getDokumenStatus(Map<String, dynamic> user) {
-  final ktp = user['foto_ktp'];
-  final kk = user['foto_kk'];
-  final diri = user['foto_diri'];
-  final bukti = user['foto_bukti'];
-  
-  print('🐛 === DOCUMENT STATUS DEBUG ===');
-  print('📄 KTP Status: $ktp');
-  print('📄 KK Status: $kk');
-  print('📄 Foto Diri Status: $diri');
-  print('📄 Foto Bukti Status: $bukti');
-  print('🔗 KTP is HTTP URL: ${ktp?.toString().startsWith('http')}');
-  print('🔗 KK is HTTP URL: ${kk?.toString().startsWith('http')}');
-  print('🔗 Foto Diri is HTTP URL: ${diri?.toString().startsWith('http')}');
-  print('🔗 Foto Bukti is HTTP URL: ${bukti?.toString().startsWith('http')}');
-  print('🐛 === DEBUG END ===');
-  
-  // ✅ FIX: CEK APAKAH FILE SUDAH ADA DI SERVER (TIDAK PERLU HTTP)
-  final hasKTP = ktp != null && 
-                ktp.toString().isNotEmpty && 
-                ktp != 'uploaded' &&
-                ktp.toString().contains('.jpg'); // Cukup cek ada extension .jpg
-  
-  final hasKK = kk != null && 
-               kk.toString().isNotEmpty && 
-               kk != 'uploaded' &&
-               kk.toString().contains('.jpg');
-  
-  final hasDiri = diri != null && 
-                 diri.toString().isNotEmpty && 
-                 diri != 'uploaded' &&
-                 diri.toString().contains('.jpg');
-  
-  final hasBukti = bukti != null && 
-                  bukti.toString().isNotEmpty && 
-                  bukti != 'uploaded' &&
-                  bukti.toString().contains('.jpg');
-  
-  return {
-    'ktp': hasKTP,
-    'kk': hasKK,
-    'diri': hasDiri,
-    'bukti': hasBukti,
-    'allComplete': hasKTP && hasKK && hasDiri && hasBukti,
-  };
-}
+  // ✅ FIX: CEK STATUS DOKUMEN YANG BENAR
+  Map<String, dynamic> _getDokumenStatus(Map<String, dynamic> user) {
+    final ktp = user['foto_ktp'];
+    final kk = user['foto_kk'];
+    final diri = user['foto_diri'];
+    final bukti = user['foto_bukti'];
+    
+    print('🐛 === DOCUMENT STATUS DEBUG ===');
+    print('📄 KTP Status: $ktp');
+    print('📄 KK Status: $kk');
+    print('📄 Foto Diri Status: $diri');
+    print('📄 Foto Bukti Status: $bukti');
+    print('🔗 KTP is HTTP URL: ${ktp?.toString().startsWith('http')}');
+    print('🔗 KK is HTTP URL: ${kk?.toString().startsWith('http')}');
+    print('🔗 Foto Diri is HTTP URL: ${diri?.toString().startsWith('http')}');
+    print('🔗 Foto Bukti is HTTP URL: ${bukti?.toString().startsWith('http')}');
+    print('🐛 === DEBUG END ===');
+    
+    // ✅ FIX: CEK APAKAH FILE SUDAH ADA DI SERVER (TIDAK PERLU HTTP)
+    final hasKTP = ktp != null && 
+                  ktp.toString().isNotEmpty && 
+                  ktp != 'uploaded' &&
+                  ktp.toString().contains('.jpg'); // Cukup cek ada extension .jpg
+    
+    final hasKK = kk != null && 
+                 kk.toString().isNotEmpty && 
+                 kk != 'uploaded' &&
+                 kk.toString().contains('.jpg');
+    
+    final hasDiri = diri != null && 
+                   diri.toString().isNotEmpty && 
+                   diri != 'uploaded' &&
+                   diri.toString().contains('.jpg');
+    
+    final hasBukti = bukti != null && 
+                    bukti.toString().isNotEmpty && 
+                    bukti != 'uploaded' &&
+                    bukti.toString().contains('.jpg');
+    
+    return {
+      'ktp': hasKTP,
+      'kk': hasKK,
+      'diri': hasDiri,
+      'bukti': hasBukti,
+      'allComplete': hasKTP && hasKK && hasDiri && hasBukti,
+    };
+  }
 
   // ✅ NAVIGATION METHODS
   void _navigateToUploadDokumen(Map<String, dynamic> user) {
@@ -230,23 +273,6 @@ Map<String, dynamic> _getDokumenStatus(Map<String, dynamic> user) {
       MaterialPageRoute(builder: (_) => DashboardMain(user: user)),
       (route) => false,
     );
-  }
-
-  // ✅ ERROR MESSAGE HANDLER
-  String _getErrorMessage(dynamic e) {
-    final errorStr = e.toString();
-    
-    if (errorStr.contains('SocketException') || errorStr.contains('Network is unreachable')) {
-      return 'Tidak ada koneksi internet. Periksa koneksi Anda.';
-    } else if (errorStr.contains('TimeoutException') || errorStr.contains('timed out')) {
-      return 'Timeout. Server tidak merespons. Silakan coba lagi.';
-    } else if (errorStr.contains('401') || errorStr.contains('Unauthorized')) {
-      return 'Username atau password salah.';
-    } else if (errorStr.contains('500') || errorStr.contains('Internal Server Error')) {
-      return 'Server sedang mengalami masalah. Silakan coba lagi nanti.';
-    } else {
-      return 'Terjadi kesalahan saat login: ${e.toString().replaceAll('Exception:', '').trim()}';
-    }
   }
 
   // ✅ TEST LOGIN FUNCTION (untuk debugging)

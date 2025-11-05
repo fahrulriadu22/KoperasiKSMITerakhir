@@ -212,6 +212,163 @@ class ApiService {
     return directory;
   }
 
+  // ✅ TAMBAHKAN METHOD INI DI ApiService (api_service.dart)
+Future<Map<String, dynamic>> uploadThreeRealOneDummy({
+  required String fotoKtpPath,    // ASLI
+  required String fotoKkPath,     // ASLI  
+  required String fotoDiriPath,   // ASLI
+  required String dummyFilePath,  // DUMMY (file ke-4)
+}) async {
+  try {
+    print('🚀 UPLOAD 3 ASLI + 1 DUMMY START');
+    print('📁 Real files:');
+    print('   - KTP: $fotoKtpPath');
+    print('   - KK: $fotoKkPath'); 
+    print('   - Foto Diri: $fotoDiriPath');
+    print('📁 Dummy file: $dummyFilePath');
+
+    // ✅ DAPATKAN USER DATA
+    final currentUser = await getCurrentUserForUpload();
+    if (currentUser == null) {
+      return {'success': false, 'message': 'User tidak ditemukan. Silakan login ulang.'};
+    }
+
+    final userId = currentUser['user_id']?.toString();
+    final userKey = currentUser['user_key']?.toString();
+
+    if (userId == null || userId.isEmpty || userKey == null || userKey.isEmpty) {
+      return {'success': false, 'message': 'Data user tidak lengkap. user_id: $userId, user_key: $userKey'};
+    }
+
+    print('✅ User data valid - user_id: $userId');
+
+    // ✅ VALIDASI SEMUA FILE
+    final filesToValidate = {
+      'KTP': fotoKtpPath,
+      'KK': fotoKkPath,
+      'Foto Diri': fotoDiriPath,
+      'Dummy': dummyFilePath,
+    };
+
+    for (var entry in filesToValidate.entries) {
+      final file = File(entry.value);
+      if (!await file.exists()) {
+        return {'success': false, 'message': 'File ${entry.key} tidak ditemukan: ${entry.value}'};
+      }
+
+      final fileSize = await file.length();
+      if (fileSize == 0) {
+        return {'success': false, 'message': 'File ${entry.key} kosong (0 bytes)'};
+      }
+
+      print('✅ File ${entry.key}: $fileSize bytes');
+    }
+
+    // ✅ GET HEADERS
+    final headers = await getMultipartHeaders();
+    print('📤 Headers: ${headers.keys}');
+
+    // ✅ BUAT REQUEST
+    var request = http.MultipartRequest(
+      'POST', 
+      Uri.parse('$baseUrl/users/setPhoto')
+    );
+    request.headers.addAll(headers);
+
+    // ✅ TAMBAHKAN 4 FILE DENGAN FIELD NAME YANG BENAR
+    try {
+      // ✅ FILE 1: KTP (ASLI)
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_ktp',
+        fotoKtpPath,
+        filename: 'ktp_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ Added KTP file');
+
+      // ✅ FILE 2: KK (ASLI)
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_kk',
+        fotoKkPath,
+        filename: 'kk_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ Added KK file');
+
+      // ✅ FILE 3: FOTO DIRI (ASLI)
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_diri',
+        fotoDiriPath,
+        filename: 'diri_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ Added Foto Diri file');
+
+      // ✅ FILE 4: DUMMY BUKTI
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_bukti',
+        dummyFilePath,
+        filename: 'dummy_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ Added Dummy file');
+
+    } catch (e) {
+      print('❌ Error adding files: $e');
+      return {
+        'success': false,
+        'message': 'Gagal menambahkan file: $e'
+      };
+    }
+
+    // ✅ TAMBAHKAN FORM FIELDS
+    request.fields['type'] = 'complete_upload';
+    request.fields['user_id'] = userId;
+    request.fields['user_key'] = userKey;
+    request.fields['upload_type'] = 'dokumen_lengkap';
+
+    print('📤 Request fields: ${request.fields}');
+    print('📤 Total files: ${request.files.length}');
+
+    // ✅ KIRIM REQUEST
+    print('🔄 Mengirim request ke server...');
+    final response = await request.send().timeout(const Duration(seconds: 60));
+    final responseBody = await response.stream.bytesToString();
+    
+    print('📡 Response Status: ${response.statusCode}');
+    print('📡 Response Body: $responseBody');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(responseBody);
+      
+      if (data['status'] == true) {
+        print('🎉 UPLOAD 3 ASLI + 1 DUMMY SUKSES!');
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Semua dokumen berhasil diupload',
+          'data': data
+        };
+      } else {
+        print('❌ Upload gagal: ${data['message']}');
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Upload dokumen gagal',
+          'data': data
+        };
+      }
+    } else {
+      print('❌ Server error: ${response.statusCode}');
+      return {
+        'success': false,
+        'message': 'Server error ${response.statusCode}: $responseBody'
+      };
+    }
+    
+  } catch (e) {
+    print('❌ UPLOAD 3+1 ERROR: $e');
+    return {
+      'success': false,
+      'message': 'Upload error: $e'
+    };
+  }
+}
+
   // ========== METHOD BARU UNTUK UPLOAD YANG BENAR ==========
 
   // ✅ UPLOAD DOKUMEN: 3 FILE ASLI + 1 DUMMY
@@ -283,6 +440,159 @@ class ApiService {
       return {'success': false, 'message': 'Upload error: $e'};
     }
   }
+
+  // ✅ TAMBAHKAN METHOD INI KE ApiService
+Future<Map<String, dynamic>> uploadBuktiTabunganWithDummy({
+  required String transaksiId,
+  required String jenisTransaksi,
+  required String buktiTransferPath,
+  required String dummyFilePath,
+}) async {
+  try {
+    print('🚀 UPLOAD BUKTI TABUNGAN WITH DUMMY START');
+    print('📁 Transaksi ID: $transaksiId');
+    print('📁 Jenis Transaksi: $jenisTransaksi');
+    print('📁 Bukti Transfer Path: $buktiTransferPath');
+    print('📁 Dummy File Path: $dummyFilePath');
+
+    // ✅ VALIDASI FILE EXIST
+    final buktiFile = File(buktiTransferPath);
+    final dummyFile = File(dummyFilePath);
+    
+    if (!await buktiFile.exists()) {
+      throw Exception('File bukti transfer tidak ditemukan');
+    }
+    
+    if (!await dummyFile.exists()) {
+      throw Exception('File dummy tidak ditemukan');
+    }
+
+    // ✅ GET HEADERS
+    final headers = await getMultipartHeaders();
+    
+    var request = http.MultipartRequest(
+      'POST', 
+      Uri.parse('$baseUrl/transaction/uploadBukti')
+    );
+    request.headers.addAll(headers);
+
+    // ✅ TAMBAHKAN 4 FILE - 1 ASLI + 3 DUMMY
+    try {
+      // ✅ FILE 1: bukti_transfer (FILE ASLI)
+      request.files.add(await http.MultipartFile.fromPath(
+        'bukti_transfer',
+        buktiTransferPath,
+        filename: 'bukti_${jenisTransaksi}_main_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ Added bukti_transfer (ASLI)');
+
+      // ✅ FILE 2: foto_ktp (COPY DARI BUKTI TRANSFER)
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_ktp',
+        buktiTransferPath,
+        filename: 'bukti_${jenisTransaksi}_ktp_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ Added foto_ktp (COPY)');
+
+      // ✅ FILE 3: foto_kk (COPY DARI BUKTI TRANSFER)
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_kk',
+        buktiTransferPath,
+        filename: 'bukti_${jenisTransaksi}_kk_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ Added foto_kk (COPY)');
+
+      // ✅ FILE 4: foto_diri (COPY DARI BUKTI TRANSFER)
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_diri',
+        buktiTransferPath,
+        filename: 'bukti_${jenisTransaksi}_diri_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ Added foto_diri (COPY)');
+
+    } catch (e) {
+      print('❌ Gagal menambahkan file: $e');
+      return {
+        'success': false,
+        'message': 'Gagal menambahkan file: $e'
+      };
+    }
+
+    // ✅ TAMBAHKAN FORM FIELDS
+    request.fields['transaksi_id'] = transaksiId;
+    request.fields['jenis_transaksi'] = jenisTransaksi;
+    request.fields['upload_type'] = 'with_dummy';
+    
+    // ✅ TAMBAHKAN USER DATA
+    final currentUser = await getCurrentUser();
+    if (currentUser != null && currentUser['user_id'] != null) {
+      request.fields['user_id'] = currentUser['user_id'].toString();
+    }
+
+    print('📤 Request fields: ${request.fields}');
+    print('📤 Total files: ${request.files.length}');
+
+    // ✅ KIRIM REQUEST
+    print('🔄 Mengirim request ke server...');
+    final response = await request.send().timeout(const Duration(seconds: 60));
+    final responseBody = await response.stream.bytesToString();
+    
+    print('📡 Response Status: ${response.statusCode}');
+    print('📡 Response Body: $responseBody');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(responseBody);
+      
+      if (data['status'] == true) {
+        print('✅ UPLOAD BUKTI TABUNGAN WITH DUMMY SUCCESS');
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Bukti tabungan berhasil diupload',
+          'data': data,
+          'file_path': buktiTransferPath
+        };
+      } else {
+        print('❌ Upload gagal: ${data['message']}');
+        
+        // ✅ CEK TOKEN EXPIRED
+        if (data['message']?.toString().toLowerCase().contains('token') == true ||
+            data['message']?.toString().toLowerCase().contains('session') == true ||
+            data['message']?.toString().toLowerCase().contains('login') == true) {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Upload bukti tabungan gagal',
+            'token_expired': true
+          };
+        }
+        
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Upload bukti tabungan gagal'
+        };
+      }
+    } else if (response.statusCode == 401) {
+      print('❌ Token expired: 401 Unauthorized');
+      await _clearToken();
+      return {
+        'success': false,
+        'message': 'Sesi telah berakhir, silakan login kembali',
+        'token_expired': true
+      };
+    } else {
+      print('❌ Server error: ${response.statusCode}');
+      return {
+        'success': false,
+        'message': 'Upload gagal: ${response.statusCode}'
+      };
+    }
+  } catch (e) {
+    print('❌ UPLOAD BUKTI TABUNGAN WITH DUMMY ERROR: $e');
+    return {
+      'success': false,
+      'message': 'Upload error: $e'
+    };
+  }
+}
 
 // ✅ UPLOAD BUKTI TABUNGAN: 4 FILE SAMA DARI BUKTI TRANSFER
 Future<Map<String, dynamic>> uploadBuktiTabunganFourFiles({
@@ -547,6 +857,255 @@ Future<Map<String, dynamic>> uploadFourPhotos({
     return {
       'success': false,
       'message': 'Upload foto error: $e'
+    };
+  }
+}
+
+// ✅ FIX: UPLOAD 4 FOTO DENGAN VALIDASI LENGKAP
+Future<Map<String, dynamic>> uploadFourPhotosWithValidation({
+  required String fotoKtpPath,
+  required String fotoKkPath,
+  required String fotoDiriPath,
+  required String fotoBuktiPath,
+}) async {
+  try {
+    print('🚀 UPLOAD 4 FOTO DENGAN VALIDASI START');
+    
+    // ✅ DEBUG USER DATA DULU
+    await debugUserData();
+    
+    // ✅ DAPATKAN USER DATA YANG BENAR
+    final currentUser = await getCurrentUserForUpload();
+    if (currentUser == null) {
+      return {
+        'success': false, 
+        'message': '❌ User data tidak ditemukan. Silakan login ulang.'
+      };
+    }
+    
+    final userId = currentUser['user_id']?.toString();
+    final userKey = currentUser['user_key']?.toString();
+    
+    if (userId == null || userId.isEmpty) {
+      return {
+        'success': false,
+        'message': '❌ User ID tidak valid. user_id: $userId'
+      };
+    }
+    
+    if (userKey == null || userKey.isEmpty) {
+      return {
+        'success': false,
+        'message': '❌ User Key tidak valid. user_key: $userKey'
+      };
+    }
+    
+    print('✅ User data valid:');
+    print('   - user_id: $userId');
+    print('   - user_key: ${userKey.substring(0, 10)}...');
+    
+    // ✅ VALIDASI FILE
+    final filesToValidate = {
+      'KTP': fotoKtpPath,
+      'KK': fotoKkPath, 
+      'Foto Diri': fotoDiriPath,
+      'Bukti': fotoBuktiPath,
+    };
+    
+    for (var entry in filesToValidate.entries) {
+      final file = File(entry.value);
+      if (!await file.exists()) {
+        return {
+          'success': false,
+          'message': '❌ File ${entry.key} tidak ditemukan: ${entry.value}'
+        };
+      }
+      
+      final fileSize = await file.length();
+      if (fileSize == 0) {
+        return {
+          'success': false,
+          'message': '❌ File ${entry.key} kosong (0 bytes)'
+        };
+      }
+      
+      print('✅ File ${entry.key}: $fileSize bytes');
+    }
+    
+    // ✅ GET HEADERS
+    final headers = await getMultipartHeaders();
+    print('📤 Headers: ${headers.keys}');
+    
+    // ✅ BUAT REQUEST
+    var request = http.MultipartRequest(
+      'POST', 
+      Uri.parse('$baseUrl/users/setPhoto')
+    );
+    request.headers.addAll(headers);
+    
+    // ✅ TAMBAHKAN FILE DENGAN FIELD NAME YANG BERBEDA-BEDA
+    try {
+      // Coba berbagai kombinasi field name
+      final fieldNames = [
+        'foto_ktp', 'ktp', 'photo_ktp',
+        'foto_kk', 'kk', 'photo_kk', 
+        'foto_diri', 'diri', 'photo_diri',
+        'foto_bukti', 'bukti', 'photo_bukti'
+      ];
+      
+      // File 1: KTP
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_ktp', // Field name utama
+        fotoKtpPath,
+        filename: 'ktp_$userId.jpg',
+      ));
+      
+      // File 2: KK  
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_kk', // Field name utama
+        fotoKkPath,
+        filename: 'kk_$userId.jpg',
+      ));
+      
+      // File 3: Foto Diri
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_diri', // Field name utama
+        fotoDiriPath,
+        filename: 'diri_$userId.jpg',
+      ));
+      
+      // File 4: Bukti
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_bukti', // Field name utama
+        fotoBuktiPath,
+        filename: 'bukti_$userId.jpg',
+      ));
+      
+      print('✅ Semua file berhasil ditambahkan');
+    } catch (e) {
+      print('❌ Error adding files: $e');
+      return {
+        'success': false,
+        'message': 'Gagal menambahkan file: $e'
+      };
+    }
+    
+    // ✅ TAMBAHKAN FORM FIELDS
+    request.fields['type'] = 'complete_upload'; // Coba type yang berbeda
+    request.fields['user_id'] = userId;
+    request.fields['user_key'] = userKey;
+    request.fields['upload_type'] = 'dokumen_lengkap'; // Field tambahan
+    
+    print('📤 Request fields: ${request.fields}');
+    print('📤 Total files: ${request.files.length}');
+    
+    // ✅ KIRIM REQUEST
+    print('🔄 Mengirim request ke server...');
+    final response = await request.send().timeout(const Duration(seconds: 60));
+    final responseBody = await response.stream.bytesToString();
+    
+    print('📡 Response Status: ${response.statusCode}');
+    print('📡 Response Body: $responseBody');
+    
+    if (response.statusCode == 200) {
+      final data = jsonDecode(responseBody);
+      
+      if (data['status'] == true) {
+        print('🎉 UPLOAD 4 FOTO SUKSES!');
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Semua dokumen berhasil diupload',
+          'data': data
+        };
+      } else {
+        print('❌ Upload gagal: ${data['message']}');
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Upload dokumen gagal',
+          'data': data
+        };
+      }
+    } else {
+      print('❌ Server error: ${response.statusCode}');
+      return {
+        'success': false,
+        'message': 'Server error ${response.statusCode}: $responseBody'
+      };
+    }
+    
+  } catch (e) {
+    print('❌ UPLOAD ERROR: $e');
+    return {
+      'success': false,
+      'message': 'Upload error: $e'
+    };
+  }
+}
+
+// ✅ TEST UPLOAD SEDERHANA (1 FILE DULU)
+Future<Map<String, dynamic>> testSingleUpload(String filePath, String type) async {
+  try {
+    print('🧪 TEST UPLOAD: $type');
+    
+    await debugUserData();
+    
+    final currentUser = await getCurrentUserForUpload();
+    if (currentUser == null) {
+      return {'success': false, 'message': 'User tidak ditemukan'};
+    }
+    
+    final file = File(filePath);
+    if (!await file.exists()) {
+      return {'success': false, 'message': 'File tidak ditemukan'};
+    }
+    
+    final headers = await getMultipartHeaders();
+    var request = http.MultipartRequest(
+      'POST', 
+      Uri.parse('$baseUrl/users/setPhoto')
+    );
+    request.headers.addAll(headers);
+    
+    // Coba field name yang berbeda
+    final fieldName = type == 'ktp' ? 'foto_ktp' : 
+                     type == 'kk' ? 'foto_kk' :
+                     type == 'diri' ? 'foto_diri' : 'foto';
+    
+    request.files.add(await http.MultipartFile.fromPath(
+      fieldName,
+      filePath,
+      filename: 'test_$type.jpg',
+    ));
+    
+    request.fields['type'] = type;
+    request.fields['user_id'] = currentUser['user_id']?.toString() ?? '';
+    request.fields['user_key'] = currentUser['user_key']?.toString() ?? '';
+    
+    print('📤 Test upload - Field: $fieldName, Type: $type');
+    
+    final response = await request.send().timeout(const Duration(seconds: 30));
+    final responseBody = await response.stream.bytesToString();
+    
+    print('📡 Test Response: ${response.statusCode}');
+    print('📡 Test Body: $responseBody');
+    
+    if (response.statusCode == 200) {
+      final data = jsonDecode(responseBody);
+      return {
+        'success': data['status'] == true,
+        'message': data['message'] ?? 'Test upload completed',
+        'data': data
+      };
+    } else {
+      return {
+        'success': false,
+        'message': 'Test upload failed: ${response.statusCode}'
+      };
+    }
+  } catch (e) {
+    return {
+      'success': false,
+      'message': 'Test upload error: $e'
     };
   }
 }
@@ -1287,88 +1846,116 @@ Future<void> saveLoginData(Map<String, dynamic> loginResponse) async {
     }
   }
 
-  // ✅ LOGIN METHOD
-  Future<Map<String, dynamic>> login(String username, String password) async {
-    try {
-      final headers = getAuthHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/login/auth'),
-        headers: headers,
-        body: 'username=${Uri.encodeComponent(username)}&password=${Uri.encodeComponent(password)}',
-      ).timeout(const Duration(seconds: 30));
+// ✅ FIXED LOGIN METHOD - HANDLE 400 ERROR PROPERLY
+Future<Map<String, dynamic>> login(String username, String password) async {
+  try {
+    final headers = getAuthHeaders();
+    
+    print('🔐 Login attempt for: $username');
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/login/auth'),
+      headers: headers,
+      body: 'username=${Uri.encodeComponent(username)}&password=${Uri.encodeComponent(password)}',
+    ).timeout(const Duration(seconds: 30));
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+    print('📡 Login Response Status: ${response.statusCode}');
+    print('📡 Login Response Body: ${response.body}');
 
-        if (data['status'] == true) {
-          final userKey = data['user_key'].toString();
-          final userData = {
-            'user_id': data['user_id'],
-            'user_name': data['user_name'],
-            'nama': data['nama'],
-            'email': data['email'],
-            'status_user': data['status_user'],
-            'user_key': userKey,
-          };
+    // ✅ FIX: HANDLE 400 STATUS CODE (BAD REQUEST) - BIASANYA UNTUK LOGIN SALAH
+    if (response.statusCode == 200 || response.statusCode == 400) {
+      final data = jsonDecode(response.body);
 
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('token', userKey);
-          await prefs.setString('user', jsonEncode(userData));
-          
-          if (response.headers['set-cookie'] != null) {
-            final cookies = response.headers['set-cookie'];
-            if (cookies != null && cookies.contains('ci_session')) {
-              final sessionMatch = RegExp(r'ci_session=([^;]+)').firstMatch(cookies);
-              if (sessionMatch != null) {
-                final sessionValue = sessionMatch.group(1);
-                await prefs.setString('ci_session', sessionValue!);
-                print('✅ CI Session saved: ${sessionValue.substring(0, 10)}...');
-              }
+      if (data['status'] == true) {
+        // ✅ LOGIN SUKSES
+        final userKey = data['user_key'].toString();
+        final userData = {
+          'user_id': data['user_id'],
+          'user_name': data['user_name'],
+          'nama': data['nama'],
+          'email': data['email'],
+          'status_user': data['status_user'],
+          'user_key': userKey,
+        };
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('token', userKey);
+        await prefs.setString('user', jsonEncode(userData));
+        
+        // ✅ SIMPAN DATA LOGIN UNTUK UPLOAD
+        await saveLoginData({
+          'token': userKey,
+          'user': userData,
+          'status': true,
+          'message': data['message'] ?? 'Login berhasil'
+        });
+        
+        if (response.headers['set-cookie'] != null) {
+          final cookies = response.headers['set-cookie'];
+          if (cookies != null && cookies.contains('ci_session')) {
+            final sessionMatch = RegExp(r'ci_session=([^;]+)').firstMatch(cookies);
+            if (sessionMatch != null) {
+              final sessionValue = sessionMatch.group(1);
+              await prefs.setString('ci_session', sessionValue!);
+              print('✅ CI Session saved: ${sessionValue.substring(0, 10)}...');
             }
           }
-          
-          return {
-            'success': true,
-            'token': userKey,
-            'user': userData,
-            'message': data['message'] ?? 'Login berhasil'
-          };
-        } else {
-          return {
-            'success': false,
-            'message': data['message'] ?? 'Username atau password salah'
-          };
         }
+        
+        print('✅ Login successful for user: ${data['user_name']}');
+        
+        return {
+          'success': true,
+          'token': userKey,
+          'user': userData,
+          'message': data['message'] ?? 'Login berhasil'
+        };
       } else {
+        // ✅ LOGIN GAGAL - PASSWORD SALAH DLL
+        print('❌ Login failed: ${data['message']}');
+        
         return {
           'success': false,
-          'message': 'Terjadi kesalahan server (${response.statusCode})'
+          'message': data['message'] ?? 'Username atau password salah',
+          'error_code': 'LOGIN_FAILED'
         };
       }
-    } on SocketException {
+    } else if (response.statusCode == 401) {
+      // ✅ UNAUTHORIZED
       return {
         'success': false,
-        'message': 'Tidak ada koneksi internet'
+        'message': 'Akun tidak terdaftar atau tidak aktif',
+        'error_code': 'UNAUTHORIZED'
       };
-    } on http.ClientException {
+    } else if (response.statusCode == 500) {
+      // ✅ SERVER ERROR
       return {
         'success': false,
-        'message': 'Gagal terhubung ke server'
+        'message': 'Terjadi kesalahan server. Silakan coba lagi.',
+        'error_code': 'SERVER_ERROR'
       };
-    } catch (e) {
-      if (e.toString().contains('TimeoutException') || e.toString().contains('timed out')) {
-        return {
-          'success': false,
-          'message': 'Timeout, server tidak merespons'
-        };
-      }
+    } else {
+      // ✅ OTHER HTTP ERRORS
       return {
         'success': false,
-        'message': 'Terjadi kesalahan: $e'
+        'message': 'Terjadi kesalahan (${response.statusCode})',
+        'error_code': 'HTTP_${response.statusCode}'
       };
     }
+  } on SocketException {
+    return {
+      'success': false,
+      'message': 'Tidak ada koneksi internet',
+      'error_code': 'NO_INTERNET'
+    };
+  } on http.ClientException catch (e) {
+    return {
+      'success': false,
+      'message': 'Gagal terhubung ke server: $e',
+      'error_code': 'CONNECTION_ERROR'
+    };
   }
+}
 
   // ✅ LOGOUT METHOD
   Future<Map<String, dynamic>> logout() async {
@@ -2708,6 +3295,51 @@ Future<int> getUnreadNotificationCount() async {
       };
     }
   }
+
+  // ✅ METHOD UNTUK DEBUG USER DATA
+Future<void> debugUserData() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    
+    print('🐛 === USER DATA DEBUG ===');
+    
+    // Cek semua key yang ada
+    final keys = prefs.getKeys();
+    print('📦 All storage keys: $keys');
+    
+    // Cek user data
+    final userString = prefs.getString('user');
+    final loginUserString = prefs.getString('login_user');
+    final token = prefs.getString('token');
+    
+    print('👤 User Data: ${userString != null ? "✅" : "❌"}');
+    print('🔐 Login Data: ${loginUserString != null ? "✅" : "❌"}');
+    print('🎫 Token: ${token != null ? "✅" : "❌"}');
+    
+    if (userString != null) {
+      final userData = jsonDecode(userString);
+      print('📄 User Data Content:');
+      print('   - Keys: ${userData.keys}');
+      print('   - user_id: ${userData['user_id']}');
+      print('   - user_key: ${userData['user_key']}');
+      print('   - username: ${userData['username']}');
+    }
+    
+    if (loginUserString != null) {
+      final loginData = jsonDecode(loginUserString);
+      print('📄 Login Data Content:');
+      print('   - Keys: ${loginData.keys}');
+      if (loginData['user'] != null) {
+        print('   - user.user_id: ${loginData['user']['user_id']}');
+        print('   - user.user_key: ${loginData['user']['user_key']}');
+      }
+    }
+    
+    print('🐛 === DEBUG END ===');
+  } catch (e) {
+    print('❌ Debug error: $e');
+  }
+}
 
   // ✅ CHECK LOGIN STATUS
   Future<bool> isLoggedIn() async {

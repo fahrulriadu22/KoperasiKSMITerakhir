@@ -411,204 +411,217 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     return parsedData;
   }
 
-  // ✅ PERBAIKAN: UPLOAD BUKTI DENGAN SISTEM 4 FILE SAMA DARI BUKTI TRANSFER
-  Future<void> _uploadBuktiPembayaran(Map<String, dynamic> transaksi) async {
-    if (_isUploadingBukti) return;
+// ✅ PERBAIKAN: UPLOAD BUKTI DENGAN SISTEM 1 ASLI + 3 DUMMY
+Future<void> _uploadBuktiPembayaran(Map<String, dynamic> transaksi) async {
+  if (_isUploadingBukti) return;
+  
+  try {
+    setState(() {
+      _selectedTransaksiForUpload = transaksi;
+      _isUploadingBukti = true;
+      _uploadErrorBukti = null;
+    });
+
+    // ✅ PILIH SUMBER GAMBAR
+    final imageSource = await _showImageSourceDialog();
+    if (imageSource == null) {
+      setState(() => _isUploadingBukti = false);
+      return;
+    }
+
+    final XFile? pickedFile = await _imagePicker.pickImage(
+      source: imageSource,
+      maxWidth: 1200,
+      maxHeight: 1600,
+      imageQuality: 90,
+    );
+
+    if (pickedFile == null) {
+      setState(() => _isUploadingBukti = false);
+      return;
+    }
+
+    final file = File(pickedFile.path);
     
-    try {
-      setState(() {
-        _selectedTransaksiForUpload = transaksi;
-        _isUploadingBukti = true;
-        _uploadErrorBukti = null;
+    // ✅ VALIDASI FILE
+    final validation = await FileValidator.validateBuktiTransfer(file.path);
+    if (!validation['valid']) {
+      throw Exception(validation['message']);
+    }
+
+    print('💾 Selected bukti transfer: ${file.path}');
+    
+    // ✅ TAMPILKAN DIALOG KONFIRMASI UPLOAD
+    final shouldUpload = await _showUploadConfirmationDialog(file);
+    if (!shouldUpload) {
+      setState(() => _isUploadingBukti = false);
+      return;
+    }
+
+    // ✅ SIMPAN FILE KE TEMPORARY STORAGE
+    await _storageService.setBuktiTransferFile(file);
+    print('✅ Bukti transfer saved to temporary storage');
+
+    // ✅ LANGSUNG UPLOAD KE SERVER DENGAN SISTEM 1 ASLI + 3 DUMMY
+    _showUploadingDialog('Mengupload Bukti Pembayaran...');
+
+    // ✅ BUAT/CARI DUMMY FILE
+    String? dummyFilePath = await _apiService.getDummyFilePath();
+    if (dummyFilePath == null) {
+      dummyFilePath = await _apiService.createDummyFile();
+    }
+
+    if (dummyFilePath == null) {
+      throw Exception('Gagal membuat file dummy untuk upload.');
+    }
+
+    // ✅ GUNAKAN METHOD 1 ASLI + 3 DUMMY
+    final result = await _apiService.uploadBuktiTabunganWithDummy(
+      transaksiId: transaksi['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      jenisTransaksi: transaksi['jenis_tabungan']?.toString() ?? 'tabungan',
+      buktiTransferPath: file.path,
+      dummyFilePath: dummyFilePath,
+    );
+
+    if (!mounted) return;
+    
+    // ✅ TUTUP DIALOG UPLOADING
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+
+    setState(() => _isUploadingBukti = false);
+
+    if (result['success'] == true) {
+      // ✅ UPDATE STATUS TRANSAKSI
+      if (mounted) {
+        setState(() {
+          transaksi['bukti_pembayaran'] = result['file_path'] ?? file.path;
+          transaksi['status_verifikasi'] = 'menunggu_verifikasi';
+        });
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] ?? '✅ Bukti pembayaran berhasil diupload!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      
+      // ✅ REFRESH DATA
+      Future.delayed(const Duration(seconds: 2), () {
+        _loadRiwayatTabungan();
       });
-
-      // ✅ PILIH SUMBER GAMBAR
-      final imageSource = await _showImageSourceDialog();
-      if (imageSource == null) {
-        setState(() => _isUploadingBukti = false);
+      
+    } else {
+      if (result['token_expired'] == true) {
+        _showTokenExpiredDialog();
         return;
       }
-
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: imageSource,
-        maxWidth: 1200,
-        maxHeight: 1600,
-        imageQuality: 90,
-      );
-
-      if (pickedFile == null) {
-        setState(() => _isUploadingBukti = false);
-        return;
-      }
-
-      final file = File(pickedFile.path);
       
-      // ✅ VALIDASI FILE
-      final validation = await FileValidator.validateBuktiTransfer(file.path);
-      if (!validation['valid']) {
-        throw Exception(validation['message']);
-      }
+      final errorMessage = result['message'] ?? 'Gagal upload bukti pembayaran';
+      _showErrorSnackBar(errorMessage);
+    }
 
-      print('💾 Selected bukti transfer: ${file.path}');
-      
-      // ✅ TAMPILKAN DIALOG KONFIRMASI UPLOAD
-      final shouldUpload = await _showUploadConfirmationDialog(file);
-      if (!shouldUpload) {
-        setState(() => _isUploadingBukti = false);
-        return;
-      }
-
-      // ✅ SIMPAN FILE KE TEMPORARY STORAGE
-      await _storageService.setBuktiTransferFile(file);
-      print('✅ Bukti transfer saved to temporary storage');
-
-      // ✅ LANGSUNG UPLOAD KE SERVER DENGAN SISTEM 4 FILE SAMA
-      _showUploadingDialog('Mengupload Bukti Pembayaran...');
-
-      final result = await _storageService.uploadBuktiTransfer(
-        transaksiId: transaksi['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
-        jenisTransaksi: transaksi['jenis_tabungan']?.toString() ?? 'sukarela',
-      );
-
-      if (!mounted) return;
-      
-      // ✅ TUTUP DIALOG UPLOADING
+  } catch (e) {
+    // ✅ ERROR HANDLING
+    if (mounted) {
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
-
       setState(() => _isUploadingBukti = false);
-
-      if (result['success'] == true) {
-        // ✅ UPDATE STATUS TRANSAKSI
-        if (mounted) {
-          setState(() {
-            transaksi['bukti_pembayaran'] = result['file_path'] ?? file.path;
-            transaksi['status_verifikasi'] = 'menunggu_verifikasi';
-          });
-        }
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? '✅ Bukti pembayaran berhasil diupload!'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-        
-        // ✅ REFRESH DATA
-        Future.delayed(const Duration(seconds: 2), () {
-          _loadRiwayatTabungan();
-        });
-        
-      } else {
-        if (result['token_expired'] == true) {
-          _showTokenExpiredDialog();
-          return;
-        }
-        
-        final errorMessage = result['message'] ?? 'Gagal upload bukti pembayaran';
-        _showErrorSnackBar(errorMessage);
-      }
-
-    } catch (e) {
-      // ✅ ERROR HANDLING
-      if (mounted) {
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-        setState(() => _isUploadingBukti = false);
-      }
-      
-      print('❌ Error upload bukti: $e');
-      
-      String userMessage = 'Terjadi kesalahan saat upload';
-      if (e.toString().contains('File tidak ditemukan')) {
-        userMessage = 'File tidak ditemukan';
-      } else if (e.toString().contains('Ukuran file terlalu besar')) {
-        userMessage = 'Ukuran file terlalu besar. Maksimal 5MB.';
-      } else if (e.toString().contains('Format file tidak didukung')) {
-        userMessage = 'Format file tidak didukung. Hanya JPG/JPEG yang diperbolehkan.';
-      } else if (e.toString().contains('timeout')) {
-        userMessage = 'Upload timeout, coba lagi';
-      } else if (e.toString().contains('permission')) {
-        userMessage = 'Izin akses galeri/kamera ditolak';
-      } else if (e.toString().contains('SocketException')) {
-        userMessage = 'Tidak ada koneksi internet';
-      }
-      
-      _showErrorSnackBar('$userMessage (Bukti Pembayaran)');
     }
-  }
-
-  // ✅ UPDATE DIALOG KONFIRMASI
-  Future<bool> _showUploadConfirmationDialog(File file) async {
-    final fileInfo = await FileValidator.getFileInfo(file.path);
     
-    return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Upload Bukti Transfer?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              height: 120,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                image: DecorationImage(
-                  image: FileImage(file),
-                  fit: BoxFit.cover,
-                ),
+    print('❌ Error upload bukti: $e');
+    
+    String userMessage = 'Terjadi kesalahan saat upload';
+    if (e.toString().contains('File tidak ditemukan')) {
+      userMessage = 'File tidak ditemukan';
+    } else if (e.toString().contains('Ukuran file terlalu besar')) {
+      userMessage = 'Ukuran file terlalu besar. Maksimal 5MB.';
+    } else if (e.toString().contains('Format file tidak didukung')) {
+      userMessage = 'Format file tidak didukung. Hanya JPG/JPEG yang diperbolehkan.';
+    } else if (e.toString().contains('timeout')) {
+      userMessage = 'Upload timeout, coba lagi';
+    } else if (e.toString().contains('permission')) {
+      userMessage = 'Izin akses galeri/kamera ditolak';
+    } else if (e.toString().contains('SocketException')) {
+      userMessage = 'Tidak ada koneksi internet';
+    }
+    
+    _showErrorSnackBar('$userMessage (Bukti Pembayaran)');
+  }
+}
+
+// ✅ UPDATE DIALOG KONFIRMASI UNTUK 1 ASLI + 3 DUMMY
+Future<bool> _showUploadConfirmationDialog(File file) async {
+  final fileInfo = await FileValidator.getFileInfo(file.path);
+  
+  return await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Upload Bukti Transfer?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 120,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              image: DecorationImage(
+                image: FileImage(file),
+                fit: BoxFit.cover,
               ),
             ),
-            const SizedBox(height: 12),
-            const Text('Apakah Anda yakin ingin mengupload bukti transfer ini?'),
-            const SizedBox(height: 8),
-            Text(
-              'File: ${file.path.split('/').last}',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            Text(
-              'Size: ${fileInfo['size_kb']} KB',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            Text(
-              'Format: ${fileInfo['extension']}',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Text(
-                '📁 Sistem akan mengupload 4 file:\n• bukti_transfer (file utama)\n• foto_ktp (copy dari bukti)\n• foto_kk (copy dari bukti)\n• foto_diri (copy dari bukti)',
-                style: TextStyle(fontSize: 11, color: Colors.blue),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Batal'),
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
+          const SizedBox(height: 12),
+          const Text('Apakah Anda yakin ingin mengupload bukti transfer ini?'),
+          const SizedBox(height: 8),
+          Text(
+            'File: ${file.path.split('/').last}',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          Text(
+            'Size: ${fileInfo['size_kb']} KB',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          Text(
+            'Format: ${fileInfo['extension']}',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(6),
             ),
-            child: const Text('Upload Sekarang'),
+            child: const Text(
+              '📁 Sistem akan mengupload 4 file:\n• bukti_transfer (file utama)\n• foto_ktp (copy dari bukti)\n• foto_kk (copy dari bukti)\n• foto_diri (copy dari bukti)',
+              style: TextStyle(fontSize: 11, color: Colors.blue),
+            ),
           ),
         ],
       ),
-    ) ?? false;
-  }
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Batal'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+          ),
+          child: const Text('Upload Sekarang'),
+        ),
+      ],
+    ),
+  ) ?? false;
+}
 
   // ✅ DIALOG PILIHAN SUMBER GAMBAR
   Future<ImageSource?> _showImageSourceDialog() async {
@@ -686,63 +699,72 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     );
   }
 
-  // ✅ ERROR SNACKBAR
-  void _showErrorSnackBar(String message) {
-    if (!mounted) return;
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
+// ✅ UPDATE ERROR HANDLING
+void _showErrorSnackBar(String message) {
+  if (!mounted) return;
+  
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Row(
+        children: [
+          const Icon(Icons.error_outline, color: Colors.white, size: 20),
+          const SizedBox(width: 8),
+          Expanded(child: Text(message)),
+        ],
+      ),
+      backgroundColor: Colors.red,
+      duration: const Duration(seconds: 4),
+      behavior: SnackBarBehavior.floating,
+    ),
+  );
+}
+
+// ✅ UPDATE PESAN LOADING UNTUK 1 ASLI + 3 DUMMY
+void _showUploadingDialog(String message) {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => PopScope(
+      canPop: false,
+      child: AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, color: Colors.white, size: 20),
-            const SizedBox(width: 8),
-            Expanded(child: Text(message)),
+            CircularProgressIndicator(color: Colors.green[700]),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              style: TextStyle(
+                color: Colors.green[800],
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Mengupload 4 file (1 asli + 3 dummy)...',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              '• bukti_transfer (file asli)\n• foto_ktp (dummy)\n• foto_kk (dummy)\n• foto_diri (dummy)',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 10,
+              ),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 4),
-        behavior: SnackBarBehavior.floating,
       ),
-    );
-  }
-
-  // ✅ UPDATE PESAN LOADING
-  void _showUploadingDialog(String message) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: Colors.green[700]),
-              const SizedBox(height: 16),
-              Text(
-                message,
-                style: TextStyle(
-                  color: Colors.green[800],
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Mengupload 4 file (sama-sama dari bukti transfer)...',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+    ),
+  );
+}
 
   // ✅ HELPER METHODS
   int _parseValue(dynamic value) {
@@ -1465,6 +1487,32 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
                                                   fontWeight: FontWeight.w600,
                                                 ),
                                               ),
+                                              // ✅ TAMBAHKAN DI BUILD METHOD - SEBELUM PENUTUP COLUMN
+if (!_isLoading && !_hasError && _filteredRiwayat.isNotEmpty) 
+  Container(
+    padding: const EdgeInsets.all(12),
+    margin: const EdgeInsets.all(8),
+    decoration: BoxDecoration(
+      color: Colors.blue[50],
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: Colors.blue[200]!),
+    ),
+    child: Row(
+      children: [
+        Icon(Icons.info_outline, color: Colors.blue[700], size: 16),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Sistem upload: 1 file asli + 3 file dummy otomatis',
+            style: TextStyle(
+              color: Colors.blue[700],
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ],
+    ),
+  ),
                                             ],
                                           ),
                                         ),

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'riwayat_tabungan_screen.dart';
 import 'riwayat_angsuran_screen.dart';
 import '../services/api_service.dart';
-import '../services/test_notification.dart'; // ✅ IMPORT TEST NOTIFICATION
+import '../services/notification_tester.dart';
 
 // ✅ CUSTOM SHAPE UNTUK APPBAR
 class NotchedAppBarShape extends ContinuousRectangleBorder {

@@ -5,14 +5,17 @@ import 'firebase_service.dart';
 
 class NotificationTester {
   static bool _isFirebaseInitialized = false;
-  static late FlutterLocalNotificationsPlugin _localNotificationsPlugin;
+  static FlutterLocalNotificationsPlugin? _localNotificationsPlugin;
+  static bool _isLocalNotificationsInitialized = false;
 
-  // ✅ INITIALIZATION METHOD (DIPERBAIKI)
+  // ✅ INITIALIZATION METHOD (DIPERBAIKI - FIXED)
   static Future<void> initialize() async {
     try {
-      _localNotificationsPlugin = FlutterLocalNotificationsPlugin();
+      print('🔔 Initializing NotificationTester...');
       
       // Initialize local notifications
+      _localNotificationsPlugin = FlutterLocalNotificationsPlugin();
+      
       const AndroidInitializationSettings androidSettings =
           AndroidInitializationSettings('@mipmap/ic_launcher');
       
@@ -29,11 +32,14 @@ class NotificationTester {
         iOS: iosSettings,
       );
       
-      await _localNotificationsPlugin.initialize(initializationSettings);
+      await _localNotificationsPlugin!.initialize(initializationSettings);
+      _isLocalNotificationsInitialized = true;
       
+      print('✅ Local notifications initialized successfully');
+
       // Try to initialize Firebase
       try {
-        // Coba akses Firebase Messaging untuk check availability
+        // Cek apakah Firebase tersedia
         await FirebaseMessaging.instance.getToken();
         _isFirebaseInitialized = true;
         print('✅ Firebase NotificationTester initialized successfully');
@@ -44,7 +50,16 @@ class NotificationTester {
       
     } catch (e) {
       print('❌ NotificationTester initialization failed: $e');
+      _isLocalNotificationsInitialized = false;
       rethrow;
+    }
+  }
+
+  // ✅ CHECK IF LOCAL NOTIFICATIONS ARE INITIALIZED
+  static Future<void> _ensureLocalNotificationsInitialized() async {
+    if (!_isLocalNotificationsInitialized || _localNotificationsPlugin == null) {
+      print('🔄 Local notifications not initialized, initializing now...');
+      await initialize();
     }
   }
 
@@ -57,10 +72,13 @@ class NotificationTester {
     return true;
   }
 
-  // ✅ MAIN TEST METHOD
+  // ✅ MAIN TEST METHOD (DIPERBAIKI)
   static Future<void> testLocalNotification() async {
     try {
       print('🧪 Starting notification test...');
+      
+      // Pastikan local notifications sudah diinisialisasi
+      await _ensureLocalNotificationsInitialized();
       
       final bool useFirebase = await _checkFirebaseAvailability();
       
@@ -78,7 +96,7 @@ class NotificationTester {
     }
   }
 
-  // ✅ FIREBASE TEST NOTIFICATION (DIPERBAIKI - PERBAIKAN UTAMA)
+  // ✅ FIREBASE TEST NOTIFICATION (DIPERBAIKI)
   static Future<void> _triggerFirebaseTestNotification() async {
     try {
       final testData = {
@@ -89,27 +107,28 @@ class NotificationTester {
         'id': 'test_${DateTime.now().millisecondsSinceEpoch}'
       };
 
-      // ✅ PERBAIKAN: Akses static getter langsung dari class, bukan instance
+      // ✅ PERBAIKAN: Gunakan method yang lebih aman
       if (FirebaseService.onNotificationReceived != null) {
         FirebaseService.onNotificationReceived!(testData);
         print('📱 Firebase callback triggered');
       } else {
-        print('⚠️ FirebaseService.onNotificationReceived is null');
+        print('⚠️ FirebaseService.onNotificationReceived is null, using local notification');
+        await _showTestLocalNotification();
       }
-      
-      // Juga tampilkan local notification
-      await _showTestLocalNotification();
       
     } catch (e) {
       print('❌ Firebase test notification failed: $e');
-      throw e;
+      // Fallback ke local notification
+      await _showTestLocalNotification();
     }
   }
 
-  // ✅ FALLBACK NOTIFICATION (JIKA FIREBASE GAGAL)
+  // ✅ FALLBACK NOTIFICATION (DIPERBAIKI)
   static Future<void> _showFallbackNotification() async {
     try {
-      await _localNotificationsPlugin.show(
+      await _ensureLocalNotificationsInitialized();
+      
+      await _localNotificationsPlugin!.show(
         DateTime.now().millisecondsSinceEpoch.remainder(100000),
         'Test Notification - KSMI Koperasi',
         'Ini adalah test notifikasi fallback (Firebase tidak tersedia)',
@@ -123,10 +142,12 @@ class NotificationTester {
     }
   }
 
-  // ✅ BASIC NOTIFICATION (ULTIMATE FALLBACK)
+  // ✅ BASIC NOTIFICATION (ULTIMATE FALLBACK - DIPERBAIKI)
   static Future<void> _showBasicNotification() async {
     try {
-      await _localNotificationsPlugin.show(
+      await _ensureLocalNotificationsInitialized();
+      
+      await _localNotificationsPlugin!.show(
         DateTime.now().millisecondsSinceEpoch.remainder(100000),
         'KSMI Koperasi',
         'Test notifikasi berhasil!',
@@ -147,10 +168,12 @@ class NotificationTester {
     }
   }
 
-  // ✅ TEST LOCAL NOTIFICATION (ORIGINAL)
+  // ✅ TEST LOCAL NOTIFICATION (DIPERBAIKI)
   static Future<void> _showTestLocalNotification() async {
     try {
-      await _localNotificationsPlugin.show(
+      await _ensureLocalNotificationsInitialized();
+      
+      await _localNotificationsPlugin!.show(
         DateTime.now().millisecondsSinceEpoch.remainder(100000),
         'Test Notification - KSMI Koperasi',
         'Ini adalah test notifikasi lokal dari aplikasi Koperasi KSMI',
@@ -193,7 +216,7 @@ class NotificationTester {
     );
   }
 
-  // ✅ FCM TOKEN
+  // ✅ FCM TOKEN (DIPERBAIKI)
   static Future<void> printFCMToken() async {
     try {
       final bool useFirebase = await _checkFirebaseAvailability();
@@ -215,39 +238,41 @@ class NotificationTester {
     }
   }
 
-  // ✅ CHECK PERMISSIONS
+  // ✅ CHECK PERMISSIONS (DIPERBAIKI)
   static Future<void> checkPermissions() async {
     try {
       final bool useFirebase = await _checkFirebaseAvailability();
       if (!useFirebase) {
         print('❌ Cannot check permissions: Firebase not available');
-        return;
+      } else {
+        final settings = await FirebaseMessaging.instance.getNotificationSettings();
+        print('📱 Notification Settings:');
+        print('   - Authorization Status: ${settings.authorizationStatus}');
+        print('   - Alert: ${settings.alert}');
+        print('   - Badge: ${settings.badge}');
+        print('   - Sound: ${settings.sound}');
+        print('   - Lock Screen: ${settings.lockScreen}');
+        print('   - Car Play: ${settings.carPlay}');
+        print('   - Announcement: ${settings.announcement}');
+        print('   - Critical Alert: ${settings.criticalAlert}');
       }
-      
-      final settings = await FirebaseMessaging.instance.getNotificationSettings();
-      print('📱 Notification Settings:');
-      print('   - Authorization Status: ${settings.authorizationStatus}');
-      print('   - Alert: ${settings.alert}');
-      print('   - Badge: ${settings.badge}');
-      print('   - Sound: ${settings.sound}');
-      print('   - Lock Screen: ${settings.lockScreen}');
-      print('   - Car Play: ${settings.carPlay}');
-      print('   - Announcement: ${settings.announcement}');
-      print('   - Critical Alert: ${settings.criticalAlert}');
       
       // Check local notification permissions
       print('📱 Local Notifications Status:');
-      print('   - Plugin Initialized: ${_localNotificationsPlugin != null}');
+      print('   - Plugin Initialized: $_isLocalNotificationsInitialized');
+      print('   - Plugin Instance: ${_localNotificationsPlugin != null}');
       
     } catch (e) {
       print('❌ Error checking permissions: $e');
     }
   }
 
-  // ✅ TEST MULTIPLE SCENARIOS
+  // ✅ TEST MULTIPLE SCENARIOS (DIPERBAIKI)
   static Future<void> testMultipleScenarios() async {
     try {
       print('🧪 Testing Multiple Notification Scenarios...');
+      
+      await _ensureLocalNotificationsInitialized();
       
       // Test 1: Simple notification
       await _showSimpleNotification();
@@ -268,7 +293,9 @@ class NotificationTester {
 
   static Future<void> _showSimpleNotification() async {
     try {
-      await _localNotificationsPlugin.show(
+      await _ensureLocalNotificationsInitialized();
+      
+      await _localNotificationsPlugin!.show(
         1001,
         'Notifikasi Sederhana - KSMI',
         'Ini adalah contoh notifikasi sederhana dari Koperasi KSMI',
@@ -283,7 +310,9 @@ class NotificationTester {
 
   static Future<void> _showNotificationWithAction() async {
     try {
-      await _localNotificationsPlugin.show(
+      await _ensureLocalNotificationsInitialized();
+      
+      await _localNotificationsPlugin!.show(
         1002,
         'Notifikasi dengan Aksi - KSMI',
         'Tap notifikasi ini untuk membuka halaman tertentu di aplikasi KSMI',
@@ -298,7 +327,9 @@ class NotificationTester {
 
   static Future<void> _showNotificationWithDeepLink() async {
     try {
-      await _localNotificationsPlugin.show(
+      await _ensureLocalNotificationsInitialized();
+      
+      await _localNotificationsPlugin!.show(
         1003,
         'Notifikasi dengan Deep Link - KSMI',
         'Notifikasi ini akan membuka halaman transaksi spesifik',
@@ -311,11 +342,15 @@ class NotificationTester {
     }
   }
 
-  // ✅ CLEAR ALL NOTIFICATIONS
+  // ✅ CLEAR ALL NOTIFICATIONS (DIPERBAIKI)
   static Future<void> clearAllNotifications() async {
     try {
-      await _localNotificationsPlugin.cancelAll();
-      print('🗑️ All local notifications cleared');
+      if (_isLocalNotificationsInitialized && _localNotificationsPlugin != null) {
+        await _localNotificationsPlugin!.cancelAll();
+        print('🗑️ All local notifications cleared');
+      } else {
+        print('⚠️ Cannot clear notifications: plugin not initialized');
+      }
       
       // Also try to clear Firebase notifications if available
       final bool useFirebase = await _checkFirebaseAvailability();
@@ -327,23 +362,21 @@ class NotificationTester {
     }
   }
 
-  // ✅ GET NOTIFICATION PLUGIN (FOR EXTERNAL USE)
-  static FlutterLocalNotificationsPlugin getLocalNotificationsPlugin() {
+  // ✅ GET NOTIFICATION PLUGIN (FOR EXTERNAL USE - DIPERBAIKI)
+  static FlutterLocalNotificationsPlugin? getLocalNotificationsPlugin() {
     return _localNotificationsPlugin;
   }
 
   // ✅ CHECK INITIALIZATION STATUS
-  static bool get isInitialized => _localNotificationsPlugin != null;
+  static bool get isInitialized => _isLocalNotificationsInitialized && _localNotificationsPlugin != null;
   static bool get isFirebaseAvailable => _isFirebaseInitialized;
 
-  // ✅ SIMPLE TEST METHOD (ALTERNATIF)
+  // ✅ SIMPLE TEST METHOD (ALTERNATIF - DIPERBAIKI)
   static Future<void> simpleTest() async {
     try {
-      if (!isInitialized) {
-        await initialize();
-      }
+      await _ensureLocalNotificationsInitialized();
       
-      await _localNotificationsPlugin.show(
+      await _localNotificationsPlugin!.show(
         DateTime.now().millisecondsSinceEpoch.remainder(100000),
         'Test KSMI Koperasi',
         'Notifikasi test berhasil! 🎉',
@@ -356,15 +389,13 @@ class NotificationTester {
     }
   }
 
-  // ✅ QUICK TEST METHOD (PALING SIMPLE)
+  // ✅ QUICK TEST METHOD (PALING SIMPLE - DIPERBAIKI)
   static Future<void> quickTest() async {
     try {
-      if (!isInitialized) {
-        await initialize();
-      }
+      await _ensureLocalNotificationsInitialized();
       
       // Langsung tampilkan notifikasi tanpa Firebase
-      await _localNotificationsPlugin.show(
+      await _localNotificationsPlugin!.show(
         9999,
         'KSMI Koperasi - Test',
         'Test notifikasi berhasil dijalankan!',
@@ -383,6 +414,54 @@ class NotificationTester {
     } catch (e) {
       print('❌ Quick test failed: $e');
       rethrow;
+    }
+  }
+
+  // ✅ NEW: SAFE TEST METHOD YANG PASTI AMAN
+  static Future<void> safeTest() async {
+    try {
+      print('🛡️ Starting safe notification test...');
+      
+      // Initialize if needed
+      if (!isInitialized) {
+        await initialize();
+      }
+      
+      // Try Firebase first
+      final bool useFirebase = await _checkFirebaseAvailability();
+      if (useFirebase) {
+        try {
+          await _triggerFirebaseTestNotification();
+          return;
+        } catch (e) {
+          print('⚠️ Firebase test failed, falling back to local: $e');
+        }
+      }
+      
+      // Fallback to local notification
+      await _showTestLocalNotification();
+      
+    } catch (e) {
+      print('❌ Safe test completely failed: $e');
+      // Last resort - try basic notification
+      try {
+        if (_localNotificationsPlugin != null) {
+          await _localNotificationsPlugin!.show(
+            8888,
+            'KSMI Test',
+            'Basic test notification',
+            const NotificationDetails(
+              android: AndroidNotificationDetails(
+                'ksmi_emergency',
+                'KSMI Emergency',
+                importance: Importance.high,
+              ),
+            ),
+          );
+        }
+      } catch (e2) {
+        print('💀 All notification methods failed: $e2');
+      }
     }
   }
 }

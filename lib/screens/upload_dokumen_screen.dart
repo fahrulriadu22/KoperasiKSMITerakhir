@@ -93,7 +93,56 @@ void _debugServerDocumentStatus() {
   print('🐛 === DEBUG END ===');
 }
 
-// ✅ FIX: CEK STATUS DOKUMEN YANG BENAR
+// ✅ VALIDASI SEBELUM UPLOAD
+bool _validateBeforeUpload() {
+  // ✅ CEK FILE LOKAL
+  if (!_storageService.isAllFilesComplete) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Harap lengkapi semua 3 dokumen terlebih dahulu'),
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+    return false;
+  }
+
+  // ✅ CEK APAKAH SUDAH DI SERVER
+  final ktpServer = _isDocumentUploadedToServer('ktp');
+  final kkServer = _isDocumentUploadedToServer('kk');
+  final diriServer = _isDocumentUploadedToServer('diri');
+  
+  if (ktpServer && kkServer && diriServer) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Semua dokumen sudah terupload ke server'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+    return false;
+  }
+
+  // ✅ CEK FILE SIZE
+  final ktpSize = _storageService.ktpFile?.lengthSync() ?? 0;
+  final kkSize = _storageService.kkFile?.lengthSync() ?? 0;
+  final diriSize = _storageService.diriFile?.lengthSync() ?? 0;
+
+  if (ktpSize > 5 * 1024 * 1024 || kkSize > 5 * 1024 * 1024 || diriSize > 5 * 1024 * 1024) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Ukuran file terlalu besar. Maksimal 5MB per file'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+    return false;
+  }
+
+  return true;
+}
+
+// ✅ FIX: CEK STATUS DOKUMEN YANG LEBIH AKURAT
 bool _isDocumentUploadedToServer(String type) {
   String? documentUrl;
   
@@ -109,13 +158,29 @@ bool _isDocumentUploadedToServer(String type) {
       break;
   }
   
-  // ✅ FIX: CEK APAKAH ADA FILENAME DENGAN EXTENSION .jpg
-  final isUploaded = documentUrl != null && 
-                    documentUrl.toString().isNotEmpty && 
-                    documentUrl != 'uploaded' &&
-                    documentUrl.toString().contains('.jpg');
+  print('🔍 Document $type check: $documentUrl');
   
-  print('🔍 Document $type check: $documentUrl → $isUploaded');
+  // ✅ FIX: CEK LEBIH DETAIL
+  if (documentUrl == null || documentUrl.toString().isEmpty) {
+    return false;
+  }
+  
+  final urlString = documentUrl.toString();
+  
+  // ✅ CEK BERBAGAI KONDISI YANG MENANDAKAN SUDAH UPLOAD
+  final isUploaded = 
+      // Ada filename dengan extension image
+      (urlString.contains('.jpg') || 
+       urlString.contains('.jpeg') || 
+       urlString.contains('.png')) ||
+      // Atau status uploaded
+      urlString == 'uploaded' ||
+      // Atau mengandung string tertentu
+      urlString.contains('upload') ||
+      // Atau panjang string menandakan filename
+      (urlString.length > 10 && !urlString.contains('null'));
+  
+  print('   → Uploaded: $isUploaded');
   return isUploaded;
 }
 
@@ -357,152 +422,205 @@ bool _isDocumentUploadedToServer(String type) {
     );
   }
 
-  // ✅ MANUAL UPLOAD ALL FILES
-  Future<void> _uploadAllFiles() async {
-    if (!_storageService.isAllFilesComplete) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Harap lengkapi semua dokumen terlebih dahulu'),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-      return;
-    }
-
-    if (_storageService.isUploading) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Upload sedang berjalan, harap tunggu...'),
-          backgroundColor: Colors.blue,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    _showUploadConfirmationDialog();
+// ✅ MANUAL UPLOAD ALL FILES
+Future<void> _uploadAllFiles() async {
+  // ✅ VALIDASI SEBELUM UPLOAD
+  if (!_validateBeforeUpload()) {
+    return;
   }
 
-  // ✅ DIALOG KONFIRMASI UPLOAD
-  void _showUploadConfirmationDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Upload Semua Dokumen?'),
-        content: const Text(
-          'Apakah Anda yakin ingin mengupload semua dokumen?\n\n'
-          '• KTP\n'
-          '• Kartu Keluarga\n'
-          '• Foto Diri\n\n'
-          'Sistem akan menambahkan file dummy bukti secara otomatis.\n'
-          'Total 4 file akan dikirim ke server.'
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Periksa Lagi'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _startUploadProcess();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-            ),
-            child: const Text('Ya, Upload Sekarang'),
-          ),
-        ],
+  if (_storageService.isUploading) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Upload sedang berjalan, harap tunggu...'),
+        backgroundColor: Colors.blue,
+        duration: const Duration(seconds: 2),
       ),
     );
+    return;
   }
 
-  // ✅ PROSES UPLOAD YANG SEBENARNYA - MENGGUNAKAN SISTEM DUMMY
-  Future<void> _startUploadProcess() async {
+  _showUploadConfirmationDialog();
+}
+
+// ✅ DIALOG KONFIRMASI UPLOAD YANG LEBIH INFORMATIF
+void _showUploadConfirmationDialog() {
+  // ✅ HITUNG FILE YANG AKAN DIUPLOAD
+  final filesToUpload = [
+    !_isDocumentUploadedToServer('ktp') && _storageService.hasKtpFile,
+    !_isDocumentUploadedToServer('kk') && _storageService.hasKkFile,
+    !_isDocumentUploadedToServer('diri') && _storageService.hasDiriFile,
+  ].where((e) => e).length;
+
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      title: const Text('Upload 4 File ke Server?'),
+      content: Text(
+        'Sistem akan mengupload $filesToUpload file asli + 1 file dummy:\n\n'
+        '${!_isDocumentUploadedToServer('ktp') && _storageService.hasKtpFile ? '• KTP (ASLI)\n' : ''}'
+        '${!_isDocumentUploadedToServer('kk') && _storageService.hasKkFile ? '• Kartu Keluarga (ASLI)\n' : ''}'
+        '${!_isDocumentUploadedToServer('diri') && _storageService.hasDiriFile ? '• Foto Diri (ASLI)\n' : ''}'
+        '• File Dummy Bukti (OTOMATIS)\n\n'
+        'Total: ${filesToUpload + 1} file akan dikirim ke server.'
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Periksa Lagi'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.pop(context);
+            _startUploadProcess();
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+          ),
+          child: const Text('Ya, Upload Sekarang'),
+        ),
+      ],
+    ),
+  );
+}
+
+// ✅ PROSES UPLOAD YANG SEBENARNYA - MENGGUNAKAN 3 ASLI + 1 DUMMY
+Future<void> _startUploadProcess() async {
+  if (mounted && !_isNavigating) {
+    setState(() {
+      _isLoading = true;
+    });
+  }
+
+  print('🚀 Starting upload process with 3 REAL + 1 DUMMY system...');
+  
+  try {
+    // ✅ VALIDASI FILE LOKAL
+    if (!_storageService.isAllFilesComplete) {
+      throw Exception('Semua file belum lengkap. KTP, KK, dan Foto Diri harus diisi.');
+    }
+
+    // ✅ DAPATKAN PATH FILE LOKAL
+    final ktpPath = _storageService.ktpFile?.path;
+    final kkPath = _storageService.kkFile?.path;
+    final diriPath = _storageService.diriFile?.path;
+
+    if (ktpPath == null || kkPath == null || diriPath == null) {
+      throw Exception('Path file tidak valid. Silakan pilih ulang file.');
+    }
+
+    // ✅ BUAT/CARI DUMMY FILE
+    String? dummyFilePath = await _apiService.getDummyFilePath();
+    if (dummyFilePath == null) {
+      dummyFilePath = await _apiService.createDummyFile();
+    }
+
+    if (dummyFilePath == null) {
+      throw Exception('Gagal membuat file dummy untuk upload.');
+    }
+
+    print('📁 File paths for upload:');
+    print('   - KTP: $ktpPath');
+    print('   - KK: $kkPath');
+    print('   - Foto Diri: $diriPath');
+    print('   - Dummy: $dummyFilePath');
+
+    // ✅ GUNAKAN METHOD 3 ASLI + 1 DUMMY YANG BARU
+    final result = await _apiService.uploadThreeRealOneDummy(
+      fotoKtpPath: ktpPath,
+      fotoKkPath: kkPath,
+      fotoDiriPath: diriPath,
+      dummyFilePath: dummyFilePath,
+    );
+
     if (mounted && !_isNavigating) {
       setState(() {
-        _isLoading = true;
+        _isLoading = false;
       });
     }
 
-    print('🚀 Starting upload process with dummy system...');
-    
-    try {
-      // ✅ GUNAKAN UPLOAD WITH DUMMY SYSTEM YANG SUDAH FIX
-      final result = await _storageService.uploadWithDummySystem();
-
-      if (mounted && !_isNavigating) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-
-      if (result['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? 'Upload berhasil'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-
-        // ✅ REFRESH USER DATA SETELAH UPLOAD BERHASIL
-        print('🔄 Refreshing user data after successful upload...');
-        await _refreshUserData();
-
-        // ✅ LANGSUNG KE DASHBOARD SETELAH UPLOAD BERHASIL
-        print('🎉 Upload success, proceeding to dashboard...');
-        _proceedToDashboard();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? 'Upload gagal'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } catch (e) {
-      print('❌ Upload process error: $e');
-      if (mounted && !_isNavigating) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-      
+    if (result['success'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error upload: $e'),
+          content: Text(result['message'] ?? 'Upload 4 file berhasil'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+
+      // ✅ CLEAR TEMPORARY STORAGE SETELAH UPLOAD BERHASIL
+      await _storageService.clearAllFiles();
+      
+      // ✅ REFRESH USER DATA SETELAH UPLOAD BERHASIL
+      print('🔄 Refreshing user data after successful upload...');
+      await _refreshUserData();
+
+      // ✅ LANGSUNG KE DASHBOARD SETELAH UPLOAD BERHASIL
+      print('🎉 Upload success, proceeding to dashboard...');
+      _proceedToDashboard();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] ?? 'Upload gagal'),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 4),
         ),
       );
     }
+  } catch (e) {
+    print('❌ Upload process error: $e');
+    if (mounted && !_isNavigating) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error upload: $e'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
+}
 
 // ✅ FIX: REFRESH USER DATA SETELAH UPLOAD
 Future<void> _refreshUserData() async {
   try {
+    print('🔄 Refreshing user data from server...');
+    
     final profileResult = await _apiService.getUserProfile();
     if (profileResult['success'] == true && profileResult['data'] != null) {
+      final newUserData = profileResult['data'];
+      
       if (mounted && !_isNavigating) {
         setState(() {
-          _currentUser = profileResult['data'];
+          _currentUser = newUserData;
         });
       }
+      
       print('✅ User data refreshed after upload');
       
-      // ✅ CEK STATUS TERBARU
-      _debugServerDocumentStatus();
+      // ✅ DEBUG STATUS TERBARU
+      print('🐛 === AFTER UPLOAD STATUS ===');
+      print('📄 KTP: ${newUserData['foto_ktp']}');
+      print('📄 KK: ${newUserData['foto_kk']}');
+      print('📄 Foto Diri: ${newUserData['foto_diri']}');
       
-      // ✅ CEK APAKAH SEMUA DOKUMEN SUDAH TERUPLOAD
-      final allUploaded = _isDocumentUploadedToServer('ktp') && 
-                         _isDocumentUploadedToServer('kk') && 
-                         _isDocumentUploadedToServer('diri');
+      final ktpUploaded = _isDocumentUploadedToServer('ktp');
+      final kkUploaded = _isDocumentUploadedToServer('kk');
+      final diriUploaded = _isDocumentUploadedToServer('diri');
       
-      print('🎯 All documents uploaded: $allUploaded');
+      print('✅ KTP Uploaded: $ktpUploaded');
+      print('✅ KK Uploaded: $kkUploaded');
+      print('✅ Foto Diri Uploaded: $diriUploaded');
+      print('🎯 All documents uploaded: ${ktpUploaded && kkUploaded && diriUploaded}');
+      print('🐛 === DEBUG END ===');
+      
+    } else {
+      print('❌ Failed to refresh user data: ${profileResult['message']}');
     }
   } catch (e) {
     print('❌ Error refreshing user data: $e');
