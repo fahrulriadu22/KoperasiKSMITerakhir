@@ -83,9 +83,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   ];
 
   bool _isLoading = false;
+  bool _isLoadingMasterData = false;
   bool _obscureText = true;
   bool _obscureConfirmText = true;
   bool _agreedToTerms = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -96,7 +98,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // ✅ LOAD MASTER DATA DENGAN ERROR HANDLING
   Future<void> _loadMasterData() async {
     try {
-      setState(() => _isLoading = true);
+      setState(() {
+        _isLoadingMasterData = true;
+        _errorMessage = null;
+      });
       
       print('🔄 Loading master data...');
 
@@ -105,10 +110,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (provinsiResult['success'] == true) {
         final data = provinsiResult['data'];
         if (data is List) {
-          _provinsiList = data;
+          setState(() {
+            _provinsiList = data;
+          });
           print('📍 Provinsi loaded: ${_provinsiList.length} items');
         } else {
-          _provinsiList = [];
+          _setupFallbackData();
         }
       } else {
         _setupFallbackData();
@@ -121,27 +128,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
         
         // Handle agama
         if (data['agama'] is List) {
-          _agamaList = data['agama'];
+          setState(() {
+            _agamaList = data['agama'];
+          });
         } else {
-          _agamaList = [];
+          setState(() {
+            _agamaList = [];
+          });
         }
         
         // Handle cabang
         if (data['cabang'] is List) {
-          _cabangList = data['cabang'];
+          setState(() {
+            _cabangList = data['cabang'];
+          });
         } else {
-          _cabangList = [];
+          setState(() {
+            _cabangList = [];
+          });
         }
       } else {
         _setupFallbackData();
       }
       
-      setState(() {});
     } catch (e) {
       print('❌ Error loading master data: $e');
       _setupFallbackData();
+      setState(() {
+        _errorMessage = 'Gagal memuat data provinsi dan agama: $e';
+      });
     } finally {
-      setState(() => _isLoading = false);
+      setState(() => _isLoadingMasterData = false);
     }
   }
 
@@ -149,26 +166,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void _setupFallbackData() {
     print('🔄 Setting up fallback data...');
     
-    _provinsiList = [
-      {'id': '35', 'nama': 'JAWA TIMUR'},
-      {'id': '11', 'nama': 'ACEH'},
-      {'id': '12', 'nama': 'SUMATERA UTARA'},
-      {'id': '31', 'nama': 'DKI JAKARTA'},
-    ];
-    
-    _agamaList = [
-      {'id': '1', 'nama': 'Islam'},
-      {'id': '2', 'nama': 'Kristen'},
-      {'id': '3', 'nama': 'Katolik'},
-      {'id': '4', 'nama': 'Hindu'},
-    ];
-    
-    _cabangList = [
-      {'id': '1', 'nama': 'Cabang Pusat'},
-      {'id': '2', 'nama': 'Cabang Utama'},
-    ];
-    
-    setState(() {});
+    setState(() {
+      _provinsiList = [
+        {'id': '35', 'nama': 'JAWA TIMUR'},
+        {'id': '11', 'nama': 'ACEH'},
+        {'id': '12', 'nama': 'SUMATERA UTARA'},
+        {'id': '31', 'nama': 'DKI JAKARTA'},
+      ];
+      
+      _agamaList = [
+        {'id': '1', 'nama': 'Islam'},
+        {'id': '2', 'nama': 'Kristen'},
+        {'id': '3', 'nama': 'Katolik'},
+        {'id': '4', 'nama': 'Hindu'},
+      ];
+      
+      _cabangList = [
+        {'id': '1', 'nama': 'Cabang Pusat'},
+        {'id': '2', 'nama': 'Cabang Utama'},
+      ];
+    });
   }
 
   // ✅ LOAD KOTA
@@ -183,10 +200,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
           setState(() {
             if (forKtp) {
               _kotaListKtp = data;
-              _selectedKotaKtp = null;
+              // Reset selected kota jika tidak ada di list baru
+              if (_selectedKotaKtp != null && 
+                  !_kotaListKtp.any((kota) => kota['id'].toString() == _selectedKotaKtp)) {
+                _selectedKotaKtp = null;
+              }
             } else {
               _kotaListDomisili = data;
-              _selectedKotaDomisili = null;
+              // Reset selected kota jika tidak ada di list baru
+              if (_selectedKotaDomisili != null && 
+                  !_kotaListDomisili.any((kota) => kota['id'].toString() == _selectedKotaDomisili)) {
+                _selectedKotaDomisili = null;
+              }
             }
           });
         } else {
@@ -424,6 +449,94 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
+  // ✅ PERBAIKAN: Build dropdown dengan handling duplicate values dan error handling
+  Widget _buildDropdownFormField({
+    required String label,
+    required String? value,
+    required List<dynamic> items,
+    required Function(String?)? onChanged,
+    required String? Function(String?)? validator,
+    bool enabled = true,
+    String? hintText,
+  }) {
+    try {
+      // ✅ HAPUS DUPLICATE VALUES DAN NULL VALUES
+      final uniqueItems = items.where((item) => 
+        item != null && 
+        item['id'] != null && 
+        item['id'].toString().isNotEmpty
+      ).toSet().toList();
+
+      // ✅ BUAT DROPDOWN ITEMS
+      final dropdownItems = uniqueItems.map((item) {
+        final id = item['id']?.toString() ?? '';
+        final nama = item['nama']?.toString() ?? 
+                    item['name']?.toString() ?? 
+                    item['nama_provinsi']?.toString() ??
+                    item['nama_kota']?.toString() ??
+                    'Unknown';
+        
+        return DropdownMenuItem<String>(
+          value: id,
+          child: Text(
+            nama,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 14),
+          ),
+        );
+      }).toList();
+
+      // ✅ ADD DEFAULT ITEM JIKA KOSONG
+      if (dropdownItems.isEmpty) {
+        dropdownItems.add(
+          const DropdownMenuItem(
+            value: '',
+            child: Text('Tidak ada data'),
+          ),
+        );
+      }
+
+      // ✅ VALIDASI: PASTIKAN VALUE ADA DI LIST
+      String? validatedValue = value;
+      if (value != null && value.isNotEmpty && !dropdownItems.any((item) => item.value == value)) {
+        validatedValue = null;
+      }
+
+      return DropdownButtonFormField<String>(
+        value: validatedValue,
+        items: dropdownItems,
+        onChanged: enabled ? onChanged : null,
+        decoration: InputDecoration(
+          labelText: label,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          hintText: hintText,
+          filled: !enabled,
+          fillColor: !enabled ? Colors.grey[100] : null,
+        ),
+        validator: validator,
+        isExpanded: true,
+        style: TextStyle(
+          color: enabled ? Colors.black87 : Colors.grey[600],
+          fontSize: 14,
+        ),
+        icon: enabled ? const Icon(Icons.arrow_drop_down) : const Icon(Icons.lock_outline),
+        borderRadius: BorderRadius.circular(12),
+      );
+    } catch (e) {
+      print('❌ Error building dropdown $label: $e');
+      return TextFormField(
+        initialValue: 'Error loading data',
+        decoration: InputDecoration(
+          labelText: label,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          filled: true,
+          fillColor: Colors.red[50],
+        ),
+        enabled: false,
+      );
+    }
+  }
+
   // ✅ STEP CONTENT
   Widget _buildStepContent(int step) {
     switch (step) {
@@ -444,7 +557,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  // ✅ STEP 0: INFORMASI KOPERASI - DIPISAH VISI & MISI + TAMBAH MANFAAT
+  // ✅ STEP 0: INFORMASI KOPERASI
   Widget _buildInfoStep() {
     return SingleChildScrollView(
       child: Column(
@@ -468,11 +581,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
           
           _buildInfoCard(
             'Misi Koperasi KSMI',
-            '1. Menyelenggarakan kegiatan simpan pinjam sesuai syariah\n'
-            '2. Mengembangkan usaha produktif anggota\n'
-            '3. Memberikan pembinaan dan edukasi keuangan syariah\n'
-            '4. Membangun jaringan usaha yang halal dan berkah\n'
-            '5. Meningkatkan kesejahteraan ekonomi anggota',
+            '1. Melaksanakan kegiatan usaha dalam koperasi yang sesuai dengan prinsip-prinsip ekonomi tuntunan syariat\n'
+            '2. Meningkatkan dan mengembangkan pelayanan prima bagi koperasi untuk anggota dan masyarakat pada umumnya\n'
+            '3. Mengembangkan tata kelola organisasi dan manajemen di dalam koperasi sebagai upaya menciptakan unit-unit usaha yang unggul dan berkualitas\n'
+            '4. Menjadi mitra pilihan bagi instansi pemerintah, lembaga swasta, maupun kelompok tertentu guna memberikan manfaat dan promosi',
             Icons.assignment,
             Colors.orange[700]!,
           ),
@@ -480,13 +592,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
           
           _buildInfoCard(
             'Manfaat Bergabung',
-            '• Transaksi bebas riba, denda, dan sita\n'
-            '• Sistem bagi hasil yang adil (Mudharabah & Musyarakah)\n'
-            '• Bimbingan spiritual dan bisnis dari mentor berpengalaman\n'
-            '• Jaringan usaha muslim yang luas\n'
-            '• Program pendidikan keuangan syariah\n'
-            '• Layanan konsultasi bisnis dan keluarga\n'
-            '• Akses produk halal dengan harga kompetitif',
+            '• Transaksi dengan akad yang halal sesuai syariat.\n'
+            '• Berusaha bermuamalah sesuai dengan hukum syar`i tanpa riba.\n'
+            '• Ikut berperan aktif dalam memerangi riba.\n'
+            '• Mampu bersaing harga dengan lembaga keuangan pada umumnya.\n'
+            '• Tidak menerapkan 2 akad dalam 1 transaksi (sewa jual).\n'
+            '• Tidak ada denda maupun sita.\n'
+            '• Dapat membantu kaum muslimin yang membutuhkan untuk berlepas diri dari jeratan riba,',
             Icons.emoji_events,
             Colors.purple[700]!,
           ),
@@ -494,14 +606,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           
           _buildInfoCard(
             'Manfaat Keanggotaan',
-            '• Simpanan Pokok & Wajib dengan sistem syariah\n'
-            '• Simpanan Sukarela dengan bagi hasil\n'
-            '• Pembiayaan usaha tanpa bunga\n'
-            '• Program SiTabung (Tabungan Berjangka)\n'
-            '• Bantuan sosial dan kematian\n'
-            '• Pelatihan dan workshop berkala\n'
-            '• Diskon produk dan layanan mitra\n'
-            '• Hak suara dalam Rapat Anggota',
+            '• Mendapatkan profit dari bagi hasil SHU setiap tahun, apabila koperasi berhasil mendapatkan laba usaha demikian sebaliknya\n'
+            '• Mengembangkan networking (jaringan) dengan usaha lain\n'
+            '• Ikut berperan dalam perkembangan dakwah, karena sebagian profit (keuntungan) koperasi akan disalurkan untuk kegiatan dakwah dan sosial kepada masyarakat\n',
             Icons.card_membership,
             Colors.teal[700]!,
           ),
@@ -544,7 +651,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ✅ PERBAIKAN: Info card dengan warna yang berbeda
+  // ✅ Info card dengan warna yang berbeda
   Widget _buildInfoCard(String title, String content, IconData icon, Color color) {
     return Card(
       elevation: 3,
@@ -690,25 +797,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ✅ STEP 2: IDENTITAS - DENGAN DROPDOWN FIXED
+  // ✅ STEP 2: IDENTITAS - DENGAN DROPDOWN YANG SUDAH DIPERBAIKI
   Widget _buildIdentitasStep() {
     return Form(
       key: _formKeys[1],
       child: SingleChildScrollView(
         child: Column(
           children: [
-            // ✅ AGAMA DROPDOWN - FIXED
+            // ✅ AGAMA DROPDOWN - DIPERBAIKI
             _buildDropdownFormField(
               label: 'Agama *',
               value: agamaIdController.text.isEmpty ? null : agamaIdController.text,
-              items: _agamaList.map((agama) {
-                final id = agama['id']?.toString() ?? '';
-                final nama = agama['nama']?.toString() ?? 'Unknown';
-                return DropdownMenuItem<String>(
-                  value: id,
-                  child: Text(nama),
-                );
-              }).toList(),
+              items: _agamaList,
               onChanged: (String? value) {
                 if (value != null) {
                   setState(() {
@@ -720,18 +820,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             const SizedBox(height: 16),
 
-            // ✅ CABANG DROPDOWN - FIXED
+            // ✅ CABANG DROPDOWN - DIPERBAIKI
             _buildDropdownFormField(
               label: 'Cabang *',
               value: cabangIdController.text.isEmpty ? null : cabangIdController.text,
-              items: _cabangList.map((cabang) {
-                final id = cabang['id']?.toString() ?? '';
-                final nama = cabang['nama']?.toString() ?? 'Unknown';
-                return DropdownMenuItem<String>(
-                  value: id,
-                  child: Text(nama),
-                );
-              }).toList(),
+              items: _cabangList,
               onChanged: (String? value) {
                 if (value != null) {
                   setState(() {
@@ -747,9 +840,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
               label: 'Jenis Identitas *',
               value: jenisIdentitasController.text,
               items: const [
-                DropdownMenuItem<String>(value: 'KTP', child: Text('KTP')),
-                DropdownMenuItem<String>(value: 'SIM', child: Text('SIM')),
-                DropdownMenuItem<String>(value: 'Passport', child: Text('Passport')),
+                {'id': 'KTP', 'nama': 'KTP'},
+                {'id': 'SIM', 'nama': 'SIM'},
+                {'id': 'Passport', 'nama': 'Passport'},
               ],
               onChanged: (String? value) {
                 if (value != null) {
@@ -778,12 +871,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _buildDropdownFormField(
               label: 'Sumber Informasi *',
               value: sumberInformasiController.text.isEmpty ? null : sumberInformasiController.text,
-              items: _sumberInfoList.map((sumber) {
-                return DropdownMenuItem<String>(
-                  value: sumber['id'].toString(),
-                  child: Text(sumber['nama']),
-                );
-              }).toList(),
+              items: _sumberInfoList,
               onChanged: (String? value) {
                 if (value != null) {
                   setState(() => sumberInformasiController.text = value);
@@ -797,7 +885,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ✅ STEP 3: DATA KTP - DENGAN DROPDOWN PROVINSI & KOTA YANG FIXED
+  // ✅ STEP 3: DATA KTP - DENGAN DROPDOWN PROVINSI & KOTA YANG SUDAH DIPERBAIKI
   Widget _buildDataKtpStep() {
     return Form(
       key: _formKeys[2],
@@ -844,18 +932,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             const SizedBox(height: 16),
             
-            // ✅ PROVINSI DROPDOWN - FIXED
+            // ✅ PROVINSI DROPDOWN - DIPERBAIKI
             _buildDropdownFormField(
               label: 'Provinsi *',
               value: _selectedProvinsiKtp,
-              items: _provinsiList.map((provinsi) {
-                final id = provinsi['id']?.toString() ?? '';
-                final nama = provinsi['nama']?.toString() ?? 'Unknown';
-                return DropdownMenuItem<String>(
-                  value: id,
-                  child: Text(nama),
-                );
-              }).toList(),
+              items: _provinsiList,
               onChanged: (String? value) {
                 if (value != null) {
                   setState(() {
@@ -870,18 +951,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             const SizedBox(height: 16),
             
-            // ✅ KOTA/KABUPATEN DROPDOWN - FIXED
+            // ✅ KOTA/KABUPATEN DROPDOWN - DIPERBAIKI
             _buildDropdownFormField(
               label: 'Kabupaten/Kota *',
               value: _selectedKotaKtp,
-              items: _kotaListKtp.map((kota) {
-                final id = kota['id']?.toString() ?? '';
-                final nama = kota['nama']?.toString() ?? 'Unknown';
-                return DropdownMenuItem<String>(
-                  value: id,
-                  child: Text(nama),
-                );
-              }).toList(),
+              items: _kotaListKtp,
               onChanged: (String? value) {
                 if (value != null) {
                   setState(() => _selectedKotaKtp = value);
@@ -904,7 +978,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ✅ STEP 4: DATA DOMISILI - DENGAN DROPDOWN FIXED
+  // ✅ STEP 4: DATA DOMISILI - DENGAN DROPDOWN YANG SUDAH DIPERBAIKI
   Widget _buildDataDomisiliStep() {
     return Form(
       key: _formKeys[3],
@@ -925,6 +999,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     domisiliPostalController.text = ktpPostalController.text;
                     _selectedProvinsiDomisili = _selectedProvinsiKtp;
                     _selectedKotaDomisili = _selectedKotaKtp;
+                    
+                    // Load kota untuk domisili jika provinsi berbeda
+                    if (_selectedProvinsiDomisili != null) {
+                      _loadKota(_selectedProvinsiDomisili!, false);
+                    }
                   }
                 },
               ),
@@ -974,18 +1053,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             const SizedBox(height: 16),
             
-            // ✅ PROVINSI DOMISILI DROPDOWN - FIXED
+            // ✅ PROVINSI DOMISILI DROPDOWN - DIPERBAIKI
             _buildDropdownFormField(
               label: 'Provinsi *',
               value: _selectedProvinsiDomisili,
-              items: _provinsiList.map((provinsi) {
-                final id = provinsi['id']?.toString() ?? '';
-                final nama = provinsi['nama']?.toString() ?? 'Unknown';
-                return DropdownMenuItem<String>(
-                  value: id,
-                  child: Text(nama),
-                );
-              }).toList(),
+              items: _provinsiList,
               onChanged: _sameAsKtp ? null : (String? value) {
                 if (value != null) {
                   setState(() {
@@ -997,27 +1069,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 }
               },
               validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Provinsi'),
+              enabled: !_sameAsKtp,
             ),
             const SizedBox(height: 16),
             
-            // ✅ KOTA DOMISILI DROPDOWN - FIXED
+            // ✅ KOTA DOMISILI DROPDOWN - DIPERBAIKI
             _buildDropdownFormField(
               label: 'Kabupaten/Kota *',
               value: _selectedKotaDomisili,
-              items: _kotaListDomisili.map((kota) {
-                final id = kota['id']?.toString() ?? '';
-                final nama = kota['nama']?.toString() ?? 'Unknown';
-                return DropdownMenuItem<String>(
-                  value: id,
-                  child: Text(nama),
-                );
-              }).toList(),
+              items: _kotaListDomisili,
               onChanged: _sameAsKtp ? null : (String? value) {
                 if (value != null) {
                   setState(() => _selectedKotaDomisili = value);
                 }
               },
               validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Kabupaten/Kota'),
+              enabled: !_sameAsKtp,
             ),
             const SizedBox(height: 16),
             
@@ -1069,10 +1136,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
               label: 'Hubungan Keluarga *',
               value: hubunganController.text,
               items: const [
-                DropdownMenuItem<String>(value: 'Orang Tua', child: Text('Orang Tua')),
-                DropdownMenuItem<String>(value: 'Suami/Istri', child: Text('Suami/Istri')),
-                DropdownMenuItem<String>(value: 'Anak', child: Text('Anak')),
-                DropdownMenuItem<String>(value: 'Saudara Kandung', child: Text('Saudara Kandung')),
+                {'id': 'Orang Tua', 'nama': 'Orang Tua'},
+                {'id': 'Suami/Istri', 'nama': 'Suami/Istri'},
+                {'id': 'Anak', 'nama': 'Anak'},
+                {'id': 'Saudara Kandung', 'nama': 'Saudara Kandung'},
               ],
               onChanged: (String? value) {
                 if (value != null) {
@@ -1162,33 +1229,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // ✅ PERBAIKAN: DROPDOWN FORM FIELD YANG BISA DI-CLICK
-  Widget _buildDropdownFormField({
-    required String label,
-    required String? value,
-    required List<DropdownMenuItem<String>> items,
-    required Function(String?)? onChanged,
-    required String? Function(String?)? validator,
-  }) {
-    return DropdownButtonFormField<String>(
-      value: value,
-      items: items,
-      onChanged: onChanged,
-      decoration: InputDecoration(
-        labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        filled: true,
-        fillColor: Colors.white,
-      ),
-      validator: validator,
-      isExpanded: true,
-      // ✅ FIX: Pastikan dropdown bisa di-click
-      dropdownColor: Colors.white,
-      icon: const Icon(Icons.arrow_drop_down),
-      borderRadius: BorderRadius.circular(12),
-    );
-  }
-
   // ✅ NAVIGATION BUTTON LOGIC
   void _handleNextStep() {
     if (_currentStep == 0) {
@@ -1221,8 +1261,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
         backgroundColor: Colors.green[800],
         foregroundColor: Colors.white,
       ),
-      body: _isLoading && _provinsiList.isEmpty
-          ? const Center(child: CircularProgressIndicator())
+      body: _isLoadingMasterData
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Memuat data provinsi dan kota...'),
+                ],
+              ),
+            )
           : SafeArea(
               child: Column(
                 children: [
@@ -1343,5 +1392,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ),
     );
+  }
+
+  @override
+  void dispose() {
+    usernameController.dispose();
+    emailController.dispose();
+    passwordController.dispose();
+    confirmPasswordController.dispose();
+    fullnameController.dispose();
+    birthPlaceController.dispose();
+    faxController.dispose();
+    phoneController.dispose();
+    jobController.dispose();
+    agamaIdController.dispose();
+    cabangIdController.dispose();
+    jenisIdentitasController.dispose();
+    nomorIdentitasController.dispose();
+    sumberInformasiController.dispose();
+    ktpAlamatController.dispose();
+    ktpNoController.dispose();
+    ktpRtController.dispose();
+    ktpRwController.dispose();
+    ktpPostalController.dispose();
+    domisiliAlamatController.dispose();
+    domisiliNoController.dispose();
+    domisiliRtController.dispose();
+    domisiliRwController.dispose();
+    domisiliPostalController.dispose();
+    namaAhliWarisController.dispose();
+    tempatLahirAhliWarisController.dispose();
+    hubunganController.dispose();
+    super.dispose();
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ✅ TAMBAH INI
 
 class FirebaseService {
   // ✅ Singleton instance
@@ -182,24 +183,54 @@ class FirebaseService {
     }
   }
 
-  // ✅ Save Token to Server - IMPROVED
-  Future<void> _saveTokenToServer(String token) async {
+// ✅ PERBAIKAN: Save Token to Server dengan API integration
+Future<void> _saveTokenToServer(String token) async {
+  try {
+    print('💾 Saving FCM token to server: $token');
+    
+    // ✅ SIMPAN KE SHAREDPREFERENCES DULU
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('fcm_token', token);
+    
+    // ✅ COBA KIRIM KE SERVER JIKA USER SUDAH LOGIN
     try {
-      // Implement your API call to save the token
-      print('💾 Saving FCM token to server: $token');
-      
-      // ✅ EXAMPLE: Save to SharedPreferences for now
-      // final prefs = await SharedPreferences.getInstance();
-      // await prefs.setString('fcm_token', token);
-      
-      // TODO: Implement API call to your backend
-      // await _apiService.updateDeviceToken(token);
-      
-      print('✅ FCM token saved locally');
-    } catch (e) {
-      print('❌ ERROR saving token to server: $e');
+      final currentUser = await _apiService.getCurrentUser();
+      if (currentUser != null && currentUser.isNotEmpty) {
+        final result = await _apiService.updateDeviceToken(token);
+        if (result['success'] == true) {
+          print('✅ FCM token saved to server successfully');
+        } else {
+          print('⚠️ FCM token saved locally but failed to send to server: ${result['message']}');
+        }
+      } else {
+        print('⚠️ User not logged in, token saved locally only');
+      }
+    } catch (apiError) {
+      print('⚠️ API error, token saved locally: $apiError');
     }
+    
+  } catch (e) {
+    print('❌ ERROR saving FCM token: $e');
   }
+}
+
+// ✅ TAMBAHKAN METHOD PUBLIC INI DI FIREBASE_SERVICE.DART
+FlutterLocalNotificationsPlugin getLocalNotificationsPlugin() {
+  return _flutterLocalNotificationsPlugin;
+}
+
+// ✅ BUAT PUBLIC METHOD UNTUK TESTING (Opsional)
+Future<void> showTestNotification({
+  required String title,
+  required String body,
+  Map<String, dynamic> data = const {},
+}) async {
+  await _showLocalNotification(
+    title: title,
+    body: body,
+    data: data,
+  );
+}
 
   // ✅ Setup Message Handlers - IMPROVED
   Future<void> _setupMessageHandlers() async {

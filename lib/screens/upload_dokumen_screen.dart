@@ -1,139 +1,9 @@
 import 'dart:io';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:dio/dio.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/temporary_storage_service.dart';
 import 'dashboard_main.dart';
-
-// ✅ DIO SERVICE UNTUK UPLOAD
-class DioService {
-  static const String baseUrl = 'http://demo.bsdeveloper.id/api';
-  
-  String _deviceId = '12341231313131';
-  String _deviceToken = '1234232423424';
-
-  Dio get dio => Dio(BaseOptions(
-    baseUrl: baseUrl,
-    connectTimeout: const Duration(seconds: 30),
-    receiveTimeout: const Duration(seconds: 30),
-  ));
-
-  // ✅ GET HEADERS DENGAN DIO
-  Future<Map<String, dynamic>> _getHeaders() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final userKey = prefs.getString('token');
-      
-      final headers = {
-        'DEVICE-ID': _deviceId,
-        'DEVICE-TOKEN': _deviceToken,
-        'Content-Type': 'multipart/form-data',
-      };
-      
-      if (userKey != null && userKey.isNotEmpty) {
-        headers['x-api-key'] = userKey;
-      }
-      
-      return headers;
-    } catch (e) {
-      return {
-        'DEVICE-ID': _deviceId,
-        'DEVICE-TOKEN': _deviceToken,
-        'Content-Type': 'multipart/form-data',
-      };
-    }
-  }
-
-  // ✅ UPLOAD FOTO DENGAN DIO
-  Future<Map<String, dynamic>> uploadFotoWithDio({
-    required String type,
-    required String filePath,
-  }) async {
-    try {
-      print('🚀 DIO UPLOAD START: $type');
-      
-      final headers = await _getHeaders();
-      final file = File(filePath);
-      
-      if (!await file.exists()) {
-        return {'success': false, 'message': 'File tidak ditemukan'};
-      }
-
-      // ✅ BUAT FORM DATA DENGAN DIO
-      FormData formData = FormData.fromMap({
-        'type': type,
-        'file': await MultipartFile.fromFile(
-          filePath,
-          filename: '${type}_${DateTime.now().millisecondsSinceEpoch}.jpg',
-        ),
-      });
-
-      // ✅ TAMBAH USER DATA JIKA ADA
-      final prefs = await SharedPreferences.getInstance();
-      final userString = prefs.getString('user');
-      if (userString != null) {
-        final userData = jsonDecode(userString);
-        if (userData['user_id'] != null) {
-          formData.fields.add(MapEntry('user_id', userData['user_id'].toString()));
-        }
-        if (userData['username'] != null) {
-          formData.fields.add(MapEntry('username', userData['username'].toString()));
-        }
-      }
-
-      print('📤 DIO Headers: $headers');
-      print('📤 DIO Form data fields: ${formData.fields}');
-      print('📤 DIO Files: ${formData.files}');
-
-      // ✅ KIRIM DENGAN DIO
-      final response = await dio.post(
-        '/users/setPhoto',
-        data: formData,
-        options: Options(headers: headers),
-      );
-
-      print('📡 DIO Response: ${response.statusCode}');
-      print('📡 DIO Data: ${response.data}');
-
-      if (response.statusCode == 200) {
-        final data = response.data;
-        if (data['status'] == true) {
-          return {
-            'success': true,
-            'message': data['message'] ?? 'Upload berhasil',
-            'data': data
-          };
-        } else {
-          return {
-            'success': false,
-            'message': data['message'] ?? 'Upload gagal'
-          };
-        }
-      } else {
-        return {
-          'success': false,
-          'message': 'Server error ${response.statusCode}'
-        };
-      }
-    } catch (e) {
-      print('❌ DIO UPLOAD ERROR: $e');
-      if (e is DioException) {
-        print('❌ DIO Error Response: ${e.response?.data}');
-        print('❌ DIO Error Status: ${e.response?.statusCode}');
-        return {
-          'success': false,
-          'message': 'Upload error: ${e.response?.data?['message'] ?? e.message}'
-        };
-      }
-      return {
-        'success': false,
-        'message': 'Upload error: $e'
-      };
-    }
-  }
-}
 
 class UploadDokumenScreen extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -150,40 +20,107 @@ class UploadDokumenScreen extends StatefulWidget {
 }
 
 class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
+  final TemporaryStorageService _storageService = TemporaryStorageService();
   final ApiService _apiService = ApiService();
-  final DioService _dioService = DioService(); // ✅ DIO SERVICE
   final ImagePicker _imagePicker = ImagePicker();
   
-  File? _ktpFile;
-  File? _kkFile;
-  File? _fotoDiriFile;
   bool _isLoading = false;
-  bool _isUploadingKTP = false;
-  bool _isUploadingKK = false;
-  bool _isUploadingFotoDiri = false;
+  bool _isInitializing = true;
   String? _uploadError;
+  Map<String, dynamic> _currentUser = {};
+  bool _isNavigating = false;
 
   @override
   void initState() {
     super.initState();
-    _loadExistingFiles();
-    _runDebug();
+    _currentUser = Map<String, dynamic>.from(widget.user);
+    _initializeData();
   }
 
-  void _loadExistingFiles() {
-    print('🔍 Loading existing files from user data:');
-    print('   - KTP: ${widget.user['foto_ktp']}');
-    print('   - KK: ${widget.user['foto_kk']}');
-    print('   - Foto Diri: ${widget.user['foto_diri']}');
+  @override
+  void dispose() {
+    _isNavigating = true;
+    super.dispose();
   }
 
-  void _runDebug() async {
-    print('🛠️ RUNNING UPLOAD DEBUG...');
-    await _apiService.debugUploadSystem();
+  // ✅ INITIALIZE DATA DENGAN CEK STATUS DOKUMEN DARI SERVER
+  Future<void> _initializeData() async {
+    try {
+      setState(() => _isInitializing = true);
+      
+      // ✅ CEK STATUS DOKUMEN DARI SERVER
+      final profileResult = await _apiService.getUserProfile();
+      if (profileResult['success'] == true && profileResult['data'] != null) {
+        setState(() {
+          _currentUser = profileResult['data'];
+        });
+        print('✅ User profile loaded from API for document status check');
+        
+        // ✅ DEBUG: CEK STATUS DOKUMEN DI SERVER
+        _debugServerDocumentStatus();
+      }
+      
+      // ✅ INITIALIZE TEMPORARY STORAGE & CARI DUMMY BUKTI OTOMATIS
+      await _storageService.loadFilesFromStorage();
+      print('✅ TemporaryStorageService initialized');
+      _storageService.printDebugInfo();
+      
+    } catch (e) {
+      print('❌ Error initializing data: $e');
+      // ✅ FALLBACK: GUNAKAN DATA LOKAL
+      await _storageService.loadFilesFromStorage();
+    } finally {
+      if (mounted && !_isNavigating) {
+        setState(() => _isInitializing = false);
+      }
+    }
   }
 
-  // ✅ METHOD UPLOAD DENGAN FALLBACK (HTTP + DIO)
-  Future<void> _uploadDocumentWithFallback(String type, Function(File?) setFile, Function(bool) setLoading) async {
+// ✅ FIX: DEBUG SERVER DOCUMENT STATUS
+void _debugServerDocumentStatus() {
+  print('🐛 === SERVER DOCUMENT STATUS ===');
+  print('📄 KTP Server: ${_currentUser['foto_ktp'] ?? 'NULL'}');
+  print('📄 KK Server: ${_currentUser['foto_kk'] ?? 'NULL'}');
+  print('📄 Foto Diri Server: ${_currentUser['foto_diri'] ?? 'NULL'}');
+  
+  final ktpUploaded = _isDocumentUploadedToServer('ktp');
+  final kkUploaded = _isDocumentUploadedToServer('kk');
+  final diriUploaded = _isDocumentUploadedToServer('diri');
+  
+  print('✅ KTP Uploaded to Server: $ktpUploaded');
+  print('✅ KK Uploaded to Server: $kkUploaded');
+  print('✅ Foto Diri Uploaded to Server: $diriUploaded');
+  print('🐛 === DEBUG END ===');
+}
+
+// ✅ FIX: CEK STATUS DOKUMEN YANG BENAR
+bool _isDocumentUploadedToServer(String type) {
+  String? documentUrl;
+  
+  switch (type) {
+    case 'ktp':
+      documentUrl = _currentUser['foto_ktp'];
+      break;
+    case 'kk':
+      documentUrl = _currentUser['foto_kk'];
+      break;
+    case 'diri':
+      documentUrl = _currentUser['foto_diri'];
+      break;
+  }
+  
+  // ✅ FIX: CEK APAKAH ADA FILENAME DENGAN EXTENSION .jpg
+  final isUploaded = documentUrl != null && 
+                    documentUrl.toString().isNotEmpty && 
+                    documentUrl != 'uploaded' &&
+                    documentUrl.toString().contains('.jpg');
+  
+  print('🔍 Document $type check: $documentUrl → $isUploaded');
+  return isUploaded;
+}
+
+  // ✅ METHOD UNTUK UPLOAD DOKUMEN (HANYA KTP, KK, FOTO DIRI)
+  Future<void> _uploadDocument(String type, String documentName) async {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
         source: ImageSource.gallery,
@@ -193,14 +130,14 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
       );
 
       if (pickedFile != null) {
-        setState(() {
-          setLoading(true);
-          _uploadError = null;
-        });
+        if (mounted && !_isNavigating) {
+          setState(() {
+            _uploadError = null;
+          });
+        }
 
         final file = File(pickedFile.path);
-        print('📤 Uploading $type: ${file.path}');
-        print('📤 File size: ${(file.lengthSync() / 1024).toStringAsFixed(2)} KB');
+        print('📤 Uploading $documentName: ${file.path}');
         
         // ✅ VALIDASI FILE
         if (!await file.exists()) {
@@ -217,75 +154,57 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
           throw Exception('Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.');
         }
 
-        // ✅ COBA UPLOAD DENGAN HTTP PACKAGE DULU
-        print('🔄 Trying HTTP package upload...');
-        final httpResult = await _apiService.uploadFoto(
-          type: type,
-          filePath: pickedFile.path,
-        ).timeout(const Duration(seconds: 30));
-
-        if (httpResult['success'] == true) {
-          // ✅ HTTP BERHASIL
-          _handleUploadSuccess(file, type, httpResult, setFile, setLoading);
-          return;
+        // ✅ SIMPAN FILE KE TEMPORARY STORAGE
+        switch (type) {
+          case 'ktp':
+            await _storageService.setKtpFile(file);
+            break;
+          case 'kk':
+            await _storageService.setKkFile(file);
+            break;
+          case 'diri':
+            await _storageService.setDiriFile(file);
+            break;
         }
 
-        // ✅ JIKA HTTP GAGAL, COBA DIO
-        print('🔄 HTTP failed, trying DIO upload...');
-        final dioResult = await _dioService.uploadFotoWithDio(
-          type: type,
-          filePath: pickedFile.path,
+        if (mounted && !_isNavigating) {
+          setState(() {});
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$documentName berhasil disimpan ✅'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
         );
 
-        if (dioResult['success'] == true) {
-          // ✅ DIO BERHASIL
-          _handleUploadSuccess(file, type, dioResult, setFile, setLoading);
-        } else {
-          // ✅ KEDUANYA GAGAL
-          _handleUploadFailure(type, dioResult['message'] ?? 'Upload gagal', setLoading);
-        }
+        print('💾 $documentName saved to temporary storage');
+        
+        // ✅ CHECK AUTO UPLOAD SETELAH SIMPAN FILE
+        _checkAutoUpload();
       }
     } catch (e) {
-      _handleUploadFailure(type, 'Error: $e', setLoading);
+      if (mounted && !_isNavigating) {
+        setState(() {
+          _uploadError = 'Error upload $documentName: $e';
+        });
+      }
+
+      print('❌ Upload failed: $e');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal upload $documentName: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
 
-  void _handleUploadSuccess(File file, String type, Map<String, dynamic> result, Function(File?) setFile, Function(bool) setLoading) {
-    setState(() {
-      setFile(file);
-      setLoading(false);
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${_getDocumentName(type)} berhasil diupload ✅'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-
-    _checkAllDocumentsUploaded();
-  }
-
-  void _handleUploadFailure(String type, String error, Function(bool) setLoading) {
-    setState(() {
-      setLoading(false);
-      _uploadError = 'Error upload ${_getDocumentName(type)}: $error';
-    });
-
-    print('❌ Upload failed: $error');
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Gagal upload ${_getDocumentName(type)}: $error'),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 4),
-      ),
-    );
-  }
-
-  // ✅ METHOD UPLOAD DARI KAMERA DENGAN FALLBACK
-  Future<void> _takePhotoWithFallback(String type, Function(File?) setFile, Function(bool) setLoading) async {
+  // ✅ METHOD UNTUK AMBIL FOTO DARI KAMERA
+  Future<void> _takePhoto(String type, String documentName) async {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
         source: ImageSource.camera,
@@ -295,13 +214,14 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
       );
 
       if (pickedFile != null) {
-        setState(() {
-          setLoading(true);
-          _uploadError = null;
-        });
+        if (mounted && !_isNavigating) {
+          setState(() {
+            _uploadError = null;
+          });
+        }
 
         final file = File(pickedFile.path);
-        print('📸 Taking photo for $type: ${file.path}');
+        print('📸 Taking photo for $documentName: ${file.path}');
         
         // ✅ VALIDASI FILE
         if (!await file.exists()) {
@@ -313,147 +233,311 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
           throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
         }
 
-        // ✅ COBA UPLOAD DENGAN HTTP PACKAGE DULU
-        print('🔄 Trying HTTP package upload from camera...');
-        final httpResult = await _apiService.uploadFoto(
-          type: type,
-          filePath: pickedFile.path,
-        ).timeout(const Duration(seconds: 30));
-
-        if (httpResult['success'] == true) {
-          // ✅ HTTP BERHASIL
-          _handleUploadSuccess(file, type, httpResult, setFile, setLoading);
-          return;
+        // ✅ SIMPAN FILE KE TEMPORARY STORAGE
+        switch (type) {
+          case 'ktp':
+            await _storageService.setKtpFile(file);
+            break;
+          case 'kk':
+            await _storageService.setKkFile(file);
+            break;
+          case 'diri':
+            await _storageService.setDiriFile(file);
+            break;
         }
 
-        // ✅ JIKA HTTP GAGAL, COBA DIO
-        print('🔄 HTTP failed, trying DIO upload from camera...');
-        final dioResult = await _dioService.uploadFotoWithDio(
-          type: type,
-          filePath: pickedFile.path,
+        if (mounted && !_isNavigating) {
+          setState(() {});
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$documentName berhasil diambil ✅'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
         );
 
-        if (dioResult['success'] == true) {
-          // ✅ DIO BERHASIL
-          _handleUploadSuccess(file, type, dioResult, setFile, setLoading);
-        } else {
-          // ✅ KEDUANYA GAGAL
-          _handleUploadFailure(type, dioResult['message'] ?? 'Upload gagal', setLoading);
-        }
+        print('💾 $documentName from camera saved to temporary storage');
+        
+        // ✅ CHECK AUTO UPLOAD SETELAH SIMPAN FILE
+        _checkAutoUpload();
       }
     } catch (e) {
-      _handleUploadFailure(type, 'Error: $e', setLoading);
+      if (mounted && !_isNavigating) {
+        setState(() {
+          _uploadError = 'Error mengambil foto $documentName: $e';
+        });
+      }
+
+      print('❌ Camera failed: $e');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal mengambil foto $documentName: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
 
-  // ✅ PERBAIKAN: METHOD UNTUK HANDLE TOKEN EXPIRED
-  void _showTokenExpiredDialog() {
+  // ✅ CHECK AUTO UPLOAD JIKA SEMUA FILE LENGKAP
+  void _checkAutoUpload() {
+    print('🔄 _checkAutoUpload called');
+    print('   - isAllFilesComplete: ${_storageService.isAllFilesComplete}');
+    print('   - isUploading: ${_storageService.isUploading}');
+    print('   - hasKtpFile: ${_storageService.hasKtpFile}');
+    print('   - hasKkFile: ${_storageService.hasKkFile}');
+    print('   - hasDiriFile: ${_storageService.hasDiriFile}');
+    
+    // ✅ CEK APAKAH SUDAH ADA DI SERVER
+    final ktpServer = _isDocumentUploadedToServer('ktp');
+    final kkServer = _isDocumentUploadedToServer('kk');
+    final diriServer = _isDocumentUploadedToServer('diri');
+    
+    print('   - KTP Server: $ktpServer');
+    print('   - KK Server: $kkServer');
+    print('   - Diri Server: $diriServer');
+    
+    // ✅ JIKA SEMUA FILE LENGKAP DAN BELUM DIUPLOAD KE SERVER
+    if (_storageService.isAllFilesComplete && 
+        !_storageService.isUploading &&
+        (!ktpServer || !kkServer || !diriServer)) {
+      print('🚀 All files complete, showing upload confirmation...');
+      _showUploadConfirmationDialog();
+    } else {
+      print('⏳ Not ready for auto-upload yet');
+    }
+  }
+
+  // ✅ UPLOAD KTP
+  Future<void> _uploadKTP() async {
+    await _uploadDocument('ktp', 'KTP');
+  }
+
+  // ✅ UPLOAD KK
+  Future<void> _uploadKK() async {
+    await _uploadDocument('kk', 'Kartu Keluarga');
+  }
+
+  // ✅ UPLOAD FOTO DIRI
+  Future<void> _uploadFotoDiri() async {
+    await _uploadDocument('diri', 'Foto Diri');
+  }
+
+  // ✅ UPLOAD KTP DARI KAMERA
+  Future<void> _takePhotoKTP() async {
+    await _takePhoto('ktp', 'KTP');
+  }
+
+  // ✅ UPLOAD KK DARI KAMERA
+  Future<void> _takePhotoKK() async {
+    await _takePhoto('kk', 'Kartu Keluarga');
+  }
+
+  // ✅ UPLOAD FOTO DIRI DARI KAMERA
+  Future<void> _takePhotoFotoDiri() async {
+    await _takePhoto('diri', 'Foto Diri');
+  }
+
+  // ✅ CLEAR SPECIFIC FILE
+  Future<void> _clearFile(String type, String documentName) async {
+    await _storageService.clearFile(type);
+    if (mounted && !_isNavigating) {
+      setState(() {});
+    }
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$documentName dihapus'),
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  // ✅ MANUAL UPLOAD ALL FILES
+  Future<void> _uploadAllFiles() async {
+    if (!_storageService.isAllFilesComplete) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Harap lengkapi semua dokumen terlebih dahulu'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    if (_storageService.isUploading) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Upload sedang berjalan, harap tunggu...'),
+          backgroundColor: Colors.blue,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    _showUploadConfirmationDialog();
+  }
+
+  // ✅ DIALOG KONFIRMASI UPLOAD
+  void _showUploadConfirmationDialog() {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Sesi Berakhir'),
-        content: const Text('Sesi login Anda telah berakhir. Silakan login kembali.'),
+        title: const Text('Upload Semua Dokumen?'),
+        content: const Text(
+          'Apakah Anda yakin ingin mengupload semua dokumen?\n\n'
+          '• KTP\n'
+          '• Kartu Keluarga\n'
+          '• Foto Diri\n\n'
+          'Sistem akan menambahkan file dummy bukti secara otomatis.\n'
+          'Total 4 file akan dikirim ke server.'
+        ),
         actions: [
           TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Periksa Lagi'),
+          ),
+          ElevatedButton(
             onPressed: () {
-              Navigator.of(context).popUntil((route) => route.isFirst);
-              Navigator.pushReplacementNamed(context, '/login');
+              Navigator.pop(context);
+              _startUploadProcess();
             },
-            child: const Text('Login Kembali'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+            ),
+            child: const Text('Ya, Upload Sekarang'),
           ),
         ],
       ),
     );
   }
 
-  // ✅ CEK JIKA SEMUA DOKUMEN SUDAH DIUPLOAD
-  void _checkAllDocumentsUploaded() {
-    final bool allUploaded = _ktpFile != null && _kkFile != null && _fotoDiriFile != null;
-    if (allUploaded) {
-      print('🎉 Semua dokumen sudah diupload!');
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          _proceedToDashboard();
-        }
+  // ✅ PROSES UPLOAD YANG SEBENARNYA - MENGGUNAKAN SISTEM DUMMY
+  Future<void> _startUploadProcess() async {
+    if (mounted && !_isNavigating) {
+      setState(() {
+        _isLoading = true;
       });
     }
-  }
 
-  // ✅ Helper method untuk nama dokumen
-  String _getDocumentName(String type) {
-    switch (type) {
-      case 'foto_ktp': return 'KTP';
-      case 'foto_kk': return 'Kartu Keluarga';
-      case 'foto_diri': return 'Foto Diri';
-      default: return 'Dokumen';
+    print('🚀 Starting upload process with dummy system...');
+    
+    try {
+      // ✅ GUNAKAN UPLOAD WITH DUMMY SYSTEM YANG SUDAH FIX
+      final result = await _storageService.uploadWithDummySystem();
+
+      if (mounted && !_isNavigating) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+
+      if (result['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Upload berhasil'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+
+        // ✅ REFRESH USER DATA SETELAH UPLOAD BERHASIL
+        print('🔄 Refreshing user data after successful upload...');
+        await _refreshUserData();
+
+        // ✅ LANGSUNG KE DASHBOARD SETELAH UPLOAD BERHASIL
+        print('🎉 Upload success, proceeding to dashboard...');
+        _proceedToDashboard();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Upload gagal'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Upload process error: $e');
+      if (mounted && !_isNavigating) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error upload: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
-  // ✅ UPLOAD KTP
-  Future<void> _uploadKTP() async {
-    await _uploadDocumentWithFallback(
-      'foto_ktp',
-      (file) => _ktpFile = file,
-      (loading) => _isUploadingKTP = loading,
-    );
+// ✅ FIX: REFRESH USER DATA SETELAH UPLOAD
+Future<void> _refreshUserData() async {
+  try {
+    final profileResult = await _apiService.getUserProfile();
+    if (profileResult['success'] == true && profileResult['data'] != null) {
+      if (mounted && !_isNavigating) {
+        setState(() {
+          _currentUser = profileResult['data'];
+        });
+      }
+      print('✅ User data refreshed after upload');
+      
+      // ✅ CEK STATUS TERBARU
+      _debugServerDocumentStatus();
+      
+      // ✅ CEK APAKAH SEMUA DOKUMEN SUDAH TERUPLOAD
+      final allUploaded = _isDocumentUploadedToServer('ktp') && 
+                         _isDocumentUploadedToServer('kk') && 
+                         _isDocumentUploadedToServer('diri');
+      
+      print('🎯 All documents uploaded: $allUploaded');
+    }
+  } catch (e) {
+    print('❌ Error refreshing user data: $e');
   }
-
-  // ✅ UPLOAD KK
-  Future<void> _uploadKK() async {
-    await _uploadDocumentWithFallback(
-      'foto_kk',
-      (file) => _kkFile = file,
-      (loading) => _isUploadingKK = loading,
-    );
-  }
-
-  // ✅ UPLOAD FOTO DIRI
-  Future<void> _uploadFotoDiri() async {
-    await _uploadDocumentWithFallback(
-      'foto_diri',
-      (file) => _fotoDiriFile = file,
-      (loading) => _isUploadingFotoDiri = loading,
-    );
-  }
-
-  // ✅ UPLOAD KTP DARI KAMERA
-  Future<void> _takePhotoKTP() async {
-    await _takePhotoWithFallback(
-      'foto_ktp',
-      (file) => _ktpFile = file,
-      (loading) => _isUploadingKTP = loading,
-    );
-  }
-
-  // ✅ UPLOAD KK DARI KAMERA
-  Future<void> _takePhotoKK() async {
-    await _takePhotoWithFallback(
-      'foto_kk',
-      (file) => _kkFile = file,
-      (loading) => _isUploadingKK = loading,
-    );
-  }
-
-  // ✅ UPLOAD FOTO DIRI DARI KAMERA
-  Future<void> _takePhotoFotoDiri() async {
-    await _takePhotoWithFallback(
-      'foto_diri',
-      (file) => _fotoDiriFile = file,
-      (loading) => _isUploadingFotoDiri = loading,
-    );
-  }
+}
 
   // ✅ FITUR LEWATI - Skip upload dan langsung ke dashboard
   void _lewatiUpload() {
+    // ✅ CEK APAKAH SUDAH ADA DOKUMEN DI SERVER
+    final ktpServer = _isDocumentUploadedToServer('ktp');
+    final kkServer = _isDocumentUploadedToServer('kk');
+    final diriServer = _isDocumentUploadedToServer('diri');
+    
+    final hasSomeServerDocuments = ktpServer || kkServer || diriServer;
+    final hasSomeLocalFiles = _storageService.hasAnyFile;
+
+    String message;
+    if (hasSomeServerDocuments) {
+      message = 'Beberapa dokumen sudah terupload ke server. '
+          'Dokumen yang belum terupload dapat diupload nanti di menu Profile. '
+          'Apakah Anda yakin ingin melanjutkan ke dashboard?';
+    } else if (hasSomeLocalFiles) {
+      message = 'Anda memiliki dokumen yang belum diupload. '
+          'Dokumen akan disimpan sementara dan dapat diupload nanti di menu Profile. '
+          'Apakah Anda yakin ingin melanjutkan ke dashboard?';
+    } else {
+      message = 'Anda dapat mengupload dokumen nanti di menu Profile. '
+          'Apakah Anda yakin ingin melanjutkan ke dashboard?';
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Lewati Upload Dokumen?'),
-        content: const Text(
-          'Anda dapat mengupload dokumen nanti di menu Profile. '
-          'Apakah Anda yakin ingin melanjutkan ke dashboard?'
-        ),
+        content: Text(message),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -474,86 +558,68 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     );
   }
 
-  // ✅ LANJUT KE DASHBOARD
-  void _lanjutKeDashboard() {
-    print('🎯 Lanjut ke Dashboard');
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Konfirmasi'),
-        content: const Text('Apakah Anda yakin dokumen yang diupload sudah benar?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Periksa Lagi'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _proceedToDashboard();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green[700],
-            ),
-            child: const Text('Ya, Lanjutkan'),
-          ),
-        ],
-      ),
-    );
+// ✅ FIX: NAVIGATION KE DASHBOARD
+void _proceedToDashboard() {
+  print('🚀 Starting proceed to dashboard...');
+  
+  if (_isNavigating) {
+    print('⚠️ Already navigating, skipping...');
+    return;
   }
+  
+  _isNavigating = true;
 
-  // ✅ PROCEED TO DASHBOARD
-  void _proceedToDashboard() {
-    print('🚀 Starting proceed to dashboard...');
-    setState(() => _isLoading = true);
-    
-    final updatedUser = Map<String, dynamic>.from(widget.user);
-    updatedUser['foto_ktp'] = _ktpFile != null ? 'uploaded' : (widget.user['foto_ktp'] ?? 'pending');
-    updatedUser['foto_kk'] = _kkFile != null ? 'uploaded' : (widget.user['foto_kk'] ?? 'pending');
-    updatedUser['foto_diri'] = _fotoDiriFile != null ? 'uploaded' : (widget.user['foto_diri'] ?? 'pending');
+  // ✅ GUNAKAN Future.microtask UNTUK MEMASTIKAN BUILD SELESAI
+  Future.microtask(() {
+    if (!mounted) {
+      print('🔄 Widget not mounted, skipping navigation');
+      return;
+    }
 
-    print('🚀 Proceeding to dashboard with user data:');
-    print('   - KTP: ${updatedUser['foto_ktp']}');
-    print('   - KK: ${updatedUser['foto_kk']}');
-    print('   - Foto Diri: ${updatedUser['foto_diri']}');
+    final updatedUser = Map<String, dynamic>.from(_currentUser);
 
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        
-        if (widget.onDocumentsComplete != null) {
-          print('📞 Memanggil callback onDocumentsComplete...');
-          widget.onDocumentsComplete!();
-        } else {
-          print('🔄 Callback tidak ada, navigasi langsung ke Dashboard...');
-          try {
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => DashboardMain(user: updatedUser)),
-              (route) => false,
-            );
-            print('✅ Navigation to dashboard successful');
-          } catch (e) {
-            print('❌ Navigation error: $e');
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => DashboardMain(user: widget.user)),
-              (route) => false,
-            );
-          }
-        }
+    print('🎯 Final navigation check:');
+    print('   - KTP Server: ${_isDocumentUploadedToServer('ktp')}');
+    print('   - KK Server: ${_isDocumentUploadedToServer('kk')}');
+    print('   - Foto Diri Server: ${_isDocumentUploadedToServer('diri')}');
+
+    // ✅ NAVIGASI LANGSUNG TANPA DELAY
+    try {
+      if (widget.onDocumentsComplete != null) {
+        print('📞 Memanggil callback onDocumentsComplete...');
+        widget.onDocumentsComplete!();
+      } else {
+        print('🔄 Navigasi langsung ke Dashboard...');
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => DashboardMain(user: updatedUser)),
+          (route) => false,
+        );
+        print('✅ Navigation to dashboard successful');
       }
-    });
-  }
+    } catch (e) {
+      print('❌ Navigation error: $e');
+      // FALLBACK: Coba navigasi sederhana
+      try {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => DashboardMain(user: _currentUser)),
+          (route) => false,
+        );
+      } catch (e2) {
+        print('❌ Fallback navigation also failed: $e2');
+      }
+    }
+  });
+}
 
   // ✅ SHOW IMAGE SOURCE DIALOG dengan opsi kamera
-  void _showImageSourceDialog(Function() onGallery, Function() onCamera) {
+  void _showImageSourceDialog(String type, String documentName) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Pilih Sumber Gambar'),
-        content: const Text('Pilih sumber untuk mengambil gambar'),
+        title: Text('Pilih Sumber $documentName'),
+        content: Text('Pilih sumber untuk mengambil gambar $documentName'),
         actions: [
           Column(
             mainAxisSize: MainAxisSize.min,
@@ -563,7 +629,17 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                 child: ElevatedButton.icon(
                   onPressed: () {
                     Navigator.pop(context);
-                    onCamera();
+                    switch (type) {
+                      case 'ktp':
+                        _takePhotoKTP();
+                        break;
+                      case 'kk':
+                        _takePhotoKK();
+                        break;
+                      case 'diri':
+                        _takePhotoFotoDiri();
+                        break;
+                    }
                   },
                   icon: const Icon(Icons.camera_alt),
                   label: const Text('Kamera'),
@@ -579,7 +655,17 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                 child: ElevatedButton.icon(
                   onPressed: () {
                     Navigator.pop(context);
-                    onGallery();
+                    switch (type) {
+                      case 'ktp':
+                        _uploadKTP();
+                        break;
+                      case 'kk':
+                        _uploadKK();
+                        break;
+                      case 'diri':
+                        _uploadFotoDiri();
+                        break;
+                    }
                   },
                   icon: const Icon(Icons.photo_library),
                   label: const Text('Galeri'),
@@ -604,13 +690,327 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     );
   }
 
+  // ✅ BUILD DOKUMEN CARD dengan status dari TemporaryStorage + Server
+  Widget _buildDokumenCard({
+    required String type,
+    required String title,
+    required String description,
+    required IconData icon,
+    required Color color,
+  }) {
+    final fileInfo = _storageService.getFileInfo(type);
+    final hasLocalFile = fileInfo['exists'] == true;
+    final isUploading = _storageService.isUploading;
+    
+    // ✅ CEK STATUS UPLOAD KE SERVER
+    final isUploadedToServer = _isDocumentUploadedToServer(type);
+    final serverUrl = _getDocumentServerUrl(type);
+
+    print('🎨 Building $type card - Server: $isUploadedToServer, Local: $hasLocalFile');
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  
+                  // ✅ STATUS INDICATOR (PRIORITAS SERVER STATUS)
+                  if (isUploadedToServer) ...[
+                    Row(
+                      children: [
+                        Icon(Icons.cloud_done, color: Colors.green, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Terverifikasi di Server',
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (serverUrl != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'URL: ${_shortenUrl(serverUrl)}',
+                        style: TextStyle(
+                          color: Colors.green[600],
+                          fontSize: 9,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ] else if (hasLocalFile) ...[
+                    Row(
+                      children: [
+                        Icon(Icons.pending, color: Colors.orange, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Menunggu Upload',
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 11,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${(fileInfo['size'] / 1024).toStringAsFixed(1)} KB',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (fileInfo['filename'] != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        fileInfo['filename'],
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ] else ...[
+                    Row(
+                      children: [
+                        Icon(Icons.warning, color: Colors.red, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Belum Diupload',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // UPLOAD/GANTI BUTTON
+                SizedBox(
+                  width: 80,
+                  height: 36,
+                  child: ElevatedButton(
+                    onPressed: isUploading ? null : () => _showImageSourceDialog(type, title),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isUploadedToServer ? Colors.green : 
+                                    hasLocalFile ? Colors.orange : color,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    child: isUploading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            isUploadedToServer ? '✓ Verified' : 
+                            hasLocalFile ? 'Upload' : 'Pilih',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                  ),
+                ),
+                if (hasLocalFile && !isUploadedToServer) ...[
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: 80,
+                    height: 28,
+                    child: OutlinedButton(
+                      onPressed: isUploading ? null : () => _clearFile(type, title),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      child: const Text(
+                        'Hapus',
+                        style: TextStyle(fontSize: 10),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ BUILD UPLOAD MANUAL SECTION
+  Widget _buildUploadManualSection() {
+    final allFilesComplete = _storageService.isAllFilesComplete;
+    final hasAnyFile = _storageService.hasAnyFile;
+
+    // ✅ CEK APAKAH ADA FILE YANG BELUM TERUPLOAD KE SERVER
+    final hasPendingUpload = hasAnyFile && 
+        (!_isDocumentUploadedToServer('ktp') || 
+         !_isDocumentUploadedToServer('kk') || 
+         !_isDocumentUploadedToServer('diri'));
+
+    if (!hasPendingUpload && !allFilesComplete) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue[200]!),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(Icons.cloud_upload, color: Colors.blue[700], size: 24),
+              const SizedBox(width: 8),
+              Text(
+                allFilesComplete ? 'Siap Upload 4 File!' : 'Upload Manual',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue[700],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            allFilesComplete 
+                ? 'Semua 3 dokumen sudah lengkap. Sistem akan menambahkan 1 file dummy bukti otomatis. Total 4 file akan diupload ke server.'
+                : 'Upload dokumen yang sudah dipilih atau lengkapi semua dokumen terlebih dahulu.',
+            style: TextStyle(fontSize: 12, color: Colors.blue[700]),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 45,
+            child: ElevatedButton.icon(
+              onPressed: _storageService.isUploading ? null : _uploadAllFiles,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: allFilesComplete ? Colors.green[700] : Colors.blue[700],
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.cloud_upload, size: 20),
+              label: _storageService.isUploading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      allFilesComplete ? 'Upload 4 File ke Server' : 'Upload Manual',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bool isKTPUploaded = _ktpFile != null;
-    final bool isKKUploaded = _kkFile != null;
-    final bool isFotoDiriUploaded = _fotoDiriFile != null;
-    final bool allUploaded = isKTPUploaded && isKKUploaded && isFotoDiriUploaded;
-    final int uploadedCount = [isKTPUploaded, isKKUploaded, isFotoDiriUploaded].where((e) => e).length;
+    if (_isInitializing) {
+      return Scaffold(
+        backgroundColor: Colors.green[50],
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                color: Colors.green[700],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Memuat data dokumen...',
+                style: TextStyle(
+                  color: Colors.green[700],
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final allFilesComplete = _storageService.isAllFilesComplete;
+    final uploadedCount = [
+      _storageService.hasKtpFile,
+      _storageService.hasKkFile,
+      _storageService.hasDiriFile,
+    ].where((e) => e).length;
+
+    // ✅ HITUNG DOKUMEN YANG SUDAH DI SERVER
+    final serverUploadedCount = [
+      _isDocumentUploadedToServer('ktp'),
+      _isDocumentUploadedToServer('kk'),
+      _isDocumentUploadedToServer('diri'),
+    ].where((e) => e).length;
 
     return Scaffold(
       backgroundColor: Colors.green[50],
@@ -620,16 +1020,29 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          if (uploadedCount > 0)
+          if (uploadedCount > 0 || serverUploadedCount > 0)
             Padding(
               padding: const EdgeInsets.only(right: 16),
               child: Center(
-                child: Text(
-                  '$uploadedCount/3',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$uploadedCount/3',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (serverUploadedCount > 0)
+                      Text(
+                        '$serverUploadedCount server',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.green,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -670,7 +1083,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Upload dokumen untuk melanjutkan',
+                    'Upload 3 dokumen wajib + 1 dummy otomatis',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.green[600],
@@ -678,17 +1091,70 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                   ),
                   const SizedBox(height: 16),
                   
-                  // PROGRESS INDICATOR
+                  // PROGRESS INDICATOR (3 STEP) - TANPA BUKTI
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _buildProgressStep(1, 'KTP', isKTPUploaded),
-                      Container(width: 20, height: 2, color: isKTPUploaded ? Colors.green : Colors.grey[300]),
-                      _buildProgressStep(2, 'KK', isKKUploaded),
-                      Container(width: 20, height: 2, color: isKKUploaded ? Colors.green : Colors.grey[300]),
-                      _buildProgressStep(3, 'Foto', isFotoDiriUploaded),
+                      _buildProgressStep(1, 'KTP', _isDocumentUploadedToServer('ktp') || _storageService.hasKtpFile),
+                      Container(width: 15, height: 2, color: (_isDocumentUploadedToServer('ktp') || _storageService.hasKtpFile) ? Colors.green : Colors.grey[300]),
+                      _buildProgressStep(2, 'KK', _isDocumentUploadedToServer('kk') || _storageService.hasKkFile),
+                      Container(width: 15, height: 2, color: (_isDocumentUploadedToServer('kk') || _storageService.hasKkFile) ? Colors.green : Colors.grey[300]),
+                      _buildProgressStep(3, 'Diri', _isDocumentUploadedToServer('diri') || _storageService.hasDiriFile),
                     ],
                   ),
+
+                  // STATUS INFO
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.green[700], size: 16),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Status: $serverUploadedCount/3 di server • Dummy otomatis',
+                        style: TextStyle(
+                          color: Colors.green[700],
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  // UPLOAD STATUS
+                  if (_storageService.isUploading) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue[200]!),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.blue[700],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _storageService.uploadMessage,
+                            style: TextStyle(
+                              color: Colors.blue[700],
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -719,7 +1185,11 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                     ),
                     IconButton(
                       icon: Icon(Icons.close, color: Colors.red[700], size: 16),
-                      onPressed: () => setState(() => _uploadError = null),
+                      onPressed: () {
+                        if (mounted && !_isNavigating) {
+                          setState(() => _uploadError = null);
+                        }
+                      },
                     ),
                   ],
                 ),
@@ -734,120 +1204,73 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                   children: [
                     // KTP CARD
                     _buildDokumenCard(
+                      type: 'ktp',
                       title: 'KTP (Kartu Tanda Penduduk)',
                       description: 'Upload foto KTP yang jelas dan terbaca\n• Pastikan foto tidak blur\n• Semua informasi terbaca jelas\n• Format JPG/PNG (max 5MB)',
                       icon: Icons.credit_card,
                       color: Colors.blue,
-                      isUploaded: isKTPUploaded,
-                      isUploading: _isUploadingKTP,
-                      onUpload: () => _showImageSourceDialog(_uploadKTP, _takePhotoKTP),
                     ),
                     const SizedBox(height: 16),
 
                     // KK CARD
                     _buildDokumenCard(
+                      type: 'kk',
                       title: 'Kartu Keluarga (KK)',
                       description: 'Upload foto KK yang jelas dan terbaca\n• Pastikan foto tidak blur\n• Semua halaman penting terbaca\n• Format JPG/PNG (max 5MB)',
                       icon: Icons.family_restroom,
                       color: Colors.green,
-                      isUploaded: isKKUploaded,
-                      isUploading: _isUploadingKK,
-                      onUpload: () => _showImageSourceDialog(_uploadKK, _takePhotoKK),
                     ),
                     const SizedBox(height: 16),
 
                     // FOTO DIRI CARD
                     _buildDokumenCard(
+                      type: 'diri',
                       title: 'Foto Diri Terbaru',
                       description: 'Upload pas foto terbaru\n• Latar belakang polos\n• Wajah terlihat jelas\n• Ekspresi netral\n• Format JPG/PNG (max 5MB)',
                       icon: Icons.person,
                       color: Colors.orange,
-                      isUploaded: isFotoDiriUploaded,
-                      isUploading: _isUploadingFotoDiri,
-                      onUpload: () => _showImageSourceDialog(_uploadFotoDiri, _takePhotoFotoDiri),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 24),
 
-                    // PREVIEW SECTION
-                    if (_ktpFile != null || _kkFile != null || _fotoDiriFile != null) ...[
-                      _buildPreviewSection(),
-                      const SizedBox(height: 16),
-                    ],
+                    // UPLOAD MANUAL SECTION
+                    _buildUploadManualSection(),
 
-                    // TOMBOL LANJUT & LEWATI
-                    Column(
-                      children: [
-                        // TOMBOL LANJUT
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: ElevatedButton(
-                            onPressed: allUploaded && !_isLoading ? _lanjutKeDashboard : null,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: allUploaded ? Colors.green[700] : Colors.grey[400],
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              elevation: 2,
-                            ),
-                            child: _isLoading
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : Text(
-                                    allUploaded ? 'Lanjut ke Dashboard' : 'Upload $uploadedCount/3 Dokumen',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
+                    const SizedBox(height: 16),
+
+                    // TOMBOL LEWATI
+                    SizedBox(
+                      width: double.infinity,
+                      height: 45,
+                      child: OutlinedButton(
+                        onPressed: _isLoading || _storageService.isUploading ? null : _lewatiUpload,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.orange,
+                          side: const BorderSide(color: Colors.orange),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        
-                        const SizedBox(height: 12),
-                        
-                        // TOMBOL LEWATI
-                        SizedBox(
-                          width: double.infinity,
-                          height: 45,
-                          child: OutlinedButton(
-                            onPressed: _isLoading ? null : _lewatiUpload,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.orange,
-                              side: const BorderSide(color: Colors.orange),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.orange,
+                                ),
+                              )
+                            : const Text(
+                                'Lewati & Lanjut ke Dashboard',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                            child: _isLoading
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.orange,
-                                    ),
-                                  )
-                                : const Text(
-                                    'Lewati & Lanjut ke Dashboard',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
 
                     // INFO
-                    if (!allUploaded) ...[
+                    if (!allFilesComplete) ...[
                       const SizedBox(height: 16),
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -862,7 +1285,9 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Upload semua dokumen untuk pengalaman terbaik. Anda bisa melewatinya dan upload nanti di menu Profile.',
+                                'Upload semua 3 dokumen untuk pengalaman terbaik. '
+                                'File dummy bukti akan ditambahkan otomatis oleh sistem. '
+                                'Dokumen akan disimpan sementara dan diupload otomatis ketika lengkap.',
                                 style: TextStyle(
                                   color: Colors.orange[700],
                                   fontSize: 12,
@@ -891,7 +1316,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                               Icon(Icons.help_outline, color: Colors.blue[700], size: 18),
                               const SizedBox(width: 8),
                               Text(
-                                'Tips Upload:',
+                                'Sistem 4 File:',
                                 style: TextStyle(
                                   color: Colors.blue[700],
                                   fontWeight: FontWeight.bold,
@@ -902,7 +1327,12 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '• Pastikan file JPG/PNG\n• Ukuran maksimal 5MB\n• Foto harus jelas dan terbaca\n• Jika gagal, coba foto ulang dengan pencahayaan baik\n• Pastikan koneksi internet stabil',
+                            '• Upload 3 file asli (KTP, KK, Foto Diri)\n'
+                            '• File dummy bukti ditambahkan otomatis oleh sistem\n'
+                            '• Total 4 file dikirim ke server\n'
+                            '• Ukuran maksimal 5MB per file\n'
+                            '• Format JPG/PNG didukung\n'
+                            '• Data tersimpan meski app ditutup',
                             style: TextStyle(
                               color: Colors.blue[700],
                               fontSize: 10,
@@ -921,78 +1351,19 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     );
   }
 
-  // ✅ PREVIEW SECTION
-  Widget _buildPreviewSection() {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.photo_library, color: Colors.green[700]),
-                const SizedBox(width: 8),
-                Text(
-                  'Dokumen Terupload',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green[800],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (_ktpFile != null) _buildPreviewItem('KTP', _ktpFile!),
-            if (_kkFile != null) _buildPreviewItem('Kartu Keluarga', _kkFile!),
-            if (_fotoDiriFile != null) _buildPreviewItem('Foto Diri', _fotoDiriFile!),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPreviewItem(String title, File file) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Icon(Icons.check_circle, color: Colors.green, size: 16),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(fontSize: 14),
-            ),
-          ),
-          Text(
-            '${(file.lengthSync() / 1024).toStringAsFixed(1)} KB',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildProgressStep(int step, String label, bool isCompleted) {
     return Column(
       children: [
         Container(
-          width: 30,
-          height: 30,
+          width: 28,
+          height: 28,
           decoration: BoxDecoration(
             color: isCompleted ? Colors.green : Colors.grey[300],
             shape: BoxShape.circle,
           ),
           child: Center(
             child: isCompleted 
-                ? const Icon(Icons.check, color: Colors.white, size: 16)
+                ? Icon(Icons.check, color: Colors.white, size: 16)
                 : Text(
                     '$step',
                     style: TextStyle(
@@ -1016,104 +1387,23 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
     );
   }
 
-  Widget _buildDokumenCard({
-    required String title,
-    required String description,
-    required IconData icon,
-    required Color color,
-    required bool isUploaded,
-    required bool isUploading,
-    required VoidCallback onUpload,
-  }) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: color, size: 24),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    description,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Icon(
-                        isUploaded ? Icons.check_circle : Icons.schedule,
-                        color: isUploaded ? Colors.green : Colors.orange,
-                        size: 14,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        isUploaded ? 'Sudah diupload' : 'Belum diupload',
-                        style: TextStyle(
-                          color: isUploaded ? Colors.green : Colors.orange,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(
-              width: 80,
-              height: 36,
-              child: ElevatedButton(
-                onPressed: isUploading ? null : onUpload,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isUploaded ? Colors.orange : color,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                ),
-                child: isUploading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(
-                        isUploaded ? 'Ganti' : 'Upload',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  // ✅ HELPER: GET DOCUMENT SERVER URL
+  String? _getDocumentServerUrl(String type) {
+    switch (type) {
+      case 'ktp':
+        return _currentUser['foto_ktp'];
+      case 'kk':
+        return _currentUser['foto_kk'];
+      case 'diri':
+        return _currentUser['foto_diri'];
+      default:
+        return null;
+    }
+  }
+
+  // ✅ HELPER: SHORTEN URL UNTUK DISPLAY
+  String _shortenUrl(String url) {
+    if (url.length <= 30) return url;
+    return '${url.substring(0, 15)}...${url.substring(url.length - 10)}';
   }
 }

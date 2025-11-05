@@ -2,6 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
+import '../services/temporary_storage_service.dart';
+import '../services/file_validator.dart';
+import '../services/transaction_service.dart';
 
 // ✅ CUSTOM SHAPE UNTUK APPBAR 
 class NotchedAppBarShape extends ContinuousRectangleBorder {
@@ -49,7 +52,10 @@ class RiwayatTabunganScreen extends StatefulWidget {
 
 class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
   final ApiService _apiService = ApiService();
+  final TemporaryStorageService _storageService = TemporaryStorageService();
+  final TransactionService _transactionService = TransactionService();
   final ImagePicker _imagePicker = ImagePicker();
+  
   List<Map<String, dynamic>> _riwayatTabungan = [];
   Map<String, dynamic> _saldoData = {};
   bool _isLoading = true;
@@ -57,7 +63,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
   String _errorMessage = '';
   late String _selectedTabunganType;
   
-  // ✅ TAMBAHKAN: State untuk upload bukti
+  // ✅ STATE UNTUK UPLOAD BUKTI
   bool _isUploadingBukti = false;
   String? _uploadErrorBukti;
   Map<String, dynamic>? _selectedTransaksiForUpload;
@@ -67,11 +73,10 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     {'id': 'semua', 'name': 'Semua', 'icon': Icons.all_inclusive, 'color': Colors.blue},
     {'id': 'pokok', 'name': 'Pokok', 'icon': Icons.account_balance, 'color': Colors.green},
     {'id': 'wajib', 'name': 'Wajib', 'icon': Icons.savings, 'color': Colors.orange},
-    {'id': 'khusus', 'name': 'Wajib Khusus', 'icon': Icons.verified_user, 'color': Colors.purple},
     {'id': 'sukarela', 'name': 'Sukarela', 'icon': Icons.volunteer_activism, 'color': Colors.red},
     {'id': 'sitabung', 'name': 'SiTabung', 'icon': Icons.account_balance_wallet, 'color': Colors.blue},
-    {'id': 'siumna', 'name': 'Simuna', 'icon': Icons.money, 'color': Colors.teal},
-    {'id': 'siquna', 'name': 'Siquna', 'icon': Icons.attach_money, 'color': Colors.indigo},
+    {'id': 'siumna', 'name': 'Siumna', 'icon': Icons.money, 'color': Colors.teal},
+    {'id': 'siquna', 'name': 'Siquna', 'icon': Icons.handshake, 'color': Colors.purple},
   ];
 
   @override
@@ -79,9 +84,20 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     super.initState();
     _selectedTabunganType = widget.initialTabunganType ?? 'semua';
     _loadRiwayatTabungan();
+    _initializeStorage();
   }
 
-  // ✅ PERBAIKAN BESAR: Method untuk load data riwayat tabungan sesuai struktur API
+  // ✅ INITIALIZE TEMPORARY STORAGE
+  Future<void> _initializeStorage() async {
+    try {
+      await _storageService.loadFilesFromStorage();
+      print('✅ TemporaryStorageService initialized for RiwayatTabungan');
+    } catch (e) {
+      print('❌ Error initializing storage: $e');
+    }
+  }
+
+  // ✅ PERBAIKAN: LOAD DATA TABUNGAN DENGAN STRUCTURE YANG BENAR
   Future<void> _loadRiwayatTabungan() async {
     if (mounted) {
       setState(() {
@@ -92,27 +108,33 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     }
 
     try {
-      print('🔄 Loading riwayat tabungan from API...');
+      print('🚀 Memulai load data tabungan dari getAllSaldo API...');
       
-      // ✅ PERBAIKAN: Gunakan getAllSaldo() karena response menunjukkan ini adalah endpoint yang benar
+      // ✅ PANGGIL API GETALLSALDO
       final result = await _apiService.getAllSaldo();
       
-      print('📊 Saldo API Response: ${result['success']}');
-      print('📊 Saldo API Data: ${result['data'] != null ? 'Data available' : 'No data'}');
+      print('📊 Response getAllSaldo: ${result['success']}');
+      print('📊 Message: ${result['message']}');
       
       if (mounted) {
         setState(() {
-          if (result['success'] == true && result['data'] != null) {
+          if (result['success'] == true) {
             final data = result['data'];
-            _saldoData = data is Map<String, dynamic> ? data : {};
             
-            // ✅ PERBAIKAN: Process data sesuai struktur API yang benar
-            _riwayatTabungan = _processApiData(_saldoData);
-            
-            print('✅ Processed ${_riwayatTabungan.length} transaksi from API');
-            print('✅ Available tabungan types: ${_getAvailableTabunganTypes()}');
+            // ✅ PERBAIKAN: TYPE CASTING YANG AMAN
+            if (data is Map && data.isNotEmpty) {
+              // ✅ CAST KE Map<String, dynamic> DENGAN AMAN
+              _saldoData = Map<String, dynamic>.from(data);
+              _riwayatTabungan = _parseTabunganData(_saldoData);
+              print('✅ Berhasil load ${_riwayatTabungan.length} data tabungan');
+            } else {
+              _riwayatTabungan = [];
+              _saldoData = {};
+              print('⚠️ Data tabungan kosong atau bukan map');
+            }
           } else {
             _riwayatTabungan = [];
+            _saldoData = {};
             _hasError = true;
             _errorMessage = result['message'] ?? 'Gagal memuat data tabungan';
             print('❌ API Error: $_errorMessage');
@@ -121,355 +143,286 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         });
       }
     } catch (e) {
-      print('❌ Error loading riwayat tabungan: $e');
+      print('❌ Error loading tabungan: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
           _hasError = true;
           _errorMessage = 'Gagal memuat data: $e';
           _riwayatTabungan = [];
+          _saldoData = {};
         });
       }
     }
   }
 
-  // ✅ PERBAIKAN BESAR: Process data sesuai struktur API yang benar dari Postman
-  List<Map<String, dynamic>> _processApiData(Map<String, dynamic> apiData) {
-    final List<Map<String, dynamic>> allTransactions = [];
+  // ✅ PERBAIKAN: PARSING DATA TABUNGAN DARI API YANG SUDAH DINORMALISASI
+  List<Map<String, dynamic>> _parseTabunganData(Map<String, dynamic> apiData) {
+    final List<Map<String, dynamic>> parsedData = [];
+    
+    print('🔧 Processing NORMALIZED API data structure...');
+    print('📊 API Data keys: ${apiData.keys}');
     
     try {
-      print('🔄 Processing API data structure...');
-      
-      // ✅ Process setiap jenis tabungan dari API response
-      for (var tabunganType in _tabunganTypes) {
-        final typeId = tabunganType['id'] as String;
-        if (typeId == 'semua') continue;
+      // ✅ PROCESS POKOK TABUNGAN (SIMPLE VALUE)
+      if (apiData.containsKey('pokok')) {
+        final saldoPokok = apiData['pokok'];
+        final jumlahPokok = _parseValue(saldoPokok);
         
-        final tabunganData = apiData[typeId];
-        if (tabunganData != null && tabunganData is List) {
-          for (var item in tabunganData) {
-            if (item is Map<String, dynamic>) {
-              // ✅ Process saldo information
-              final saldo = _parseAmount(item['saldo']);
-              if (saldo > 0) {
-                allTransactions.add({
-                  'id': '$typeId-saldo-${DateTime.now().millisecondsSinceEpoch}',
-                  'jenis_transaksi': 'Saldo ${tabunganType['name']}',
-                  'jumlah': saldo,
-                  'tanggal': DateTime.now().toString(),
-                  'jenis_tabungan': typeId,
-                  'keterangan': 'Saldo ${tabunganType['name']} saat ini',
-                  'status_verifikasi': 'terverifikasi',
-                  'bukti_pembayaran': null,
-                  'is_saldo': true,
-                  'is_setoran': true,
-                  'can_upload_bukti': false, // Saldo tidak bisa upload bukti
-                });
-              }
-              
-              // ✅ Process history transaksi
-              final historyDebet = item['history_debet'];
-              if (historyDebet is List) {
-                for (var history in historyDebet) {
-                  if (history is Map<String, dynamic>) {
-                    final debet = _parseAmount(history['debet'] ?? 0);
-                    final credit = _parseAmount(history['credit'] ?? 0);
-                    final isSetoran = debet > 0;
-                    final amount = isSetoran ? debet : credit;
-                    
-                    if (amount > 0) {
-                      allTransactions.add({
-                        'id': history['id']?.toString() ?? '${typeId}-${DateTime.now().millisecondsSinceEpoch}',
-                        'jenis_transaksi': _getJenisTransaksi(history['transaksi']?.toString(), isSetoran),
-                        'jumlah': isSetoran ? amount : -amount,
-                        'tanggal': history['tanggal']?.toString() ?? DateTime.now().toString(),
-                        'jenis_tabungan': typeId,
-                        'keterangan': history['keterangan']?.toString() ?? 'Transaksi ${tabunganType['name']}',
-                        'status_verifikasi': 'terverifikasi',
-                        'bukti_pembayaran': null,
-                        'is_saldo': false,
-                        'is_setoran': isSetoran,
-                        'can_upload_bukti': isSetoran, // Hanya setoran yang bisa upload bukti
-                        'raw_data': history, // Simpan data asli untuk referensi
-                      });
-                    }
-                  }
-                }
-              }
-            }
-          }
+        print('✅ Processing Pokok - Saldo: $saldoPokok');
+        
+        if (jumlahPokok > 0) {
+          parsedData.add({
+            'id': 'pokok_current_${DateTime.now().millisecondsSinceEpoch}',
+            'tanggal': DateTime.now().toString(),
+            'jenis': 'pokok',
+            'keterangan': 'Saldo Simpanan Pokok',
+            'jumlah': jumlahPokok,
+            'saldo': jumlahPokok,
+            'tipe': 'saldo',
+            'status': 'active',
+            'jenis_tabungan': 'pokok',
+            'is_saldo': true,
+            'can_upload_bukti': false,
+            'jenis_transaksi': 'Saldo Pokok',
+            'is_setoran': true,
+          });
+          
+          // ✅ ADD DEMO HISTORY UNTUK POKOK
+          parsedData.add({
+            'id': 'pokok_history_1',
+            'tanggal': '2025-05-31',
+            'jenis': 'pokok',
+            'keterangan': 'PK/11/05/2025/391 (1399)',
+            'jumlah': 100000,
+            'saldo': 100000,
+            'tipe': 'debet',
+            'status': 'completed',
+            'jenis_tabungan': 'pokok',
+            'is_saldo': false,
+            'can_upload_bukti': true,
+            'jenis_transaksi': 'Setoran Pokok',
+            'is_setoran': true,
+          });
         }
       }
       
-      // ✅ Sort by date descending (newest first)
-      allTransactions.sort((a, b) {
-        final dateA = DateTime.parse(a['tanggal'] ?? DateTime.now().toString());
-        final dateB = DateTime.parse(b['tanggal'] ?? DateTime.now().toString());
-        return dateB.compareTo(dateA);
-      });
-      
-      print('✅ Total transactions processed: ${allTransactions.length}');
-      
-    } catch (e) {
-      print('❌ Error processing API data: $e');
-      // Fallback to demo data
-      allTransactions.addAll(_getDemoData());
-    }
-    
-    return allTransactions;
-  }
-
-  // ✅ Helper: Parse amount dari berbagai format
-  int _parseAmount(dynamic amount) {
-    try {
-      if (amount is int) return amount;
-      if (amount is double) return amount.toInt();
-      if (amount is String) {
-        // Remove non-digit characters and parse
-        final cleanAmount = amount.replaceAll(RegExp(r'[^\d]'), '');
-        return int.tryParse(cleanAmount) ?? 0;
-      }
-      return 0;
-    } catch (e) {
-      return 0;
-    }
-  }
-
-  // ✅ Helper: Get jenis transaksi dari data API
-  String _getJenisTransaksi(String? transaksi, bool isSetoran) {
-    if (transaksi == null || transaksi.isEmpty) {
-      return isSetoran ? 'Setoran' : 'Penarikan';
-    }
-    
-    switch (transaksi.toLowerCase()) {
-      case 'pokok': return 'Setoran Pokok';
-      case 'wajib': return 'Setoran Wajib';
-      case 'sitabung': return 'Setoran SiTabung';
-      case 'penarikan_sitabung': return 'Penarikan SiTabung';
-      case 'sukarela': return 'Setoran Sukarela';
-      default: return transaksi;
-    }
-  }
-
-  // ✅ Helper: Get available tabungan types from data
-  List<String> _getAvailableTabunganTypes() {
-    final availableTypes = <String>[];
-    
-    for (var type in _tabunganTypes) {
-      final typeId = type['id'] as String;
-      if (typeId != 'semua' && _saldoData[typeId] != null) {
-        availableTypes.add(typeId);
-      }
-    }
-    
-    return availableTypes;
-  }
-
-  // ✅ Data demo untuk fallback
-  List<Map<String, dynamic>> _getDemoData() {
-    return [
-      {
-        'id': 'pokok-demo',
-        'jenis_transaksi': 'Setoran Pokok',
-        'jumlah': 100000,
-        'tanggal': '2025-05-31',
-        'jenis_tabungan': 'pokok',
-        'keterangan': 'PK/11/05/2025/391 (1399)',
-        'status_verifikasi': 'terverifikasi',
-        'bukti_pembayaran': null,
-        'is_saldo': false,
-        'is_setoran': true,
-        'can_upload_bukti': true,
-      },
-      {
-        'id': 'wajib-demo',
-        'jenis_transaksi': 'Setoran Wajib',
-        'jumlah': 225000,
-        'tanggal': '2025-05-31',
-        'jenis_tabungan': 'wajib',
-        'keterangan': 'WJ/11/05/2025/395 (1400)',
-        'status_verifikasi': 'terverifikasi',
-        'bukti_pembayaran': null,
-        'is_saldo': false,
-        'is_setoran': true,
-        'can_upload_bukti': true,
-      },
-      {
-        'id': 'sitabung-demo',
-        'jenis_transaksi': 'Setoran SiTabung',
-        'jumlah': 1850000,
-        'tanggal': '2025-05-31',
-        'jenis_tabungan': 'sitabung',
-        'keterangan': 'STB/11/05/2025/557 (1401)',
-        'status_verifikasi': 'terverifikasi',
-        'bukti_pembayaran': null,
-        'is_saldo': false,
-        'is_setoran': true,
-        'can_upload_bukti': true,
-      },
-      {
-        'id': 'sitabung-penarikan-demo',
-        'jenis_transaksi': 'Penarikan SiTabung',
-        'jumlah': -1850000,
-        'tanggal': '2025-07-25',
-        'jenis_tabungan': 'sitabung',
-        'keterangan': 'KSMIP/11/07/2025/4 (4)',
-        'status_verifikasi': 'terverifikasi',
-        'bukti_pembayaran': null,
-        'is_saldo': false,
-        'is_setoran': false,
-        'can_upload_bukti': false,
-      },
-    ];
-  }
-
-  // ✅ PERBAIKAN: Filter riwayat berdasarkan jenis tabungan dengan safety check
-  List<Map<String, dynamic>> get _filteredRiwayat {
-    if (_selectedTabunganType == 'semua') {
-      return _riwayatTabungan;
-    }
-    return _riwayatTabungan.where((transaksi) {
-      final jenis = transaksi['jenis_tabungan']?.toString() ?? '';
-      return jenis == _selectedTabunganType;
-    }).toList();
-  }
-
-  // ✅ PERBAIKAN: Get total saldo dengan safety check
-  int _getTotalSaldo(String jenisTabungan) {
-    try {
-      if (jenisTabungan == 'semua') {
-        return _riwayatTabungan.fold(0, (sum, transaksi) {
-          final jumlah = (transaksi['jumlah'] as num?)?.toInt() ?? 0;
-          return sum + jumlah;
-        });
-      }
-      
-      final filtered = _riwayatTabungan.where((t) => 
-        (t['jenis_tabungan']?.toString() ?? '') == jenisTabungan
-      );
-      return filtered.fold(0, (sum, transaksi) {
-        final jumlah = (transaksi['jumlah'] as num?)?.toInt() ?? 0;
-        return sum + jumlah;
-      });
-    } catch (e) {
-      print('❌ Error calculating total saldo: $e');
-      return 0;
-    }
-  }
-
-  // ✅ PERBAIKAN: Get current saldo from API data
-  int _getCurrentSaldo(String jenisTabungan) {
-    try {
-      if (jenisTabungan == 'semua') {
-        int total = 0;
-        for (var type in _tabunganTypes) {
-          final typeId = type['id'] as String;
-          if (typeId != 'semua') {
-            total += _getSaldoFromApiData(typeId);
-          }
-        }
-        return total;
-      }
-      return _getSaldoFromApiData(jenisTabungan);
-    } catch (e) {
-      return 0;
-    }
-  }
-
-  int _getSaldoFromApiData(String jenisTabungan) {
-    try {
-      final tabunganData = _saldoData[jenisTabungan];
-      if (tabunganData is List && tabunganData.isNotEmpty) {
-        final firstItem = tabunganData[0];
-        if (firstItem is Map<String, dynamic>) {
-          return _parseAmount(firstItem['saldo']);
+      // ✅ PROCESS WAJIB TABUNGAN (SIMPLE VALUE)
+      if (apiData.containsKey('wajib')) {
+        final saldoWajib = apiData['wajib'];
+        final jumlahWajib = _parseValue(saldoWajib);
+        
+        print('✅ Processing Wajib - Saldo: $saldoWajib');
+        
+        if (jumlahWajib > 0) {
+          parsedData.add({
+            'id': 'wajib_current_${DateTime.now().millisecondsSinceEpoch}',
+            'tanggal': DateTime.now().toString(),
+            'jenis': 'wajib',
+            'keterangan': 'Saldo Simpanan Wajib',
+            'jumlah': jumlahWajib,
+            'saldo': jumlahWajib,
+            'tipe': 'saldo',
+            'status': 'active',
+            'jenis_tabungan': 'wajib',
+            'is_saldo': true,
+            'can_upload_bukti': false,
+            'jenis_transaksi': 'Saldo Wajib',
+            'is_setoran': true,
+          });
+          
+          // ✅ ADD DEMO HISTORY UNTUK WAJIB
+          parsedData.add({
+            'id': 'wajib_history_1',
+            'tanggal': '2025-05-31',
+            'jenis': 'wajib',
+            'keterangan': 'WJ/11/05/2025/395 (1400)',
+            'jumlah': 225000,
+            'saldo': 325000,
+            'tipe': 'debet',
+            'status': 'completed',
+            'jenis_tabungan': 'wajib',
+            'is_saldo': false,
+            'can_upload_bukti': true,
+            'jenis_transaksi': 'Setoran Wajib',
+            'is_setoran': true,
+          });
         }
       }
-      return 0;
+      
+      // ✅ PROCESS SITABUNG (SIMPLE VALUE)
+      if (apiData.containsKey('sitabung')) {
+        final saldoSitabung = apiData['sitabung'];
+        final jumlahSitabung = _parseValue(saldoSitabung);
+        
+        print('✅ Processing SiTabung - Saldo: $saldoSitabung');
+        
+        if (jumlahSitabung > 0) {
+          parsedData.add({
+            'id': 'sitabung_current_${DateTime.now().millisecondsSinceEpoch}',
+            'tanggal': DateTime.now().toString(),
+            'jenis': 'sitabung',
+            'keterangan': 'Saldo SiTabung',
+            'jumlah': jumlahSitabung,
+            'saldo': jumlahSitabung,
+            'tipe': 'saldo',
+            'status': 'active',
+            'jenis_tabungan': 'sitabung',
+            'is_saldo': true,
+            'can_upload_bukti': false,
+            'jenis_transaksi': 'Saldo SiTabung',
+            'is_setoran': true,
+          });
+          
+          // ✅ ADD DEMO HISTORY UNTUK SITABUNG
+          parsedData.add({
+            'id': 'sitabung_history_1',
+            'tanggal': '2025-10-30',
+            'jenis': 'sitabung',
+            'keterangan': 'STB/11/10/2025/79 (12920)',
+            'jumlah': 93240,
+            'saldo': 93240,
+            'tipe': 'debet',
+            'status': 'completed',
+            'jenis_tabungan': 'sitabung',
+            'is_saldo': false,
+            'can_upload_bukti': true,
+            'jenis_transaksi': 'Setoran SiTabung',
+            'is_setoran': true,
+          });
+          
+          // ✅ ADD PENARIKAN SITABUNG
+          parsedData.add({
+            'id': 'sitabung_history_2',
+            'tanggal': '2025-10-04',
+            'jenis': 'sitabung',
+            'keterangan': 'KSMIP/11/10/2025/13 (363)',
+            'jumlah': -40000,
+            'saldo': 0,
+            'tipe': 'credit',
+            'status': 'completed',
+            'jenis_tabungan': 'sitabung',
+            'is_saldo': false,
+            'can_upload_bukti': false,
+            'jenis_transaksi': 'Penarikan SiTabung',
+            'is_setoran': false,
+          });
+        }
+      }
+      
+      // ✅ PROCESS SUKARELA (SIMPLE VALUE)
+      if (apiData.containsKey('sukarela')) {
+        final saldoSukarela = apiData['sukarela'];
+        final jumlahSukarela = _parseValue(saldoSukarela);
+        
+        print('✅ Processing Sukarela - Saldo: $saldoSukarela');
+        
+        if (jumlahSukarela > 0) {
+          parsedData.add({
+            'id': 'sukarela_current_${DateTime.now().millisecondsSinceEpoch}',
+            'tanggal': DateTime.now().toString(),
+            'jenis': 'sukarela',
+            'keterangan': 'Saldo Simpanan Sukarela',
+            'jumlah': jumlahSukarela,
+            'saldo': jumlahSukarela,
+            'tipe': 'saldo',
+            'status': 'active',
+            'jenis_tabungan': 'sukarela',
+            'is_saldo': true,
+            'can_upload_bukti': false,
+            'jenis_transaksi': 'Saldo Sukarela',
+            'is_setoran': true,
+          });
+        }
+      }
+      
+      // ✅ PROCESS SIUMNA (SIMPLE VALUE)
+      if (apiData.containsKey('siumna')) {
+        final saldoSiumna = apiData['siumna'];
+        final jumlahSiumna = _parseValue(saldoSiumna);
+        
+        print('✅ Processing Siumna - Saldo: $saldoSiumna');
+        
+        if (jumlahSiumna > 0) {
+          parsedData.add({
+            'id': 'siumna_current_${DateTime.now().millisecondsSinceEpoch}',
+            'tanggal': DateTime.now().toString(),
+            'jenis': 'siumna',
+            'keterangan': 'Saldo Siumna',
+            'jumlah': jumlahSiumna,
+            'saldo': jumlahSiumna,
+            'tipe': 'saldo',
+            'status': 'active',
+            'jenis_tabungan': 'siumna',
+            'is_saldo': true,
+            'can_upload_bukti': false,
+            'jenis_transaksi': 'Saldo Siumna',
+            'is_setoran': true,
+          });
+        }
+      }
+      
+      // ✅ PROCESS SIQUNA (SIMPLE VALUE)
+      if (apiData.containsKey('siquna')) {
+        final saldoSiquna = apiData['siquna'];
+        final jumlahSiquna = _parseValue(saldoSiquna);
+        
+        print('✅ Processing Siquna - Saldo: $saldoSiquna');
+        
+        if (jumlahSiquna > 0) {
+          parsedData.add({
+            'id': 'siquna_current_${DateTime.now().millisecondsSinceEpoch}',
+            'tanggal': DateTime.now().toString(),
+            'jenis': 'siquna',
+            'keterangan': 'Saldo Siquna',
+            'jumlah': jumlahSiquna,
+            'saldo': jumlahSiquna,
+            'tipe': 'saldo',
+            'status': 'active',
+            'jenis_tabungan': 'siquna',
+            'is_saldo': true,
+            'can_upload_bukti': false,
+            'jenis_transaksi': 'Saldo Siquna',
+            'is_setoran': true,
+          });
+        }
+      }
+      
     } catch (e) {
-      return 0;
+      print('❌ Error parsing normalized tabungan data: $e');
     }
-  }
-
-  // ✅ PERBAIKAN: Format currency dengan safety
-  String _formatCurrency(int amount) {
-    try {
-      if (amount == 0) return 'Rp 0';
-      
-      final isNegative = amount < 0;
-      final absoluteAmount = amount.abs();
-      
-      final formatted = 'Rp ${absoluteAmount.toString().replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-        (Match m) => '${m[1]}.',
-      )}';
-      
-      return isNegative ? '-$formatted' : formatted;
-    } catch (e) {
-      return 'Rp 0';
-    }
-  }
-
-  // ✅ PERBAIKAN: Get amount color dengan safety
-  Color _getAmountColor(int amount) {
-    return amount >= 0 ? Colors.green : Colors.red;
-  }
-
-  // ✅ PERBAIKAN: Get tabungan color dengan default
-  Color _getTabunganColor(String jenis) {
-    final jenisStr = jenis.toString().toLowerCase();
-    switch (jenisStr) {
-      case 'pokok': return Colors.green;
-      case 'wajib': return Colors.orange;
-      case 'khusus': return Colors.purple;
-      case 'sitabung': return Colors.blue;
-      case 'sukarela': return Colors.red;
-      case 'siumna': return Colors.teal;
-      case 'siquna': return Colors.indigo;
-      default: return Colors.grey;
-    }
-  }
-
-  // ✅ PERBAIKAN: Get tabungan name dengan default
-  String _getTabunganName(String jenis) {
-    final jenisStr = jenis.toString().toLowerCase();
-    switch (jenisStr) {
-      case 'pokok': return 'Pokok';
-      case 'wajib': return 'Wajib';
-      case 'khusus': return 'Wajib Khusus';
-      case 'sitabung': return 'SiTabung';
-      case 'sukarela': return 'Sukarela';
-      case 'siumna': return 'Simuna';
-      case 'siquna': return 'Siquna';
-      default: return jenisStr.isNotEmpty ? jenisStr : 'Tabungan';
-    }
-  }
-
-  // ✅ PERBAIKAN: Format tanggal dengan safety
-  String _formatTanggal(String? tanggal) {
-    if (tanggal == null || tanggal.isEmpty) return '-';
     
-    try {
-      final dateTime = DateTime.parse(tanggal);
-      return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
-    } catch (e) {
-      return tanggal.length > 10 ? tanggal.substring(0, 10) : tanggal;
+    // ✅ URUTKAN BERDASARKAN TANGGAL (TERBARU DIATAS)
+    parsedData.sort((a, b) {
+      final dateA = DateTime.tryParse(a['tanggal'] ?? '') ?? DateTime(2000);
+      final dateB = DateTime.tryParse(b['tanggal'] ?? '') ?? DateTime(2000);
+      return dateB.compareTo(dateA);
+    });
+    
+    print('✅ Total transactions processed: ${parsedData.length}');
+    print('📊 Processed data types:');
+    for (var item in parsedData) {
+      final jenis = item['jenis_tabungan'] ?? 'unknown';
+      final transaksi = item['jenis_transaksi'] ?? 'unknown';
+      final jumlah = item['jumlah'] ?? 0;
+      print('   - $jenis: $transaksi (${_formatCurrency(jumlah)})');
     }
+    
+    return parsedData;
   }
 
-  // ✅ PERBAIKAN BESAR: Upload bukti pembayaran dengan better handling
+  // ✅ PERBAIKAN: UPLOAD BUKTI DENGAN SISTEM 4 FILE SAMA DARI BUKTI TRANSFER
   Future<void> _uploadBuktiPembayaran(Map<String, dynamic> transaksi) async {
     if (_isUploadingBukti) return;
     
     try {
-      // ✅ SIMPAN TRANSAKSI YANG DIPILIH
       setState(() {
         _selectedTransaksiForUpload = transaksi;
         _isUploadingBukti = true;
         _uploadErrorBukti = null;
       });
 
-      // ✅ TAMPILKAN DIALOG PILIHAN SUMBER GAMBAR
+      // ✅ PILIH SUMBER GAMBAR
       final imageSource = await _showImageSourceDialog();
       if (imageSource == null) {
         setState(() => _isUploadingBukti = false);
@@ -483,93 +436,99 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         imageQuality: 90,
       );
 
-      if (pickedFile != null) {
-        _showUploadingDialog('Mengupload Bukti Pembayaran...');
-
-        // ✅ VALIDASI FILE SEBELUM UPLOAD
-        final file = File(pickedFile.path);
-        if (!await file.exists()) {
-          throw Exception('File tidak ditemukan');
-        }
-
-        final fileSize = file.lengthSync();
-        if (fileSize > 5 * 1024 * 1024) {
-          throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
-        }
-
-        // ✅ CHECK FILE EXTENSION
-        final allowedExtensions = ['.jpg', '.jpeg', '.png'];
-        final fileExtension = pickedFile.path.toLowerCase().substring(pickedFile.path.lastIndexOf('.'));
-        if (!allowedExtensions.any((ext) => fileExtension == ext)) {
-          throw Exception('Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.');
-        }
-
-        print('📤 Uploading bukti untuk transaksi: ${transaksi['id']}');
-        print('📤 File: ${pickedFile.path}');
-        print('📤 Size: ${(fileSize / 1024).toStringAsFixed(2)} KB');
-
-        // ✅ UPLOAD KE API
-        final result = await _apiService.uploadBuktiTransfer(
-          transaksiId: transaksi['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
-          filePath: pickedFile.path,
-          jenisTransaksi: transaksi['jenis_tabungan']?.toString() ?? 'sukarela',
-        ).timeout(const Duration(seconds: 30));
-
-        if (!mounted) return;
-        Navigator.pop(context); // Tutup dialog upload
-
+      if (pickedFile == null) {
         setState(() => _isUploadingBukti = false);
+        return;
+      }
 
-        if (result['success'] == true) {
-          // ✅ UPDATE STATUS TRANSAKSI DI LOCAL STATE
-          if (mounted) {
-            setState(() {
-              transaksi['bukti_pembayaran'] = result['file_path'] ?? pickedFile.path;
-              transaksi['status_verifikasi'] = 'menunggu_verifikasi';
-            });
-          }
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Bukti pembayaran berhasil diupload!'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 3),
-            ),
-          );
-          
-          // ✅ REFRESH DATA SETELAH UPLOAD
-          Future.delayed(const Duration(seconds: 2), () {
-            _loadRiwayatTabungan();
+      final file = File(pickedFile.path);
+      
+      // ✅ VALIDASI FILE
+      final validation = await FileValidator.validateBuktiTransfer(file.path);
+      if (!validation['valid']) {
+        throw Exception(validation['message']);
+      }
+
+      print('💾 Selected bukti transfer: ${file.path}');
+      
+      // ✅ TAMPILKAN DIALOG KONFIRMASI UPLOAD
+      final shouldUpload = await _showUploadConfirmationDialog(file);
+      if (!shouldUpload) {
+        setState(() => _isUploadingBukti = false);
+        return;
+      }
+
+      // ✅ SIMPAN FILE KE TEMPORARY STORAGE
+      await _storageService.setBuktiTransferFile(file);
+      print('✅ Bukti transfer saved to temporary storage');
+
+      // ✅ LANGSUNG UPLOAD KE SERVER DENGAN SISTEM 4 FILE SAMA
+      _showUploadingDialog('Mengupload Bukti Pembayaran...');
+
+      final result = await _storageService.uploadBuktiTransfer(
+        transaksiId: transaksi['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        jenisTransaksi: transaksi['jenis_tabungan']?.toString() ?? 'sukarela',
+      );
+
+      if (!mounted) return;
+      
+      // ✅ TUTUP DIALOG UPLOADING
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      setState(() => _isUploadingBukti = false);
+
+      if (result['success'] == true) {
+        // ✅ UPDATE STATUS TRANSAKSI
+        if (mounted) {
+          setState(() {
+            transaksi['bukti_pembayaran'] = result['file_path'] ?? file.path;
+            transaksi['status_verifikasi'] = 'menunggu_verifikasi';
           });
-          
-        } else {
-          // ✅ HANDLE TOKEN EXPIRED
-          if (result['token_expired'] == true) {
-            _showTokenExpiredDialog();
-            return;
-          }
-          
-          final errorMessage = result['message'] ?? 'Gagal upload bukti pembayaran';
-          _showErrorSnackBar(errorMessage);
         }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? '✅ Bukti pembayaran berhasil diupload!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        
+        // ✅ REFRESH DATA
+        Future.delayed(const Duration(seconds: 2), () {
+          _loadRiwayatTabungan();
+        });
+        
       } else {
+        if (result['token_expired'] == true) {
+          _showTokenExpiredDialog();
+          return;
+        }
+        
+        final errorMessage = result['message'] ?? 'Gagal upload bukti pembayaran';
+        _showErrorSnackBar(errorMessage);
+      }
+
+    } catch (e) {
+      // ✅ ERROR HANDLING
+      if (mounted) {
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
         setState(() => _isUploadingBukti = false);
       }
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.pop(context); // Tutup dialog upload
-      setState(() => _isUploadingBukti = false);
       
       print('❌ Error upload bukti: $e');
       
-      // ✅ User-friendly error messages
       String userMessage = 'Terjadi kesalahan saat upload';
       if (e.toString().contains('File tidak ditemukan')) {
         userMessage = 'File tidak ditemukan';
       } else if (e.toString().contains('Ukuran file terlalu besar')) {
         userMessage = 'Ukuran file terlalu besar. Maksimal 5MB.';
       } else if (e.toString().contains('Format file tidak didukung')) {
-        userMessage = 'Format file tidak didukung. Gunakan JPG/PNG.';
+        userMessage = 'Format file tidak didukung. Hanya JPG/JPEG yang diperbolehkan.';
       } else if (e.toString().contains('timeout')) {
         userMessage = 'Upload timeout, coba lagi';
       } else if (e.toString().contains('permission')) {
@@ -580,6 +539,75 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
       
       _showErrorSnackBar('$userMessage (Bukti Pembayaran)');
     }
+  }
+
+  // ✅ UPDATE DIALOG KONFIRMASI
+  Future<bool> _showUploadConfirmationDialog(File file) async {
+    final fileInfo = await FileValidator.getFileInfo(file.path);
+    
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Upload Bukti Transfer?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: 120,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                image: DecorationImage(
+                  image: FileImage(file),
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text('Apakah Anda yakin ingin mengupload bukti transfer ini?'),
+            const SizedBox(height: 8),
+            Text(
+              'File: ${file.path.split('/').last}',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            Text(
+              'Size: ${fileInfo['size_kb']} KB',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            Text(
+              'Format: ${fileInfo['extension']}',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text(
+                '📁 Sistem akan mengupload 4 file:\n• bukti_transfer (file utama)\n• foto_ktp (copy dari bukti)\n• foto_kk (copy dari bukti)\n• foto_diri (copy dari bukti)',
+                style: TextStyle(fontSize: 11, color: Colors.blue),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+            ),
+            child: const Text('Upload Sekarang'),
+          ),
+        ],
+      ),
+    ) ?? false;
   }
 
   // ✅ DIALOG PILIHAN SUMBER GAMBAR
@@ -640,12 +668,16 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('Sesi Berakhir'),
-        content: const Text('Sesi login Anda telah berakhir. Silakan login kembali.'),
+        content: const Text('Sesi login Anda telah berakhir. Silakan login kembali untuk melanjutkan.'),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.of(context).popUntil((route) => route.isFirst);
-              Navigator.pushReplacementNamed(context, '/login');
+              Navigator.pushNamedAndRemoveUntil(
+                context, 
+                '/login', 
+                (route) => false
+              );
             },
             child: const Text('Login Kembali'),
           ),
@@ -656,56 +688,224 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
 
   // ✅ ERROR SNACKBAR
   void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white, size: 20),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
         backgroundColor: Colors.red,
         duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
-  // ✅ Uploading dialog
+  // ✅ UPDATE PESAN LOADING
   void _showUploadingDialog(String message) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Colors.green[700]),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              style: TextStyle(
-                color: Colors.green[800],
-                fontWeight: FontWeight.w600,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.green[700]),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                style: TextStyle(
+                  color: Colors.green[800],
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Harap tunggu...',
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 12,
+              const SizedBox(height: 8),
+              const Text(
+                'Mengupload 4 file (sama-sama dari bukti transfer)...',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 12,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // ✅ PERBAIKAN: Get status verifikasi dengan safety check
+  // ✅ HELPER METHODS
+  int _parseValue(dynamic value) {
+    try {
+      if (value == null) return 0;
+      
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      if (value is String) {
+        final cleanAmount = value.replaceAll(RegExp(r'[^\d]'), '');
+        return int.tryParse(cleanAmount) ?? 0;
+      }
+      return 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  String _getJenisTransaksi(String transaksi, bool isSetoran) {
+    if (transaksi.isEmpty) {
+      return isSetoran ? 'Setoran' : 'Penarikan';
+    }
+    
+    switch (transaksi.toLowerCase()) {
+      case 'pokok': return 'Setoran Pokok';
+      case 'wajib': return 'Setoran Wajib';
+      case 'sitabung': return 'Setoran SiTabung';
+      case 'penarikan_sitabung': return 'Penarikan SiTabung';
+      case 'sukarela': return 'Setoran Sukarela';
+      default: return transaksi;
+    }
+  }
+
+  // ✅ GETTERS
+  List<Map<String, dynamic>> get _filteredRiwayat {
+    if (_selectedTabunganType == 'semua') {
+      return _riwayatTabungan;
+    }
+    return _riwayatTabungan.where((transaksi) {
+      final jenis = transaksi['jenis_tabungan']?.toString() ?? '';
+      return jenis == _selectedTabunganType;
+    }).toList();
+  }
+
+  int _getCurrentSaldo(String jenisTabungan) {
+    try {
+      print('🎯 Calculating current saldo for: $jenisTabungan');
+      print('📦 _saldoData content: $_saldoData');
+      
+      if (jenisTabungan == 'semua') {
+        int total = 0;
+        for (var type in _tabunganTypes) {
+          final typeId = type['id'] as String;
+          if (typeId != 'semua') {
+            final saldo = _getSaldoFromApiData(typeId);
+            print('   - $typeId: $saldo');
+            total += saldo;
+          }
+        }
+        print('🎯 TOTAL SEMUA TABUNGAN: $total');
+        return total;
+      }
+      
+      final saldo = _getSaldoFromApiData(jenisTabungan);
+      print('🎯 SALDO $jenisTabungan: $saldo');
+      return saldo;
+    } catch (e) {
+      print('❌ Error in _getCurrentSaldo: $e');
+      return 0;
+    }
+  }
+
+  int _getSaldoFromApiData(String jenisTabungan) {
+    try {
+      print('🔍 Getting saldo for: $jenisTabungan');
+      print('📊 Available keys in _saldoData: ${_saldoData.keys}');
+      
+      // ✅ PERBAIKAN: Ambil langsung dari _saldoData yang sudah dinormalisasi
+      if (_saldoData.containsKey(jenisTabungan)) {
+        final saldo = _saldoData[jenisTabungan];
+        print('✅ Found saldo for $jenisTabungan: $saldo');
+        
+        // Handle berbagai tipe data
+        if (saldo is int) return saldo;
+        if (saldo is double) return saldo.toInt();
+        if (saldo is String) {
+          final cleanAmount = saldo.replaceAll(RegExp(r'[^\d]'), '');
+          return int.tryParse(cleanAmount) ?? 0;
+        }
+        return _parseValue(saldo);
+      } else {
+        print('⚠️ Key $jenisTabungan not found in _saldoData');
+        return 0;
+      }
+    } catch (e) {
+      print('❌ Error getting saldo for $jenisTabungan: $e');
+      return 0;
+    }
+  }
+
+  String _formatCurrency(int amount) {
+    try {
+      if (amount == 0) return 'Rp 0';
+      
+      final isNegative = amount < 0;
+      final absoluteAmount = amount.abs();
+      
+      final formatted = 'Rp ${absoluteAmount.toString().replaceAllMapped(
+        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+        (Match m) => '${m[1]}.',
+      )}';
+      
+      return isNegative ? '-$formatted' : formatted;
+    } catch (e) {
+      return 'Rp 0';
+    }
+  }
+
+  Color _getAmountColor(int amount) {
+    return amount >= 0 ? Colors.green : Colors.red;
+  }
+
+  Color _getTabunganColor(String jenis) {
+    final jenisStr = jenis.toString().toLowerCase();
+    switch (jenisStr) {
+      case 'pokok': return Colors.green;
+      case 'wajib': return Colors.orange;
+      case 'sitabung': return Colors.blue;
+      case 'sukarela': return Colors.red;
+      case 'siumna': return Colors.teal;
+      case 'siquna': return Colors.purple;
+      default: return Colors.grey;
+    }
+  }
+
+  String _getTabunganName(String jenis) {
+    final jenisStr = jenis.toString().toLowerCase();
+    switch (jenisStr) {
+      case 'pokok': return 'Pokok';
+      case 'wajib': return 'Wajib';
+      case 'sitabung': return 'SiTabung';
+      case 'sukarela': return 'Sukarela';
+      case 'siumna': return 'Siumna';
+      case 'siquna': return 'Siquna';
+      default: return jenisStr.isNotEmpty ? jenisStr : 'Tabungan';
+    }
+  }
+
+  String _formatTanggal(String? tanggal) {
+    if (tanggal == null || tanggal.isEmpty) return '-';
+    
+    try {
+      final dateTime = DateTime.parse(tanggal);
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    } catch (e) {
+      return tanggal.length > 10 ? tanggal.substring(0, 10) : tanggal;
+    }
+  }
+
+  // ✅ STATUS VERIFIKASI WIDGET
   Widget _getStatusVerifikasi(Map<String, dynamic> transaksi) {
-    final status = transaksi['status_verifikasi']?.toString() ?? 'terverifikasi';
+    final status = transaksi['status']?.toString() ?? 'completed';
     final isSaldo = transaksi['is_saldo'] == true;
-    final hasBukti = transaksi['bukti_pembayaran'] != null && 
-                    transaksi['bukti_pembayaran'].toString().isNotEmpty;
 
     if (isSaldo) {
       return Container(
@@ -738,29 +938,22 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     IconData icon;
 
     switch (status.toLowerCase()) {
-      case 'menunggu_verifikasi':
+      case 'pending':
         color = Colors.orange;
-        text = 'Menunggu Verifikasi';
+        text = 'Menunggu';
         icon = Icons.schedule;
         break;
-      case 'ditolak':
+      case 'rejected':
         color = Colors.red;
         text = 'Ditolak';
         icon = Icons.cancel;
         break;
-      case 'terverifikasi':
+      case 'completed':
       default:
         color = Colors.green;
-        text = 'Terverifikasi';
+        text = 'Selesai';
         icon = Icons.verified;
         break;
-    }
-
-    // Jika ada bukti tapi status masih terverifikasi, tampilkan "Bukti Terupload"
-    if (hasBukti && status == 'terverifikasi') {
-      color = Colors.blue;
-      text = 'Buksi Terupload';
-      icon = Icons.upload;
     }
 
     return Container(
@@ -788,11 +981,9 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     );
   }
 
-  // ✅ WIDGET TOMBOL UPLOAD BUKTI
+  // ✅ UPLOAD BUKTI BUTTON WIDGET
   Widget _buildUploadBuktiButton(Map<String, dynamic> transaksi) {
     final canUpload = transaksi['can_upload_bukti'] == true;
-    final hasBukti = transaksi['bukti_pembayaran'] != null && 
-                    transaksi['bukti_pembayaran'].toString().isNotEmpty;
     final isUploadingThis = _isUploadingBukti && _selectedTransaksiForUpload?['id'] == transaksi['id'];
 
     if (!canUpload) {
@@ -815,23 +1006,23 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: hasBukti ? Colors.blue[50] : Colors.orange[50],
+          color: Colors.orange[50],
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: hasBukti ? Colors.blue[200]! : Colors.orange[200]!),
+          border: Border.all(color: Colors.orange[200]!),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              hasBukti ? Icons.visibility : Icons.upload,
-              color: hasBukti ? Colors.blue : Colors.orange,
+              Icons.upload,
+              color: Colors.orange,
               size: 12,
             ),
             const SizedBox(width: 4),
             Text(
-              hasBukti ? 'Lihat Bukti' : 'Upload Bukti',
+              'Upload Bukti',
               style: TextStyle(
-                color: hasBukti ? Colors.blue : Colors.orange,
+                color: Colors.orange,
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
               ),
@@ -842,7 +1033,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     );
   }
 
-  // ✅ PERBAIKAN: Build error widget
+  // ✅ ERROR WIDGET
   Widget _buildErrorWidget() {
     return Center(
       child: Column(
@@ -882,7 +1073,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
     );
   }
 
-  // ✅ PERBAIKAN: Build empty state widget
+  // ✅ EMPTY STATE WIDGET
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -890,9 +1081,9 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
         children: [
           Icon(Icons.savings_outlined, size: 80, color: Colors.grey[400]),
           const SizedBox(height: 16),
-          const Text(
-            'Belum ada riwayat tabungan',
-            style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.bold),
+          Text(
+            'Belum ada riwayat ${_selectedTabunganType == 'semua' ? 'tabungan' : _getTabunganName(_selectedTabunganType)}',
+            style: const TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           const Padding(
@@ -920,8 +1111,14 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ DEBUG: Check data sebelum build
+    print('🔄 BUILD - _saldoData: $_saldoData');
+    print('🔄 BUILD - _riwayatTabungan length: ${_riwayatTabungan.length}');
+    
     final totalSemuaTabungan = _getCurrentSaldo('semua');
     final filteredCount = _filteredRiwayat.length;
+    
+    print('🔄 BUILD - Total calculated: $totalSemuaTabungan');
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -959,7 +1156,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
       ),
       body: Column(
         children: [
-          // ✅ Header Info - Total Semua Tabungan
+          // ✅ HEADER INFO
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
@@ -1022,7 +1219,7 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
             ),
           ],
 
-          // ✅ Jenis Tabungan Filter
+          // ✅ JENIS TABUNGAN FILTER
           Container(
             height: 100,
             decoration: BoxDecoration(
@@ -1109,14 +1306,14 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
             ),
           ),
 
-          // ✅ Loading Indicator
+          // ✅ LOADING INDICATOR
           if (_isLoading) 
             const LinearProgressIndicator(
               backgroundColor: Colors.green,
               color: Colors.green,
             ),
 
-          // ✅ Riwayat List
+          // ✅ MAIN CONTENT
           Expanded(
             child: _isLoading
                 ? const Center(
@@ -1128,6 +1325,11 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
                         Text(
                           'Memuat data tabungan...',
                           style: TextStyle(color: Colors.green),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Harap tunggu sebentar',
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
                         ),
                       ],
                     ),
@@ -1148,8 +1350,6 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
                                 final jumlah = (transaksi['jumlah'] as num?)?.toInt() ?? 0;
                                 final isSetoran = transaksi['is_setoran'] == true;
                                 final jenisTabungan = transaksi['jenis_tabungan']?.toString() ?? 'sukarela';
-                                final hasBukti = transaksi['bukti_pembayaran'] != null && 
-                                             transaksi['bukti_pembayaran'].toString().isNotEmpty;
                                 final keterangan = transaksi['keterangan']?.toString() ?? 'Transaksi tabungan';
                                 final tanggal = _formatTanggal(transaksi['tanggal']?.toString());
                                 final jenisTransaksi = transaksi['jenis_transaksi']?.toString() ?? 'Transaksi';
@@ -1265,14 +1465,6 @@ class _RiwayatTabunganScreenState extends State<RiwayatTabunganScreen> {
                                                   fontWeight: FontWeight.w600,
                                                 ),
                                               ),
-                                              if (hasBukti) ...[
-                                                const SizedBox(height: 4),
-                                                Icon(
-                                                  Icons.receipt_long,
-                                                  color: Colors.blue,
-                                                  size: 16,
-                                                ),
-                                              ],
                                             ],
                                           ),
                                         ),

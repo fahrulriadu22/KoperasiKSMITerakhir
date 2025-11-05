@@ -6,8 +6,8 @@ import 'profile_screen.dart';
 import 'dashboard_screen.dart';
 import 'riwayat_tabungan_screen.dart';
 import 'riwayat_angsuran_screen.dart';
+import 'login_screen.dart';
 
-// ✅ CUSTOM SHAPE UNTUK BOTTOM NAV DENGAN ATAS MELENGKUNG FULL WIDTH
 class BottomNavShape extends ContinuousRectangleBorder {
   @override
   Path getOuterPath(Rect rect, {TextDirection? textDirection}) {
@@ -46,10 +46,8 @@ class DashboardMain extends StatefulWidget {
 }
 
 class _DashboardMainState extends State<DashboardMain> {
-  // ✅ FIX: GUNAKAN PAGESTORAGE BUCKET UNTUK STATE PERSISTENCE
   final PageStorageBucket _storageBucket = PageStorageBucket();
   
-  // ✅ FIX: PERSIST SELECTED INDEX DENGAN PAGESTORAGE
   int get _selectedIndex {
     return PageStorage.of(context)?.readState(context, identifier: const ValueKey('nav_index')) as int? ?? 0;
   }
@@ -64,24 +62,23 @@ class _DashboardMainState extends State<DashboardMain> {
   int _unreadNotifications = 0;
   bool _isLoading = true;
   String _errorMessage = '';
+  bool _isRefreshing = false;
 
   @override
   void initState() {
     super.initState();
     userData = _safeCastMap(widget.user);
     print('🚀 DashboardMain initialized with user: ${userData['username']}');
-    print('📊 User data structure: ${userData.keys.toList()}');
     _initializeData();
   }
 
-  // ✅ Platform Detection Helper
   bool get _isAndroid => !kIsWeb && Platform.isAndroid;
   bool get _isIOS => !kIsWeb && Platform.isIOS;
   bool get _isWeb => kIsWeb;
   bool get _isLinux => !kIsWeb && Platform.isLinux;
   bool get _isMobile => _isAndroid || _isIOS;
 
-  // ✅ PERBAIKAN BESAR: INITIALIZE DATA DENGAN BETTER ERROR HANDLING
+  // ✅ PERBAIKAN BESAR: Initialize data dengan error handling yang lebih baik
   Future<void> _initializeData() async {
     try {
       print('🔄 Starting dashboard initialization...');
@@ -91,106 +88,184 @@ class _DashboardMainState extends State<DashboardMain> {
         _errorMessage = '';
       });
 
-      // ✅ PERBAIKAN: Gunakan timeout untuk mencegah hanging
-      await Future.wait([
-        _loadCurrentUser(),
-        _loadUnreadNotifications(),
-      ], eagerError: true).timeout(const Duration(seconds: 30));
+      // ✅ LOAD DATA SECARA SEQUENTIAL UNTUK HINDARI RACE CONDITION
+      await _loadCurrentUser();
+      await _loadUnreadNotifications();
 
       print('✅ Dashboard initialization completed successfully');
 
     } catch (e) {
       print('❌ Error initializing dashboard data: $e');
-      print('❌ Error type: ${e.runtimeType}');
-      
-      // ✅ PERBAIKAN: Handle specific error types
-      if (e.toString().contains('token_expired') || e.toString().contains('401')) {
-        _errorMessage = 'Sesi telah berakhir. Silakan login kembali.';
-        _showTokenExpiredDialog();
-      } else if (e.toString().contains('timeout')) {
-        _errorMessage = 'Timeout memuat data. Periksa koneksi internet Anda.';
-      } else if (e.toString().contains('SocketException')) {
-        _errorMessage = 'Tidak ada koneksi internet. Periksa koneksi Anda.';
-      } else {
-        _errorMessage = 'Gagal memuat data dashboard. Silakan coba lagi.';
-      }
-
-      setState(() {});
+      _handleInitializationError(e);
     } finally {
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
-        print('🏁 Dashboard loading state: $_isLoading');
       }
     }
   }
 
-  // ✅ PERBAIKAN: Load current user dengan fallback ke data dari widget
+  // ✅ PERBAIKAN BESAR: Handle error initialization
+  void _handleInitializationError(dynamic e) {
+    if (e.toString().contains('token_expired') || e.toString().contains('401')) {
+      _errorMessage = 'Sesi telah berakhir. Silakan login kembali.';
+      _showTokenExpiredDialog();
+    } else if (e.toString().contains('timeout')) {
+      _errorMessage = 'Timeout memuat data. Periksa koneksi internet Anda.';
+    } else if (e.toString().contains('SocketException')) {
+      _errorMessage = 'Tidak ada koneksi internet. Periksa koneksi Anda.';
+    } else {
+      _errorMessage = 'Gagal memuat data dashboard: ${e.toString()}';
+    }
+  }
+
+  // ✅ PERBAIKAN BESAR: Load current user dengan API getUserProfile()
   Future<void> _loadCurrentUser() async {
     try {
       print('👤 Loading current user from API...');
-      final currentUser = await _apiService.getCurrentUser();
       
-      if (currentUser != null && currentUser is Map<String, dynamic> && currentUser.isNotEmpty) {
-        print('✅ User data loaded from API: ${currentUser['username']}');
+      // ✅ GUNAKAN getUserProfile() UNTUK DATA TERBARU DARI SERVER
+      final profileResult = await _apiService.getUserProfile();
+      
+      if (profileResult['success'] == true && profileResult['data'] != null) {
+        print('✅ User profile loaded from API: ${profileResult['data']?['username']}');
         setState(() {
-          userData = _safeCastMap(currentUser);
+          userData = _safeCastMap(profileResult['data']);
         });
       } else {
-        print('⚠️ Using initial user data from widget');
-        // Tetap gunakan data dari widget jika API gagal
-        setState(() {
-          userData = _safeCastMap(widget.user);
-        });
+        // ✅ FALLBACK: GUNAKAN getCurrentUser() DARI LOCAL STORAGE
+        print('⚠️ getUserProfile failed, trying getCurrentUser...');
+        final currentUser = await _apiService.getCurrentUser();
+        
+        if (currentUser != null && currentUser is Map<String, dynamic> && currentUser.isNotEmpty) {
+          print('✅ User data loaded from local storage: ${currentUser['username']}');
+          setState(() {
+            userData = _safeCastMap(currentUser);
+          });
+        } else {
+          print('⚠️ Using initial user data from widget');
+          setState(() {
+            userData = _safeCastMap(widget.user);
+          });
+        }
       }
     } catch (e) {
       print('❌ Error loading current user: $e');
-      // Fallback ke data dari widget
+      // ✅ FALLBACK KE DATA WIDGET JIKA SEMUA GAGAL
       setState(() {
         userData = _safeCastMap(widget.user);
       });
-      throw e; // Re-throw untuk handling di level atas
+      throw e;
     }
   }
 
-  // ✅ PERBAIKAN: Load unread notifications dengan handle response baru
-  Future<void> _loadUnreadNotifications() async {
-    try {
-      print('🔔 Loading unread notifications...');
-      final result = await _apiService.getAllInbox();
+// ✅ PERBAIKAN: Load unread notifications dengan real-time update
+Future<void> _loadUnreadNotifications() async {
+  try {
+    print('🔔 Loading unread notifications...');
+    final result = await _apiService.getAllInbox();
+    
+    if (result['success'] == true) {
+      final data = result['data'] ?? {};
       
-      if (result['success'] == true) {
-        final data = result['data'] ?? {};
-        final inboxList = data['inbox'] ?? [];
-        
-        final unreadCount = inboxList.where((item) {
-          final readStatus = item['read_status'] ?? item['is_read'] ?? '0';
-          return readStatus == '0' || readStatus == 0 || readStatus == false;
-        }).length;
-        
-        print('✅ Unread notifications: $unreadCount');
+      // ✅ HANDLE BERBAGAI STRUKTUR RESPONSE YANG MUNGKIN
+      List<dynamic> inboxList = [];
+      
+      if (data['inbox'] is List) {
+        inboxList = data['inbox'];
+      } else if (data is List) {
+        inboxList = data;
+      } else if (data['data'] is List) {
+        inboxList = data['data'];
+      }
+      
+      final unreadCount = inboxList.where((item) {
+        if (item is Map) {
+          final readStatus = item['read_status'] ?? item['is_read'] ?? item['status_baca'] ?? '0';
+          return readStatus == '0' || readStatus == 0 || readStatus == false || readStatus == 'false';
+        }
+        return false;
+      }).length;
+      
+      print('✅ Unread notifications: $unreadCount');
+      if (mounted) {
         setState(() {
           _unreadNotifications = unreadCount;
         });
-      } else {
-        print('❌ Gagal load inbox: ${result['message']}');
-        // Jangan throw error untuk notifications, biarkan tetap 0
+      }
+    } else {
+      print('❌ Gagal load inbox: ${result['message']}');
+      if (mounted) {
         setState(() {
           _unreadNotifications = 0;
         });
       }
-    } catch (e) {
-      print('❌ Error loading notifications: $e');
-      // Jangan throw error untuk notifications, biarkan tetap 0
+    }
+  } catch (e) {
+    print('❌ Error loading notifications: $e');
+    if (mounted) {
       setState(() {
         _unreadNotifications = 0;
       });
     }
   }
+}
 
-  // ✅ PERBAIKAN: Token expired dialog
+  // ✅ PERBAIKAN BESAR: Method logout yang robust
+  Future<void> _performLogout() async {
+    try {
+      print('🚪 Starting logout process...');
+      
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Logging out...'),
+            ],
+          ),
+        ),
+      );
+
+      final result = await _apiService.logout();
+      
+      if (mounted) Navigator.of(context).pop();
+
+      if (result['success'] == true) {
+        print('✅ Logout API success');
+        _redirectToLogin();
+      } else {
+        print('❌ Logout API failed: ${result['message']}');
+        _redirectToLogin(); // Tetap redirect meski API gagal
+      }
+    } catch (e) {
+      print('❌ Logout error: $e');
+      if (mounted) Navigator.of(context).pop();
+      _redirectToLogin(); // Tetap redirect meski error
+    }
+  }
+
+  // ✅ PERBAIKAN BESAR: Redirect ke login TANPA callback
+  void _redirectToLogin() {
+    print('🔄 Redirecting to login screen...');
+    
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (context) => const LoginScreen(),
+        ),
+        (route) => false,
+      );
+    }
+  }
+
   void _showTokenExpiredDialog() {
+    if (!mounted) return;
+    
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -200,9 +275,8 @@ class _DashboardMainState extends State<DashboardMain> {
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.of(context).popUntil((route) => route.isFirst);
-              // Navigate to login screen
-              Navigator.pushReplacementNamed(context, '/login');
+              Navigator.of(context).pop();
+              _redirectToLogin();
             },
             child: const Text('Login Kembali'),
           ),
@@ -222,10 +296,16 @@ class _DashboardMainState extends State<DashboardMain> {
     }
   }
 
-  // ✅ PERBAIKAN: REFRESH DATA DENGAN BETTER ERROR HANDLING
+  // ✅ PERBAIKAN: Refresh user data dengan loading state
   Future<void> _refreshUserData() async {
     try {
       print('🔄 Refreshing user data...');
+      
+      if (mounted) {
+        setState(() {
+          _isRefreshing = true;
+        });
+      }
       
       await Future.wait([
         _loadCurrentUser(),
@@ -234,41 +314,78 @@ class _DashboardMainState extends State<DashboardMain> {
       
       print('✅ User data refreshed successfully');
       
-      // ✅ Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Data berhasil diperbarui'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Data berhasil diperbarui'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     } catch (e) {
       print('❌ Error refreshing data: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal memperbarui data: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memperbarui data: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+      }
     }
   }
 
   void _onItemTapped(int index) {
     print('📍 Navigation item tapped: $index');
-    setState(() => _selectedIndex = index);
+    if (mounted) {
+      setState(() => _selectedIndex = index);
+    }
   }
 
-  // ✅ Method untuk buka notifikasi - IMPROVED VERSION
+  // ✅ PERBAIKAN: Open notifications dengan data real
   void _openNotifications() {
+    if (!mounted) return;
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Notifikasi'),
-        content: Text(
-          _unreadNotifications > 0 
-            ? 'Anda memiliki $_unreadNotifications pesan belum dibaca'
-            : 'Tidak ada pesan baru'
+        title: const Row(
+          children: [
+            Icon(Icons.notifications),
+            SizedBox(width: 8),
+            Text('Notifikasi'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _unreadNotifications > 0 
+                ? 'Anda memiliki $_unreadNotifications pesan belum dibaca'
+                : 'Tidak ada pesan baru',
+              style: const TextStyle(fontSize: 16),
+            ),
+            if (_unreadNotifications > 0) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Fitur notifikasi detail akan segera tersedia',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ],
         ),
         actions: [
           TextButton(
@@ -279,22 +396,22 @@ class _DashboardMainState extends State<DashboardMain> {
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                // TODO: Navigate to notifications screen
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Membuka halaman notifikasi...'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Membuka halaman notifikasi...'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
               },
-              child: const Text('Lihat'),
+              child: const Text('Lihat Semua'),
             ),
         ],
       ),
     );
   }
 
-  // ✅ PERBAIKAN: BUILD METHOD WITH BETTER ERROR HANDLING
   @override
   Widget build(BuildContext context) {
     print('🏗️ Building DashboardMain - Loading: $_isLoading, Error: $_errorMessage');
@@ -377,6 +494,11 @@ class _DashboardMainState extends State<DashboardMain> {
   Widget _buildErrorScreen() {
     return Scaffold(
       backgroundColor: Colors.green[50],
+      appBar: AppBar(
+        title: const Text('Koperasi KSMI'),
+        backgroundColor: Colors.green[800],
+        foregroundColor: Colors.white,
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
@@ -421,19 +543,13 @@ class _DashboardMainState extends State<DashboardMain> {
                   ),
                   const SizedBox(width: 12),
                   OutlinedButton(
-                    onPressed: () {
-                      // Fallback: langsung tampilkan dashboard dengan data yang ada
-                      setState(() {
-                        _errorMessage = '';
-                        _isLoading = false;
-                      });
-                    },
+                    onPressed: _performLogout,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.green,
                       side: const BorderSide(color: Colors.green),
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     ),
-                    child: const Text('Lanjutkan'),
+                    child: const Text('Logout'),
                   ),
                 ],
               ),
@@ -445,7 +561,6 @@ class _DashboardMainState extends State<DashboardMain> {
   }
 
   Widget _buildMainScreen() {
-    // ✅ PERBAIKAN: GUNAKAN PAGESTORAGE BUCKET UNTUK SEMUA SCREEN
     final List<Widget> pages = [
       PageStorage(
         bucket: _storageBucket,
@@ -476,6 +591,7 @@ class _DashboardMainState extends State<DashboardMain> {
         child: ProfileScreen(
           user: userData,
           onProfileUpdated: _refreshUserData,
+          onLogout: _performLogout,
         ),
       ),
     ];
@@ -484,6 +600,8 @@ class _DashboardMainState extends State<DashboardMain> {
       bucket: _storageBucket,
       child: Scaffold(
         backgroundColor: Colors.white,
+        // ✅ APP BAR DIHILANGKAN - HANYA INI YANG DIUBAH
+        appBar: null,
         body: IndexedStack(
           index: _selectedIndex,
           children: pages,
@@ -493,7 +611,6 @@ class _DashboardMainState extends State<DashboardMain> {
     );
   }
 
-  // ✅ UNIVERSAL BOTTOM NAVIGATION UNTUK SEMUA PLATFORM
   Widget _buildUniversalBottomNav() {
     if (_isWeb || _isLinux) {
       return _buildWebAndLinuxBottomNav();
@@ -506,7 +623,6 @@ class _DashboardMainState extends State<DashboardMain> {
     }
   }
 
-  // ✅ SOLUTION UNTUK WEB & LINUX (Tanpa System Navigation Bar)
   Widget _buildWebAndLinuxBottomNav() {
     return Container(
       height: 70,
@@ -556,7 +672,6 @@ class _DashboardMainState extends State<DashboardMain> {
     );
   }
 
-  // ✅ SOLUTION UNTUK ANDROID (Dengan System Navigation Bar Space)
   Widget _buildAndroidBottomNav() {
     final padding = MediaQuery.of(context).padding;
     final bottomPadding = padding.bottom;
@@ -610,7 +725,6 @@ class _DashboardMainState extends State<DashboardMain> {
     );
   }
 
-  // ✅ SOLUTION UNTUK iOS (Standard dengan SafeArea)
   Widget _buildIOSBottomNav() {
     return SafeArea(
       child: Container(
@@ -662,7 +776,6 @@ class _DashboardMainState extends State<DashboardMain> {
     );
   }
 
-  // ✅ DEFAULT FALLBACK
   Widget _buildDefaultBottomNav() {
     return BottomNavigationBar(
       currentIndex: _selectedIndex,
@@ -694,7 +807,6 @@ class _DashboardMainState extends State<DashboardMain> {
     );
   }
 
-  // ✅ UNIVERSAL NAV ITEM BUILDER
   Widget _buildNavItem({
     required IconData icon,
     required String label,
@@ -790,17 +902,17 @@ class _DashboardMainState extends State<DashboardMain> {
   }
 
   void navigateToTab(int index) {
-    if (index >= 0 && index < 4) {
+    if (index >= 0 && index < 4 && mounted) {
       setState(() {
         _selectedIndex = index;
       });
     }
   }
 
-  // ✅ GETTERS UNTUK ACCESS DATA
   Map<String, dynamic> get currentUser => userData;
   int get unreadNotificationsCount => _unreadNotifications;
   bool get isLoading => _isLoading;
+  bool get isRefreshing => _isRefreshing;
 
   @override
   void dispose() {

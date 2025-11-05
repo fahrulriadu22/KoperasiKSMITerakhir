@@ -7,40 +7,57 @@ import 'screens/upload_dokumen_screen.dart';
 import 'services/api_service.dart';
 import 'services/firebase_service.dart';
 
+// ✅ PERBAIKAN: Firebase Configuration Class
+class FirebaseConfig {
+  static bool get shouldInitializeFirebase {
+    return true; // Sesuaikan dengan kebutuhan platform
+  }
+}
+
+// ✅ PERBAIKAN: Global keys dengan better documentation
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = 
+    GlobalKey<ScaffoldMessengerState>();
+
+// ✅ PERBAIKAN: Firebase Service Instance
+final FirebaseService firebaseService = FirebaseService();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  try {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await _initializeApp(prefs);
-  } catch (e) {
-    print('❌ Error initializing app: $e');
+  // ✅ PERBAIKAN: Initialize SharedPreferences terlebih dahulu
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  
+  // ✅ PERBAIKAN: HANYA INIT FIREBASE UNTUK ANDROID & iOS
+  if (FirebaseConfig.shouldInitializeFirebase) {
+    try {
+      await Firebase.initializeApp();
+      print('✅ Firebase initialized successfully');
+    } catch (e) {
+      print('❌ Firebase initialization failed: $e');
+    }
+  } else {
+    print('⚠️ Firebase disabled for this platform');
   }
+  
+  // ✅ PERBAIKAN: Initialize app services
+  await _initializeApp(prefs);
   
   runApp(const KoperasiKSMIApp());
 }
 
+// ✅ PERBAIKAN: App Initialization Function
 Future<void> _initializeApp(SharedPreferences prefs) async {
   try {
-    await _initializeFirebase();
     await _initializeFirebaseMessaging();
     await _initializeOtherServices();
+    print('🚀 INITIALIZING FIREBASE SERVICES...');
   } catch (e) {
-    print('❌ Error in app initialization: $e');
-    // Continue app even if some services fail
+    print('❌ ERROR Initializing Firebase Services: $e');
   }
 }
 
-Future<void> _initializeFirebase() async {
-  try {
-    await Firebase.initializeApp();
-    print('✅ Firebase initialized successfully');
-  } catch (e) {
-    print('❌ Firebase initialization failed: $e');
-    // Don't throw error, continue without Firebase
-  }
-}
-
+// ✅ PERBAIKAN: Firebase Messaging Initialization
 Future<void> _initializeFirebaseMessaging() async {
   try {
     await firebaseService.initialize();
@@ -48,7 +65,6 @@ Future<void> _initializeFirebaseMessaging() async {
     print('✅ Firebase Messaging initialized successfully');
   } catch (e) {
     print('❌ Firebase Messaging initialization failed: $e');
-    // Don't throw error, continue without notifications
   }
 }
 
@@ -66,24 +82,41 @@ void _handleNotificationNavigation(Map<String, dynamic> data) {
   try {
     final type = data['type']?.toString() ?? '';
     final id = data['id']?.toString() ?? '';
+    final screen = data['screen']?.toString() ?? '';
     
-    print('📱 Notification tapped - Type: $type, ID: $id');
+    print('📱 Notification tapped - Type: $type, ID: $id, Screen: $screen');
     
-    // Example navigation logic
-    switch (type) {
-      case 'inbox':
-        // Navigate to inbox
-        break;
-      case 'transaction':
-        // Navigate to transaction details
-        break;
-      case 'promo':
-        // Navigate to promo page
-        break;
-      default:
-        // Handle other notification types
-        break;
-    }
+    // ✅ NAVIGASI BERDASARKAN NOTIFICATION TYPE
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (navigatorKey.currentState?.context != null) {
+        switch (screen) {
+          case 'inbox':
+          case 'notifikasi':
+            navigatorKey.currentState!.pushNamed('/inbox');
+            break;
+          case 'transaction':
+          case 'transaksi':
+            navigatorKey.currentState!.pushNamed('/transaction', arguments: {'id': id});
+            break;
+          case 'tabungan':
+            navigatorKey.currentState!.pushNamed('/tabungan');
+            break;
+          case 'angsuran':
+          case 'taqsith':
+            navigatorKey.currentState!.pushNamed('/angsuran');
+            break;
+          case 'profile':
+          case 'profil':
+            navigatorKey.currentState!.pushNamed('/profile');
+            break;
+          default:
+            // Default ke dashboard
+            navigatorKey.currentState!.pushNamed('/dashboard');
+            break;
+        }
+      }
+    });
+    
   } catch (e) {
     print('❌ Error handling notification navigation: $e');
   }
@@ -93,8 +126,24 @@ void _handleNotificationData(Map<String, dynamic> data) {
   try {
     final title = data['title']?.toString() ?? 'KSMI Koperasi';
     final body = data['body']?.toString() ?? 'Pesan baru';
+    final type = data['type']?.toString() ?? '';
     
-    print('📱 Notification received - Title: $title, Body: $body');
+    print('📱 Notification received - Title: $title, Body: $body, Type: $type');
+    
+    // ✅ TAMPILKAN SNACKBAR ATAU UPDATE BADGE
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (scaffoldMessengerKey.currentState?.context != null) {
+        scaffoldMessengerKey.currentState!.showSnackBar(
+          SnackBar(
+            content: Text('$title: $body'),
+            backgroundColor: Colors.green[700],
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    });
+    
   } catch (e) {
     print('❌ Error handling notification data: $e');
   }
@@ -183,7 +232,7 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
         print('❌ User ID not found for topic subscription');
       }
     } catch (e) {
-      print('❌ Error subscribing to topics: $e');
+      print('❌ ERROR subscribing to topic user: $e');
     }
   }
 
@@ -338,6 +387,35 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
       navigatorKey: navigatorKey,
       scaffoldMessengerKey: scaffoldMessengerKey,
       
+      // ✅ PERBAIKAN BESAR: TAMBAHKAN ROUTES DAN ON GENERATE ROUTE
+      routes: {
+        '/login': (context) => LoginScreen(onLoginSuccess: _handleLoginSuccess),
+        '/dashboard': (context) => DashboardMain(user: _userData),
+        '/upload_dokumen': (context) => UploadDokumenScreen(user: _userData),
+      },
+      
+      // ✅ PERBAIKAN: HANDLE UNKNOWN ROUTES
+      onGenerateRoute: (settings) {
+        print('🔄 Generating route for: ${settings.name}');
+        
+        // Fallback untuk route yang tidak terdaftar
+        return MaterialPageRoute(
+          builder: (context) => _isLoggedIn 
+              ? DashboardMain(user: _userData)
+              : LoginScreen(onLoginSuccess: _handleLoginSuccess),
+        );
+      },
+      
+      // ✅ PERBAIKAN: HANDLE UNKNOWN ROUTES (FALLBACK)
+      onUnknownRoute: (settings) {
+        print('❌ Unknown route: ${settings.name}');
+        return MaterialPageRoute(
+          builder: (context) => _isLoggedIn 
+              ? DashboardMain(user: _userData)
+              : LoginScreen(onLoginSuccess: _handleLoginSuccess),
+        );
+      },
+      
       home: _isLoading
           ? _buildLoadingScreen()
           : _isLoggedIn
@@ -419,7 +497,7 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     );
   }
 
-  // ✅ PERBAIKAN UTAMA: HAPUS CARD THEME DARI THEME DATA
+  // ✅ PERBAIKAN: Theme Data yang Fixed
   ThemeData _buildAppTheme() {
     return ThemeData(
       primaryColor: Colors.green[800],
@@ -478,8 +556,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
         labelStyle: TextStyle(color: Colors.grey[700]),
         hintStyle: TextStyle(color: Colors.grey[500]),
       ),
-      // ✅ PERBAIKAN: HAPUS CARD THEME UNTUK SEKARANG
-      // cardTheme: CardThemeData(...) - DIHAPUS KARENA MENYEBABKAN ERROR
       buttonTheme: ButtonThemeData(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
@@ -540,8 +616,3 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     super.dispose();
   }
 }
-
-// ✅ PERBAIKAN: Global keys dengan better documentation
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = 
-    GlobalKey<ScaffoldMessengerState>();

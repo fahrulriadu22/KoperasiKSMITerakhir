@@ -5,11 +5,11 @@ import 'register_screen.dart';
 import 'upload_dokumen_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  final Function(Map<String, dynamic>)? onLoginSuccess; // ✅ TAMBAHKAN INI
+  final Function(Map<String, dynamic>)? onLoginSuccess;
 
   const LoginScreen({
     Key? key,
-    this.onLoginSuccess, // ✅ TAMBAHKAN INI
+    this.onLoginSuccess,
   }) : super(key: key);
 
   @override
@@ -18,92 +18,277 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController inputController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
-  final ApiService _authService = ApiService();
+  final TextEditingController _inputController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final ApiService _apiService = ApiService();
+  
   bool _isLoading = false;
   bool _obscureText = true;
   String _errorMessage = '';
+  bool _isDebugMode = false; // Set false untuk production
 
-  void _handleLogin() async {
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingSession();
+  }
+
+  // ✅ CEK SESSION EXISTING (Auto-login jika token masih valid)
+  Future<void> _checkExistingSession() async {
+    try {
+      final isLoggedIn = await _apiService.isLoggedIn();
+      if (isLoggedIn) {
+        final tokenValid = await _apiService.validateToken();
+        
+        if (tokenValid && mounted) {
+          final currentUser = await _apiService.getCurrentUserForUpload();
+          if (currentUser != null) {
+            print('🔄 Auto-login detected, redirecting...');
+            _handleSuccessfulLogin(currentUser);
+            return;
+          }
+        } else {
+          // Token expired, clear data
+          await _apiService.logout();
+        }
+      }
+    } catch (e) {
+      print('❌ Error checking existing session: $e');
+    }
+  }
+
+  // ✅ HANDLE LOGIN PROCESS
+  Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = '';
+      });
+    }
 
-    final input = inputController.text.trim();
-    final pass = passwordController.text.trim();
+    final input = _inputController.text.trim();
+    final password = _passwordController.text.trim();
 
     try {
-      final result = await _authService.login(input, pass);
+      final result = await _apiService.login(input, password);
 
       if (result['success'] == true) {
         if (!mounted) return;
         
         final user = result['user'];
+        final token = result['token'];
         
-        // ✅ PERBAIKAN: CEK APAKAH ADA CALLBACK onLoginSuccess
-        if (widget.onLoginSuccess != null) {
-          // Jika ada callback, panggil callback
-          widget.onLoginSuccess!(user!);
-        } else {
-          // Jika tidak ada callback, handle navigation sendiri
-          _checkDokumenStatusAndNavigate(user!);
-        }
+        print('✅ Login successful for user: ${user?['username']}');
+        print('🔑 Token: ${token?.substring(0, 10)}...');
+        
+        // ✅ SIMPAN DATA LOGIN DENGAN LENGKAP
+        await _apiService.saveLoginData({
+          'token': token,
+          'user': user,
+          'message': result['message']
+        });
+        
+        _handleSuccessfulLogin(user!);
         
       } else {
-        setState(() {
-          _errorMessage = result['message'] ?? 'Login gagal. Silakan coba lagi.';
-        });
+        if (mounted) {
+          setState(() {
+            _errorMessage = result['message'] ?? 'Login gagal. Silakan coba lagi.';
+          });
+        }
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Terjadi kesalahan saat login: $e';
-      });
+      print('❌ Login error: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = _getErrorMessage(e);
+        });
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ✅ PERBAIKAN: Method untuk cek status dokumen dan navigasi
+  // ✅ HANDLE SUCCESSFUL LOGIN
+  void _handleSuccessfulLogin(Map<String, dynamic> user) {
+    try {
+      // ✅ PERBAIKAN: CEK APAKAH ADA CALLBACK onLoginSuccess
+      if (widget.onLoginSuccess != null) {
+        // Jika ada callback, panggil callback (ini yang dipakai dari main.dart)
+        print('🎉 Using callback for login success');
+        widget.onLoginSuccess!(user);
+      } else {
+        // Jika tidak ada callback, handle navigation sendiri
+        print('🎉 Handling navigation directly from login screen');
+        _checkDokumenStatusAndNavigate(user);
+      }
+    } catch (e) {
+      print('❌ Error in successful login handling: $e');
+      // Fallback navigation
+      _navigateToDashboard(user);
+    }
+  }
+
+  // ✅ CEK STATUS DOKUMEN DAN NAVIGASI
   void _checkDokumenStatusAndNavigate(Map<String, dynamic> user) {
-    final bool hasKTP = user['foto_ktp'] != null && 
-                        user['foto_ktp'].toString().isNotEmpty && 
-                        user['foto_ktp'] != 'uploaded';
+    try {
+      final dokumenStatus = _getDokumenStatus(user);
+      final allDokumenUploaded = dokumenStatus['allComplete'];
+      
+      print('''
+📄 Document Status Check:
+  - KTP: ${dokumenStatus['ktp']} (${user['foto_ktp']})
+  - KK: ${dokumenStatus['kk']} (${user['foto_kk']})  
+  - Foto Diri: ${dokumenStatus['diri']} (${user['foto_diri']})
+  - All Complete: $allDokumenUploaded
+''');
+      
+      if (!allDokumenUploaded) {
+        // ✅ Navigasi ke UploadDokumenScreen jika dokumen belum lengkap
+        print('📱 Navigating to UploadDokumenScreen');
+        _navigateToUploadDokumen(user);
+      } else {
+        // ✅ Langsung ke dashboard jika dokumen sudah lengkap
+        print('📱 Navigating directly to Dashboard');
+        _navigateToDashboard(user);
+      }
+    } catch (e) {
+      print('❌ Error in document check navigation: $e');
+      // Fallback ke dashboard jika ada error
+      _navigateToDashboard(user);
+    }
+  }
+
+// ✅ FIX: CEK STATUS DOKUMEN YANG BENAR
+Map<String, dynamic> _getDokumenStatus(Map<String, dynamic> user) {
+  final ktp = user['foto_ktp'];
+  final kk = user['foto_kk'];
+  final diri = user['foto_diri'];
+  final bukti = user['foto_bukti'];
+  
+  print('🐛 === DOCUMENT STATUS DEBUG ===');
+  print('📄 KTP Status: $ktp');
+  print('📄 KK Status: $kk');
+  print('📄 Foto Diri Status: $diri');
+  print('📄 Foto Bukti Status: $bukti');
+  print('🔗 KTP is HTTP URL: ${ktp?.toString().startsWith('http')}');
+  print('🔗 KK is HTTP URL: ${kk?.toString().startsWith('http')}');
+  print('🔗 Foto Diri is HTTP URL: ${diri?.toString().startsWith('http')}');
+  print('🔗 Foto Bukti is HTTP URL: ${bukti?.toString().startsWith('http')}');
+  print('🐛 === DEBUG END ===');
+  
+  // ✅ FIX: CEK APAKAH FILE SUDAH ADA DI SERVER (TIDAK PERLU HTTP)
+  final hasKTP = ktp != null && 
+                ktp.toString().isNotEmpty && 
+                ktp != 'uploaded' &&
+                ktp.toString().contains('.jpg'); // Cukup cek ada extension .jpg
+  
+  final hasKK = kk != null && 
+               kk.toString().isNotEmpty && 
+               kk != 'uploaded' &&
+               kk.toString().contains('.jpg');
+  
+  final hasDiri = diri != null && 
+                 diri.toString().isNotEmpty && 
+                 diri != 'uploaded' &&
+                 diri.toString().contains('.jpg');
+  
+  final hasBukti = bukti != null && 
+                  bukti.toString().isNotEmpty && 
+                  bukti != 'uploaded' &&
+                  bukti.toString().contains('.jpg');
+  
+  return {
+    'ktp': hasKTP,
+    'kk': hasKK,
+    'diri': hasDiri,
+    'bukti': hasBukti,
+    'allComplete': hasKTP && hasKK && hasDiri && hasBukti,
+  };
+}
+
+  // ✅ NAVIGATION METHODS
+  void _navigateToUploadDokumen(Map<String, dynamic> user) {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => UploadDokumenScreen(
+          user: user,
+          onDocumentsComplete: () {
+            // Callback ketika dokumen selesai diupload
+            _navigateToDashboard(user);
+          },
+        ),
+      ),
+      (route) => false,
+    );
+  }
+
+  void _navigateToDashboard(Map<String, dynamic> user) {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => DashboardMain(user: user)),
+      (route) => false,
+    );
+  }
+
+  // ✅ ERROR MESSAGE HANDLER
+  String _getErrorMessage(dynamic e) {
+    final errorStr = e.toString();
     
-    final bool hasKK = user['foto_kk'] != null && 
-                       user['foto_kk'].toString().isNotEmpty && 
-                       user['foto_kk'] != 'uploaded';
-    
-    final bool hasFotoDiri = user['foto_diri'] != null && 
-                             user['foto_diri'].toString().isNotEmpty && 
-                             user['foto_diri'] != 'uploaded';
-    
-    final bool allDokumenUploaded = hasKTP && hasKK && hasFotoDiri;
-    
-    if (!allDokumenUploaded) {
-      // ✅ Navigasi ke UploadDokumenScreen jika dokumen belum lengkap
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => UploadDokumenScreen(user: user)),
-      );
+    if (errorStr.contains('SocketException') || errorStr.contains('Network is unreachable')) {
+      return 'Tidak ada koneksi internet. Periksa koneksi Anda.';
+    } else if (errorStr.contains('TimeoutException') || errorStr.contains('timed out')) {
+      return 'Timeout. Server tidak merespons. Silakan coba lagi.';
+    } else if (errorStr.contains('401') || errorStr.contains('Unauthorized')) {
+      return 'Username atau password salah.';
+    } else if (errorStr.contains('500') || errorStr.contains('Internal Server Error')) {
+      return 'Server sedang mengalami masalah. Silakan coba lagi nanti.';
     } else {
-      // ✅ Langsung ke dashboard jika dokumen sudah lengkap
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => DashboardMain(user: user)),
-      );
+      return 'Terjadi kesalahan saat login: ${e.toString().replaceAll('Exception:', '').trim()}';
     }
   }
 
   // ✅ TEST LOGIN FUNCTION (untuk debugging)
   void _testLogin() async {
-    // Test dengan credential default
-    inputController.text = 'sonik';
-    passwordController.text = 'sonik';
-    _handleLogin();
+    if (_isDebugMode) {
+      _inputController.text = 'sonik';
+      _passwordController.text = 'sonik';
+      _handleLogin();
+    }
+  }
+
+  // ✅ FORGOT PASSWORD DIALOG
+  void _showForgotPasswordDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Lupa Password?'),
+        content: const Text(
+          'Silakan hubungi admin koperasi untuk reset password. '
+          'Fitur reset password otomatis akan segera tersedia.'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tutup'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // TODO: Implement reset password flow
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Fitur reset password akan segera tersedia'),
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            },
+            child: const Text('Hubungi Admin'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -120,266 +305,31 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   // ✅ LOGO KSMI
-                  Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: Image.asset(
-                        'assets/images/KSMI_LOGO.png',
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: Colors.green[800],
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            alignment: Alignment.center,
-                            child: Icon(
-                              Icons.account_balance_wallet_rounded,
-                              color: Colors.white,
-                              size: 60,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
+                  _buildLogoSection(),
                   const SizedBox(height: 24),
                   
-                  // ✅ TITLE
-                  Text(
-                    'Koperasi KSMI',
-                    style: TextStyle(
-                      fontSize: 28, 
-                      fontWeight: FontWeight.bold, 
-                      color: Colors.green[800],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Selamat Datang Kembali',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.green[600],
-                    ),
-                  ),
+                  // ✅ TITLE SECTION
+                  _buildTitleSection(),
                   const SizedBox(height: 40),
 
                   // ✅ ERROR MESSAGE
-                  if (_errorMessage.isNotEmpty)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.red[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.red[200]!),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.error_outline, color: Colors.red[700], size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _errorMessage,
-                              style: TextStyle(
-                                color: Colors.red[700],
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  if (_errorMessage.isNotEmpty) _buildErrorMessage(),
 
-                  // ✅ INPUT FIELD
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.green[100]!,
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: TextFormField(
-                      controller: inputController,
-                      decoration: InputDecoration(
-                        labelText: 'Username / Email',
-                        labelStyle: TextStyle(color: Colors.grey[700]),
-                        prefixIcon: Icon(Icons.person_outline, color: Colors.green[700]),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                      ),
-                      validator: (val) => val == null || val.isEmpty ? 'Harap isi username/email' : null,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // ✅ PASSWORD FIELD
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.green[100]!,
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: TextFormField(
-                      controller: passwordController,
-                      obscureText: _obscureText,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        labelStyle: TextStyle(color: Colors.grey[700]),
-                        prefixIcon: Icon(Icons.lock_outline, color: Colors.green[700]),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscureText ? Icons.visibility_off : Icons.visibility,
-                            color: Colors.green[700],
-                          ),
-                          onPressed: () => setState(() => _obscureText = !_obscureText),
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                      ),
-                      validator: (val) => val == null || val.isEmpty ? 'Harap isi password' : null,
-                    ),
-                  ),
+                  // ✅ INPUT FIELDS
+                  _buildInputFieldsSection(),
                   const SizedBox(height: 24),
 
-                  // ✅ TOMBOL LOGIN
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _handleLogin,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[700],
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 4,
-                        shadowColor: Colors.green[300],
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                color: Colors.white, 
-                                strokeWidth: 2
-                              ),
-                            )
-                          : const Text(
-                              'Login', 
-                              style: TextStyle(
-                                fontSize: 16, 
-                                fontWeight: FontWeight.w600
-                              ),
-                            ),
-                    ),
-                  ),
+                  // ✅ LOGIN BUTTON
+                  _buildLoginButton(),
 
-                  // ✅ TOMBOL TEST LOGIN (Hanya untuk development)
-                  if (true) // Set false untuk production
-                    Column(
-                      children: [
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 40,
-                          child: OutlinedButton(
-                            onPressed: _isLoading ? null : _testLogin,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.green[700],
-                              side: BorderSide(color: Colors.green[700]!),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            child: const Text(
-                              'Test Login (sonik/sonik)',
-                              style: TextStyle(fontSize: 14),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  const SizedBox(height: 16),
+                  // ✅ DEBUG BUTTONS (Hanya untuk development)
+                  if (_isDebugMode) _buildDebugButtons(),
 
-                  // ✅ TOMBOL REGISTER
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Belum punya akun? ',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 14,
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context, 
-                            MaterialPageRoute(builder: (_) => const RegisterScreen())
-                          );
-                        },
-                        child: Text(
-                          'Daftar',
-                          style: TextStyle(
-                            color: Colors.green[700],
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            decoration: TextDecoration.underline,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  // ✅ REGISTER LINK
+                  _buildRegisterSection(),
 
-                  // ✅ INFO TAMBAHAN
-                  const SizedBox(height: 32),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.green[100],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.green[700], size: 24),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Setelah login, Anda akan diminta untuk melengkapi dokumen KTP, KK, dan Foto Diri',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.green[800],
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  // ✅ INFO SECTION
+                  _buildInfoSection(),
                 ],
               ),
             ),
@@ -389,10 +339,323 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // ✅ BUILD LOGO SECTION
+  Widget _buildLogoSection() {
+    return Container(
+      width: 120,
+      height: 120,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green[300]!,
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Image.asset(
+          'assets/images/KSMI_LOGO.png',
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.green[800],
+                borderRadius: BorderRadius.circular(20),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.account_balance_wallet_rounded,
+                color: Colors.white,
+                size: 60,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // ✅ BUILD TITLE SECTION
+  Widget _buildTitleSection() {
+    return Column(
+      children: [
+        Text(
+          'Koperasi KSMI',
+          style: TextStyle(
+            fontSize: 28, 
+            fontWeight: FontWeight.bold, 
+            color: Colors.green[800],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Selamat Datang Kembali',
+          style: TextStyle(
+            fontSize: 16,
+            color: Colors.green[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ BUILD ERROR MESSAGE
+  Widget _buildErrorMessage() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red[200]!),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red[700], size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _errorMessage,
+              style: TextStyle(
+                color: Colors.red[700],
+                fontSize: 14,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.close, color: Colors.red[700], size: 16),
+            onPressed: () => setState(() => _errorMessage = ''),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ BUILD INPUT FIELDS SECTION
+  Widget _buildInputFieldsSection() {
+    return Column(
+      children: [
+        // USERNAME/EMAIL FIELD
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.green[100]!,
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: TextFormField(
+            controller: _inputController,
+            decoration: InputDecoration(
+              labelText: 'Username / Email',
+              labelStyle: TextStyle(color: Colors.grey[700]),
+              prefixIcon: Icon(Icons.person_outline, color: Colors.green[700]),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            ),
+            validator: (val) => val == null || val.isEmpty ? 'Harap isi username/email' : null,
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // PASSWORD FIELD
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.green[100]!,
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: TextFormField(
+            controller: _passwordController,
+            obscureText: _obscureText,
+            decoration: InputDecoration(
+              labelText: 'Password',
+              labelStyle: TextStyle(color: Colors.grey[700]),
+              prefixIcon: Icon(Icons.lock_outline, color: Colors.green[700]),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscureText ? Icons.visibility_off : Icons.visibility,
+                  color: Colors.green[700],
+                ),
+                onPressed: () => setState(() => _obscureText = !_obscureText),
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            ),
+            validator: (val) {
+              if (val == null || val.isEmpty) return 'Harap isi password';
+              if (val.length < 3) return 'Password terlalu pendek';
+              return null;
+            },
+          ),
+        ),
+
+        // FORGOT PASSWORD LINK
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: _showForgotPasswordDialog,
+            child: Text(
+              'Lupa Password?',
+              style: TextStyle(
+                color: Colors.green[700],
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ BUILD LOGIN BUTTON
+  Widget _buildLoginButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : _handleLogin,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.green[700],
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 4,
+          shadowColor: Colors.green[300],
+        ),
+        child: _isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  color: Colors.white, 
+                  strokeWidth: 2
+                ),
+              )
+            : const Text(
+                'Login', 
+                style: TextStyle(
+                  fontSize: 16, 
+                  fontWeight: FontWeight.w600
+                ),
+              ),
+      ),
+    );
+  }
+
+  // ✅ BUILD DEBUG BUTTONS
+  Widget _buildDebugButtons() {
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          height: 40,
+          child: OutlinedButton(
+            onPressed: _isLoading ? null : _testLogin,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.green[700],
+              side: BorderSide(color: Colors.green[700]!),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text(
+              'Test Login (sonik/sonik)',
+              style: TextStyle(fontSize: 14),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ✅ BUILD REGISTER SECTION
+  Widget _buildRegisterSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            'Belum punya akun? ',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 14,
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context, 
+                MaterialPageRoute(builder: (_) => const RegisterScreen())
+              );
+            },
+            child: Text(
+              'Daftar',
+              style: TextStyle(
+                color: Colors.green[700],
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ BUILD INFO SECTION
+  Widget _buildInfoSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.green[100],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.info_outline, color: Colors.green[700], size: 24),
+          const SizedBox(height: 8),
+          Text(
+            'Setelah login, Anda akan diminta untuk melengkapi dokumen KTP, KK, dan Foto Diri untuk pengalaman terbaik',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.green[800],
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
-    inputController.dispose();
-    passwordController.dispose();
+    _inputController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 }

@@ -57,6 +57,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _showNewPassword = false;
   bool _showConfirmPassword = false;
   bool _sameAsKtp = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -65,7 +66,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _loadMasterData();
   }
 
+  // ✅ LOAD USER DATA KE FORM
   void _loadUserData() {
+    print('👤 Loading user data for editing...');
+    
     setState(() {
       // ✅ Load data dari user
       _fullNameController.text = widget.user['fullname'] ?? widget.user['fullName'] ?? '';
@@ -97,11 +101,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _sameAsKtp = _domisiliAlamatController.text.isEmpty || 
                    _domisiliAlamatController.text == _ktpAlamatController.text;
     });
+    
+    print('✅ User data loaded successfully');
   }
 
+  // ✅ LOAD MASTER DATA (PROVINSI, KOTA, AGAMA)
   Future<void> _loadMasterData() async {
     try {
-      setState(() => _isLoadingMasterData = true);
+      print('🔄 Loading master data...');
+      setState(() {
+        _isLoadingMasterData = true;
+        _errorMessage = null;
+      });
 
       // Load provinsi
       final provinsiResult = await _apiService.getProvince();
@@ -111,6 +122,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           setState(() {
             _provinsiList = data;
           });
+          print('✅ Provinces loaded: ${_provinsiList.length} items');
         }
         
         // Load kota untuk KTP jika ada
@@ -122,6 +134,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         if (_selectedProvinsiDomisili != null && _selectedProvinsiDomisili!.isNotEmpty) {
           await _loadKota(_selectedProvinsiDomisili!, false);
         }
+      } else {
+        throw Exception('Gagal memuat data provinsi: ${provinsiResult['message']}');
       }
 
       // Load master data untuk agama
@@ -132,15 +146,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           setState(() {
             _agamaList = data['agama'] ?? [];
           });
+          print('✅ Agama loaded: ${_agamaList.length} items');
         }
       }
+
     } catch (e) {
       print('❌ Error loading master data: $e');
       if (mounted) {
+        setState(() {
+          _errorMessage = 'Gagal memuat data provinsi dan agama: $e';
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Gagal memuat data provinsi dan agama: $e'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -151,8 +171,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  // ✅ LOAD DATA KOTA BERDASARKAN PROVINSI
   Future<void> _loadKota(String idProvinsi, bool forKtp) async {
     try {
+      print('🏙️ Loading kota for province: $idProvinsi (forKtp: $forKtp)');
+      
       final result = await _apiService.getRegency(idProvinsi);
       if (result['success'] == true && mounted) {
         final data = result['data'];
@@ -174,23 +197,43 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               }
             }
           });
+          print('✅ Kota loaded: ${forKtp ? _kotaListKtp.length : _kotaListDomisili.length} items');
         }
+      } else {
+        throw Exception('Gagal memuat data kota: ${result['message']}');
       }
     } catch (e) {
       print('❌ Error loading kota: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memuat data kota: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
   // ✅ METHOD UPDATE PROFILE
   Future<void> _updateProfile() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Harap perbaiki error pada form terlebih dahulu'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
 
     // ✅ Validasi password jika diisi
     if (_newPasswordController.text.isNotEmpty) {
       if (_oldPasswordController.text.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Harap masukkan password lama'),
+            content: Text('Harap masukkan password lama untuk mengubah password'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -218,9 +261,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
     try {
+      print('🔄 Starting profile update...');
+
       // ✅ Prepare update data
       final updatedData = {
         'username': widget.user['username'] ?? '',
@@ -253,12 +301,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       // ✅ Hapus field yang kosong
       updatedData.removeWhere((key, value) => value.toString().isEmpty);
 
+      print('📤 Sending update data: $updatedData');
+
       // ✅ Update profile
       final profileResult = await _apiService.updateUserProfile(updatedData);
       
       // ✅ Update password jika diisi
       Map<String, dynamic> passwordResult = {'success': true};
       if (_newPasswordController.text.isNotEmpty) {
+        print('🔐 Updating password...');
         passwordResult = await _apiService.changePassword(
           _oldPasswordController.text.trim(),
           _newPasswordController.text.trim(),
@@ -271,6 +322,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (!mounted) return;
 
       if (profileResult['success'] == true) {
+        print('✅ Profile update successful');
+        
         // ✅ Panggil callback untuk update data di parent
         widget.onProfileUpdated(updatedData);
         
@@ -296,6 +349,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         
         Navigator.pop(context);
       } else {
+        print('❌ Profile update failed: ${profileResult['message']}');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(profileResult['message'] ?? 'Gagal mengupdate profile'),
@@ -304,19 +358,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         );
       }
     } catch (e) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Error: $e';
+      });
+      
       if (!mounted) return;
       
+      print('❌ Update profile error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error: $e'),
+          content: Text('Terjadi kesalahan: $e'),
           backgroundColor: Colors.red,
         ),
       );
     }
   }
 
-  // ✅ BUILD DROPDOWN YANG LEBIH BAIK
+  // ✅ PERBAIKAN: Build dropdown dengan handling duplicate values dan error handling
   Widget _buildDropdown({
     required String label,
     required String? value,
@@ -324,35 +383,132 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     required Function(String?)? onChanged,
     required String? Function(String?)? validator,
     bool enabled = true,
+    String? hintText,
   }) {
-    final dropdownItems = items.map((item) {
-      final id = item['id']?.toString() ?? '';
-      final nama = item['nama']?.toString() ?? item['name']?.toString() ?? 'Unknown';
-      return DropdownMenuItem<String>(
-        value: id,
-        child: Text(nama),
-      );
-    }).toList();
+    try {
+      // ✅ HAPUS DUPLICATE VALUES DAN NULL VALUES
+      final uniqueItems = items.where((item) => 
+        item != null && 
+        item['id'] != null && 
+        item['id'].toString().isNotEmpty
+      ).toSet().toList();
 
-    // Add empty item if no items
-    if (dropdownItems.isEmpty) {
-      dropdownItems.add(
-        const DropdownMenuItem(
-          value: '',
-          child: Text('Tidak ada data'),
+      // ✅ BUAT DROPDOWN ITEMS
+      final dropdownItems = uniqueItems.map((item) {
+        final id = item['id']?.toString() ?? '';
+        final nama = item['nama']?.toString() ?? 
+                    item['name']?.toString() ?? 
+                    item['nama_provinsi']?.toString() ??
+                    item['nama_kota']?.toString() ??
+                    'Unknown';
+        
+        return DropdownMenuItem<String>(
+          value: id,
+          child: Text(
+            nama,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 14),
+          ),
+        );
+      }).toList();
+
+      // ✅ ADD DEFAULT ITEM JIKA KOSONG
+      if (dropdownItems.isEmpty) {
+        dropdownItems.add(
+          const DropdownMenuItem(
+            value: '',
+            child: Text('Tidak ada data'),
+          ),
+        );
+      }
+
+      // ✅ VALIDASI: PASTIKAN VALUE ADA DI LIST
+      String? validatedValue = value;
+      if (value != null && value.isNotEmpty && !dropdownItems.any((item) => item.value == value)) {
+        validatedValue = null;
+      }
+
+      return DropdownButtonFormField<String>(
+        value: validatedValue,
+        items: dropdownItems,
+        onChanged: enabled ? onChanged : null,
+        decoration: InputDecoration(
+          labelText: label,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          hintText: hintText,
+          filled: !enabled,
+          fillColor: !enabled ? Colors.grey[100] : null,
         ),
+        validator: validator,
+        isExpanded: true,
+        style: TextStyle(
+          color: enabled ? Colors.black87 : Colors.grey[600],
+          fontSize: 14,
+        ),
+        icon: enabled ? const Icon(Icons.arrow_drop_down) : const Icon(Icons.lock_outline),
+        borderRadius: BorderRadius.circular(12),
+      );
+    } catch (e) {
+      print('❌ Error building dropdown $label: $e');
+      return TextFormField(
+        initialValue: 'Error loading data',
+        decoration: InputDecoration(
+          labelText: label,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          filled: true,
+          fillColor: Colors.red[50],
+        ),
+        enabled: false,
       );
     }
+  }
 
-    return DropdownButtonFormField<String>(
-      value: value,
-      items: dropdownItems,
-      onChanged: enabled ? onChanged : null,
-      decoration: InputDecoration(
-        labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+  // ✅ BUILD LOADING INDICATOR
+  Widget _buildLoadingIndicator() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text('Memuat data provinsi dan kota...'),
+        ],
       ),
-      validator: validator,
+    );
+  }
+
+  // ✅ BUILD ERROR MESSAGE
+  Widget _buildErrorMessage() {
+    if (_errorMessage == null) return const SizedBox.shrink();
+    
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red[200]!),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red[700], size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _errorMessage!,
+              style: TextStyle(
+                color: Colors.red[700],
+                fontSize: 14,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.close, color: Colors.red[700], size: 16),
+            onPressed: () => setState(() => _errorMessage = null),
+          ),
+        ],
+      ),
     );
   }
 
@@ -379,22 +535,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ],
       ),
       body: _isLoadingMasterData
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Memuat data provinsi dan kota...'),
-                ],
-              ),
-            )
+          ? _buildLoadingIndicator()
           : Padding(
               padding: const EdgeInsets.all(16),
               child: Form(
                 key: _formKey,
                 child: ListView(
                   children: [
+                    // ✅ ERROR MESSAGE
+                    _buildErrorMessage(),
+
                     // ✅ INFO
                     Container(
                       padding: const EdgeInsets.all(12),
@@ -518,7 +668,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           _selectedAgama = newValue;
                         });
                       },
-                      validator: (value) => value == null ? 'Pilih agama' : null,
+                      validator: (value) => value == null || value.toString().isEmpty ? 'Pilih agama' : null,
                     ),
                     const SizedBox(height: 24),
 
@@ -893,5 +1043,28 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             ),
     );
+  }
+
+  @override
+  void dispose() {
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _jobController.dispose();
+    _birthPlaceController.dispose();
+    _ktpAlamatController.dispose();
+    _ktpRtController.dispose();
+    _ktpRwController.dispose();
+    _ktpNoController.dispose();
+    _ktpPostalController.dispose();
+    _domisiliAlamatController.dispose();
+    _domisiliRtController.dispose();
+    _domisiliRwController.dispose();
+    _domisiliNoController.dispose();
+    _domisiliPostalController.dispose();
+    _oldPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
   }
 }
