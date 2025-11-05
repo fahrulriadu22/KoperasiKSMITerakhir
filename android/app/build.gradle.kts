@@ -30,7 +30,6 @@ android {
         multiDexEnabled = true
     }
 
-
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
@@ -46,12 +45,13 @@ flutter {
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-    implementation platform('com.google.firebase:firebase-bom:32.7.0')
-    implementation 'com.google.firebase:firebase-analytics'
-    implementation 'com.google.firebase:firebase-messaging'
+    // ✅ PERBAIKI SYNTAX KOTLIN DSL - gunakan tanda kurung bukan kutip
+    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.24")
+    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-messaging")
     
-    // ✅ TAMBAH INI JIKA BELUM ADA
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
-    implementation 'androidx.multidex:multidex:2.0.1'
+    // ✅ PERBAIKI SYNTAX JUGA
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    implementation("androidx.multidex:multidex:2.0.1")
 }
