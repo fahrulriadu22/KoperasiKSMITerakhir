@@ -3,8 +3,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:convert'; // ✅ IMPORT BARU UNTUK JSON
 import 'api_service.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // ✅ TAMBAH INI
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FirebaseService {
   // ✅ Singleton instance
@@ -28,6 +29,7 @@ class FirebaseService {
   // ✅ Callback functions
   static Function(Map<String, dynamic>)? onNotificationTap;
   static Function(Map<String, dynamic>)? onNotificationReceived;
+  static Function(int)? onUnreadCountUpdated; // ✅ CALLBACK BARU UNTUK UPDATE BADGE
 
   // ✅ Initialize Firebase Services
   Future<void> initialize() async {
@@ -58,6 +60,10 @@ class FirebaseService {
       await _setupTopicSubscriptions();
       print('✅ Topic subscriptions setup completed');
 
+      // ✅ LOAD INBOX DATA AWAL
+      await _loadInitialInboxData();
+      print('✅ Initial inbox data loaded');
+
       print('🎉 FIREBASE SERVICES INITIALIZED SUCCESSFULLY!');
     } catch (e) {
       print('❌ ERROR Initializing Firebase Services: $e');
@@ -65,20 +71,175 @@ class FirebaseService {
     }
   }
 
-  // ✅ Setup Local Notifications - IMPROVED VERSION
+  // ✅ LOAD INITIAL INBOX DATA
+  Future<void> _loadInitialInboxData() async {
+    try {
+      print('📥 Loading initial inbox data...');
+      final result = await _apiService.getAllInbox();
+      
+      if (result['success'] == true) {
+        final inboxData = result['data'] ?? {};
+        final prefs = await SharedPreferences.getInstance();
+        
+        // Simpan data inbox
+        await prefs.setString('last_inbox_data', jsonEncode(inboxData));
+        
+        // Hitung unread count
+        final unreadCount = _calculateUnreadCount(inboxData);
+        await prefs.setInt('unread_notifications', unreadCount);
+        
+        print('✅ Initial inbox loaded: $unreadCount unread messages');
+        
+        // Trigger callback untuk update UI
+        if (onUnreadCountUpdated != null) {
+          onUnreadCountUpdated!(unreadCount);
+        }
+      } else {
+        print('❌ Failed to load initial inbox data');
+      }
+    } catch (e) {
+      print('❌ Error loading initial inbox data: $e');
+    }
+  }
+
+  // ✅ BACKGROUND MESSAGE HANDLER DENGAN GETINBOX SYNC
+  @pragma('vm:entry-point')
+  static Future<void> _backgroundMessageHandler(RemoteMessage message) async {
+    await Firebase.initializeApp();
+    
+    print('📱 BACKGROUND MESSAGE HANDLER TRIGGERED');
+    print('📨 Message Data: ${message.data}');
+    print('📢 Notification: ${message.notification?.title} - ${message.notification?.body}');
+    
+    try {
+      // ✅ PANGGIL GETINBOX API UNTUK SYNC DATA TERBARU
+      final ApiService apiService = ApiService();
+      final inboxResult = await apiService.getAllInbox();
+      
+      if (inboxResult['success'] == true) {
+        print('✅ Background: Inbox data synced successfully');
+        
+        // ✅ SIMPAN DATA INBOX KE LOCAL STORAGE
+        final prefs = await SharedPreferences.getInstance();
+        final inboxData = inboxResult['data'] ?? {};
+        await prefs.setString('last_inbox_data', jsonEncode(inboxData));
+        
+        // ✅ HITUNG UNREAD COUNT DAN SIMPAN
+        final unreadCount = _calculateUnreadCount(inboxData);
+        await prefs.setInt('unread_notifications', unreadCount);
+        
+        print('✅ Background: Unread count updated: $unreadCount');
+        
+        // ✅ KIRIM BROADCAST UNTUK UPDATE UI JIKA APP AKTIF
+        // Note: Di background tidak bisa update UI langsung
+        // Tapi data sudah tersimpan di SharedPreferences
+        
+      } else {
+        print('❌ Background: Failed to sync inbox data');
+      }
+      
+    } catch (e) {
+      print('❌ Background Handler Error: $e');
+    }
+    
+    // ✅ TAMPILKAN NOTIFIKASI SISTEM
+    if (message.notification != null) {
+      await _showLocalNotification(
+        title: message.notification!.title ?? 'KSMI Koperasi',
+        body: message.notification!.body ?? 'Pesan baru dari Koperasi KSMI',
+        data: message.data,
+      );
+    }
+  }
+
+  // ✅ CALCULATE UNREAD COUNT DARI INBOX DATA
+  static int _calculateUnreadCount(Map<String, dynamic> inboxData) {
+    try {
+      final inboxList = inboxData['inbox'] ?? [];
+      final unreadCount = inboxList.where((item) {
+        if (item is Map<String, dynamic>) {
+          final readStatus = item['read_status'] ?? item['is_read'] ?? '0';
+          return readStatus == '0' || readStatus == 0 || readStatus == false;
+        }
+        return false;
+      }).length;
+      
+      return unreadCount;
+    } catch (e) {
+      print('❌ Error calculating unread count: $e');
+      return 0;
+    }
+  }
+
+  // ✅ GET CURRENT UNREAD COUNT
+  Future<int> getUnreadNotificationsCount() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getInt('unread_notifications') ?? 0;
+    } catch (e) {
+      print('❌ Error getting unread count: $e');
+      return 0;
+    }
+  }
+
+  // ✅ REFRESH INBOX DATA MANUALLY
+  Future<Map<String, dynamic>> refreshInboxData() async {
+    try {
+      print('🔄 Manually refreshing inbox data...');
+      final result = await _apiService.getAllInbox();
+      
+      if (result['success'] == true) {
+        final inboxData = result['data'] ?? {};
+        final prefs = await SharedPreferences.getInstance();
+        
+        // Simpan data inbox
+        await prefs.setString('last_inbox_data', jsonEncode(inboxData));
+        
+        // Hitung unread count
+        final unreadCount = _calculateUnreadCount(inboxData);
+        await prefs.setInt('unread_notifications', unreadCount);
+        
+        print('✅ Inbox refreshed: $unreadCount unread messages');
+        
+        // Trigger callback untuk update UI
+        if (onUnreadCountUpdated != null) {
+          onUnreadCountUpdated!(unreadCount);
+        }
+        
+        return {
+          'success': true,
+          'unread_count': unreadCount,
+          'data': inboxData,
+          'message': 'Inbox data refreshed successfully'
+        };
+      } else {
+        return {
+          'success': false,
+          'message': result['message'] ?? 'Failed to refresh inbox'
+        };
+      }
+    } catch (e) {
+      print('❌ Error refreshing inbox data: $e');
+      return {
+        'success': false,
+        'message': 'Error: $e'
+      };
+    }
+  }
+
+  // ✅ Setup Local Notifications
   Future<void> _setupLocalNotifications() async {
     try {
-      // Android Notification Channel - FIXED: Use proper initialization
+      // Android Notification Channel
       const AndroidInitializationSettings androidInitializationSettings =
           AndroidInitializationSettings('@mipmap/ic_launcher');
 
-      // iOS Notification Settings - FIXED: Proper iOS configuration
+      // iOS Notification Settings
       const DarwinInitializationSettings iosInitializationSettings =
           DarwinInitializationSettings(
         requestAlertPermission: true,
         requestBadgePermission: true,
         requestSoundPermission: true,
-        // ✅ FIX: Add default present options
         defaultPresentAlert: true,
         defaultPresentBadge: true,
         defaultPresentSound: true,
@@ -91,21 +252,20 @@ class FirebaseService {
         iOS: iosInitializationSettings,
       );
 
-      // Initialize plugin - FIXED: Proper initialization
+      // Initialize plugin
       await _flutterLocalNotificationsPlugin.initialize(
         initializationSettings,
         onDidReceiveNotificationResponse: _onDidReceiveNotificationResponse,
-        // ✅ FIX: Add onDidReceiveBackgroundNotificationResponse for background
         onDidReceiveBackgroundNotificationResponse: _onDidReceiveBackgroundNotificationResponse,
       );
 
-      // Create notification channel for Android - FIXED: Proper channel setup
+      // Create notification channel for Android
       if (Platform.isAndroid) {
         const AndroidNotificationChannel channel = AndroidNotificationChannel(
           _channelId,
           _channelName,
           description: _channelDescription,
-          importance: Importance.high, // ✅ FIX: Changed from max to high
+          importance: Importance.high,
           playSound: true,
           showBadge: true,
           enableVibration: true,
@@ -123,7 +283,7 @@ class FirebaseService {
     }
   }
 
-  // ✅ Request Notification Permissions - IMPROVED
+  // ✅ Request Notification Permissions
   Future<void> _requestNotificationPermissions() async {
     try {
       NotificationSettings settings = await _firebaseMessaging.requestPermission(
@@ -132,32 +292,27 @@ class FirebaseService {
         badge: true,
         carPlay: false,
         criticalAlert: false,
-        provisional: false, // ✅ Set true jika mau permission provisional (iOS)
+        provisional: false,
         sound: true,
       );
 
       print('📱 Notification Permission Status: ${settings.authorizationStatus}');
 
-      // For iOS, additional setup - FIXED: Better iOS handling
+      // For iOS, additional setup
       if (Platform.isIOS) {
         await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-          alert: true, // Show alert when in foreground
-          badge: true, // Update app badge
-          sound: true, // Play sound
+          alert: true,
+          badge: true,
+          sound: true,
         );
       }
 
-      // For Android 13+, request POST_NOTIFICATIONS permission
-      if (Platform.isAndroid) {
-        // Android 13+ requires runtime permission
-        // flutter_local_notifications akan handle ini secara otomatis
-      }
     } catch (e) {
       print('❌ ERROR requesting notification permissions: $e');
     }
   }
 
-  // ✅ Setup FCM Token - IMPROVED
+  // ✅ Setup FCM Token
   Future<void> _setupFCMToken() async {
     try {
       // Get current token
@@ -171,7 +326,7 @@ class FirebaseService {
         print('⚠️ FCM token is null or empty');
       }
 
-      // Listen for token refresh - FIXED: Better error handling
+      // Listen for token refresh
       _firebaseMessaging.onTokenRefresh.listen((newToken) async {
         print('🔄 FCM Token Refreshed: $newToken');
         if (newToken.isNotEmpty) {
@@ -183,58 +338,43 @@ class FirebaseService {
     }
   }
 
-// ✅ PERBAIKAN: Save Token to Server dengan API integration
-Future<void> _saveTokenToServer(String token) async {
-  try {
-    print('💾 Saving FCM token to server: $token');
-    
-    // ✅ SIMPAN KE SHAREDPREFERENCES DULU
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('fcm_token', token);
-    
-    // ✅ COBA KIRIM KE SERVER JIKA USER SUDAH LOGIN
+  // ✅ Save Token to Server
+  Future<void> _saveTokenToServer(String token) async {
     try {
-      final currentUser = await _apiService.getCurrentUser();
-      if (currentUser != null && currentUser.isNotEmpty) {
-        final result = await _apiService.updateDeviceToken(token);
-        if (result['success'] == true) {
-          print('✅ FCM token saved to server successfully');
+      print('💾 Saving FCM token to server: $token');
+      
+      // ✅ SIMPAN KE SHAREDPREFERENCES DULU
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('fcm_token', token);
+      
+      // ✅ COBA KIRIM KE SERVER JIKA USER SUDAH LOGIN
+      try {
+        final currentUser = await _apiService.getCurrentUser();
+        if (currentUser != null && currentUser.isNotEmpty) {
+          final result = await _apiService.updateDeviceToken(token);
+          if (result['success'] == true) {
+            print('✅ FCM token saved to server successfully');
+          } else {
+            print('⚠️ FCM token saved locally but failed to send to server: ${result['message']}');
+          }
         } else {
-          print('⚠️ FCM token saved locally but failed to send to server: ${result['message']}');
+          print('⚠️ User not logged in, token saved locally only');
         }
-      } else {
-        print('⚠️ User not logged in, token saved locally only');
+      } catch (apiError) {
+        print('⚠️ API error, token saved locally: $apiError');
       }
-    } catch (apiError) {
-      print('⚠️ API error, token saved locally: $apiError');
+      
+    } catch (e) {
+      print('❌ ERROR saving FCM token: $e');
     }
-    
-  } catch (e) {
-    print('❌ ERROR saving FCM token: $e');
   }
-}
 
-// ✅ TAMBAHKAN METHOD PUBLIC INI DI FIREBASE_SERVICE.DART
-FlutterLocalNotificationsPlugin getLocalNotificationsPlugin() {
-  return _flutterLocalNotificationsPlugin;
-}
-
-// ✅ BUAT PUBLIC METHOD UNTUK TESTING (Opsional)
-Future<void> showTestNotification({
-  required String title,
-  required String body,
-  Map<String, dynamic> data = const {},
-}) async {
-  await _showLocalNotification(
-    title: title,
-    body: body,
-    data: data,
-  );
-}
-
-  // ✅ Setup Message Handlers - IMPROVED
+  // ✅ Setup Message Handlers DENGAN BACKGROUND SYNC
   Future<void> _setupMessageHandlers() async {
     try {
+      // ✅ SETUP BACKGROUND HANDLER (PENTING!)
+      FirebaseMessaging.onBackgroundMessage(_backgroundMessageHandler);
+
       // Handle messages when app is in FOREGROUND
       FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
 
@@ -244,29 +384,49 @@ Future<void> showTestNotification({
       // Handle when app is in BACKGROUND and opened via notification
       FirebaseMessaging.onMessageOpenedApp.listen(_handleBackgroundMessage);
 
-      print('✅ Message handlers registered');
+      print('✅ Message handlers registered with background sync');
     } catch (e) {
       print('❌ ERROR setting up message handlers: $e');
     }
   }
 
-  // ✅ Setup Topic Subscriptions
-  Future<void> _setupTopicSubscriptions() async {
-    try {
-      // Subscribe to general topics
-      await _firebaseMessaging.subscribeToTopic('all_users');
-      await _firebaseMessaging.subscribeToTopic('koperasi_ksmi');
-      
-      print('✅ Subscribed to topics: all_users, koperasi_ksmi');
-    } catch (e) {
-      print('❌ ERROR setting up topic subscriptions: $e');
-    }
-  }
-
-  // ✅ Handle Foreground Messages
+  // ✅ Handle Foreground Messages DENGAN REAL-TIME SYNC
   static void _handleForegroundMessage(RemoteMessage message) {
     print('📱 FOREGROUND MESSAGE RECEIVED');
     _processMessage(message, isForeground: true);
+    
+    // ✅ REAL-TIME SYNC INBOX DATA
+    _syncInboxDataInForeground();
+  }
+
+  // ✅ REAL-TIME SYNC INBOX DATA DI FOREGROUND
+  static void _syncInboxDataInForeground() {
+    // Gunakan Future untuk tidak blocking main thread
+    Future.microtask(() async {
+      try {
+        final ApiService apiService = ApiService();
+        final result = await apiService.getAllInbox();
+        
+        if (result['success'] == true) {
+          final inboxData = result['data'] ?? {};
+          final prefs = await SharedPreferences.getInstance();
+          
+          await prefs.setString('last_inbox_data', jsonEncode(inboxData));
+          
+          final unreadCount = _calculateUnreadCount(inboxData);
+          await prefs.setInt('unread_notifications', unreadCount);
+          
+          print('✅ Foreground sync: Unread count updated: $unreadCount');
+          
+          // Trigger UI update via callback
+          if (onUnreadCountUpdated != null) {
+            onUnreadCountUpdated!(unreadCount);
+          }
+        }
+      } catch (e) {
+        print('❌ Foreground sync error: $e');
+      }
+    });
   }
 
   // ✅ Handle Background Messages
@@ -283,7 +443,7 @@ Future<void> showTestNotification({
     }
   }
 
-  // ✅ Process Message Data - IMPROVED
+  // ✅ Process Message Data
   static void _processMessage(RemoteMessage message, {required bool isForeground}) {
     try {
       final notification = message.notification;
@@ -318,7 +478,7 @@ Future<void> showTestNotification({
     }
   }
 
-  // ✅ Show Local Notification - IMPROVED
+  // ✅ Show Local Notification
   static Future<void> _showLocalNotification({
     required String title,
     required String body,
@@ -359,7 +519,7 @@ Future<void> showTestNotification({
         title,
         body,
         platformChannelSpecifics,
-        payload: _convertMapToJson(data), // ✅ FIX: Convert map to JSON string
+        payload: _convertMapToJson(data),
       );
 
       print('📲 Local notification shown: $title (ID: $notificationId)');
@@ -371,9 +531,7 @@ Future<void> showTestNotification({
   // ✅ Convert Map to JSON String
   static String _convertMapToJson(Map<String, dynamic> data) {
     try {
-      return data.toString(); // Simple conversion
-      // Atau gunakan jsonEncode jika butuh proper JSON
-      // return jsonEncode(data);
+      return data.toString();
     } catch (e) {
       return '{}';
     }
@@ -389,7 +547,7 @@ Future<void> showTestNotification({
     _handleNotificationTap(response);
   }
 
-  // ✅ Handle Notification Tap - IMPROVED
+  // ✅ Handle Notification Tap
   static void _handleNotificationTap(NotificationResponse response) {
     try {
       print('👆 NOTIFICATION TAPPED: ${response.payload}');
@@ -405,7 +563,7 @@ Future<void> showTestNotification({
           onNotificationTap!(payload);
         }
         
-        // You can add navigation logic here based on payload
+        // Navigation logic
         _handleNavigation(payload);
       }
     } catch (e) {
@@ -415,30 +573,20 @@ Future<void> showTestNotification({
 
   // ✅ Handle Navigation Based on Payload
   static void _handleNavigation(Map<String, dynamic> payload) {
-    // Example navigation logic based on payload
     final String? type = payload['type'];
     final String? screen = payload['screen'];
     
     print('🧭 Navigation - Type: $type, Screen: $screen');
     
-    // TODO: Implement your navigation logic here
-    // Example:
-    // if (screen == 'inbox') {
-    //   Navigator.pushNamed(context, '/inbox');
-    // } else if (screen == 'transaction') {
-    //   Navigator.pushNamed(context, '/transaction', arguments: payload);
-    // }
+    // TODO: Implement navigation logic based on your app structure
   }
 
-  // ✅ Parse Payload String to Map - IMPROVED
+  // ✅ Parse Payload String to Map
   static Map<String, dynamic> _parsePayload(String payload) {
     try {
-      // Simple parsing - adjust based on your payload format
       if (payload.startsWith('{') && payload.endsWith('}')) {
-        // If it's JSON-like string
         return {'raw_payload': payload};
       } else {
-        // Simple key-value parsing
         final Map<String, dynamic> result = {};
         final pairs = payload.split(',');
         for (final pair in pairs) {
@@ -452,6 +600,19 @@ Future<void> showTestNotification({
     } catch (e) {
       print('❌ ERROR parsing payload: $e');
       return {'error': 'Failed to parse payload', 'raw': payload};
+    }
+  }
+
+  // ✅ Setup Topic Subscriptions
+  Future<void> _setupTopicSubscriptions() async {
+    try {
+      // Subscribe to general topics
+      await _firebaseMessaging.subscribeToTopic('all_users');
+      await _firebaseMessaging.subscribeToTopic('koperasi_ksmi');
+      
+      print('✅ Subscribed to topics: all_users, koperasi_ksmi');
+    } catch (e) {
+      print('❌ ERROR setting up topic subscriptions: $e');
     }
   }
 
@@ -520,9 +681,26 @@ Future<void> showTestNotification({
     return null;
   }
 
-  // ✅ DISPOSE (cleanup)
+  // ✅ GET LOCAL NOTIFICATIONS PLUGIN
+  FlutterLocalNotificationsPlugin getLocalNotificationsPlugin() {
+    return _flutterLocalNotificationsPlugin;
+  }
+
+  // ✅ TEST NOTIFICATION
+  Future<void> showTestNotification({
+    required String title,
+    required String body,
+    Map<String, dynamic> data = const {},
+  }) async {
+    await _showLocalNotification(
+      title: title,
+      body: body,
+      data: data,
+    );
+  }
+
+  // ✅ DISPOSE
   void dispose() {
-    // Cleanup if needed
     print('🧹 Firebase Service disposed');
   }
 }

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
+import 'package:flutter/services.dart';
 import '../services/temporary_storage_service.dart';
 import '../services/file_validator.dart';
 import 'edit_profile_screen.dart';
@@ -63,13 +64,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isRefreshing = false;
   String? _uploadError;
 
-  @override
-  void initState() {
-    super.initState();
-    _currentUser = Map<String, dynamic>.from(widget.user);
+@override
+void initState() {
+  super.initState();
+  _currentUser = Map<String, dynamic>.from(widget.user);
+  
+  // ✅ LOAD DATA SEGERA SETELAH INIT
+  WidgetsBinding.instance.addPostFrameCallback((_) {
     _initializeStorage();
     _loadCurrentUser();
-  }
+  });
+}
 
   // ✅ INITIALIZE TEMPORARY STORAGE
   Future<void> _initializeStorage() async {
@@ -78,70 +83,245 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _storageService.printDebugInfo();
   }
 
-  // ✅ LOAD CURRENT USER DENGAN ENDPOINT YANG BENAR
-  Future<void> _loadCurrentUser() async {
-    try {
+  // ✅ METHOD BARU: LOAD USER INFO DARI SERVER (GET USERINFO API)
+Future<void> _loadUserInfoFromServer() async {
+  try {
+    print('🚀 Loading user info from getUserInfo API...');
+    
+    final userInfoResult = await _apiService.getUserInfo();
+    
+    if (userInfoResult['success'] == true && userInfoResult['data'] != null) {
+      final userInfoData = userInfoResult['data'];
+      
+      print('✅ getUserInfo API success!');
+      print('👤 Data received:');
+      print('   - username: ${userInfoData['username']}');
+      print('   - nama: ${userInfoData['nama']}');
+      print('   - email: ${userInfoData['email']}');
+      print('   - alamat: ${userInfoData['alamat']}');
+      print('   - foto_ktp: ${userInfoData['foto_ktp']}');
+      print('   - foto_kk: ${userInfoData['foto_kk']}');
+      print('   - foto_diri: ${userInfoData['foto_diri']}');
+      print('   - foto_bukti: ${userInfoData['foto_bukti']}');
+      
+      // ✅ UPDATE CURRENT USER DENGAN DATA DARI getUserInfo
+      if (mounted) {
+        setState(() {
+          _currentUser = {
+            ..._currentUser, // Pertahankan data lama
+            ...userInfoData,  // Update dengan data baru dari getUserInfo
+          };
+        });
+      }
+      
+      print('✅ User info updated from getUserInfo API');
+      return;
+    } else {
+      print('❌ getUserInfo API failed: ${userInfoResult['message']}');
+    }
+  } catch (e) {
+    print('❌ Error loading user info from server: $e');
+  }
+}
+
+// ✅ FIX: LOAD CURRENT USER DENGAN DATA SUPER LENGKAP
+Future<void> _loadCurrentUser() async {
+  try {
+    if (mounted) {
       setState(() => _isRefreshing = true);
+    }
+    
+    print('🔄 Loading SUPER COMPLETE user data...');
+    
+    // ✅ PRIORITAS 1: AMBIL DATA SUPER LENGKAP
+    final superResult = await _apiService.getCompleteUserInfo();
+    
+    if (superResult['success'] == true && superResult['data'] != null) {
+      final superData = superResult['data'];
       
-      // ✅ AMBIL DATA TERBARU DARI API
-      final profileResult = await _apiService.getUserProfile();
-      print('📡 Profile API Result: ${profileResult['success']}');
+      if (mounted) {
+        setState(() {
+          _currentUser = superData;
+        });
+      }
       
-      if (profileResult['success'] == true && profileResult['data'] != null) {
-        setState(() {
-          _currentUser = profileResult['data'];
-        });
-        print('✅ Profile data updated from API');
-        
-        // ✅ DEBUG: TAMPILKAN STATUS DOKUMEN
-        _debugDocumentStatus();
-      } else {
-        // ✅ JIKA API GAGAL, GUNAKAN DATA LOKAL
-        final user = await _apiService.getCurrentUser();
-        if (user != null) {
-          setState(() {
-            _currentUser = user;
-          });
-          print('⚠️ Using local user data (API failed: ${profileResult['message']})');
-          _debugDocumentStatus();
-        } else {
-          print('❌ No user data available');
-        }
-      }
-    } catch (e) {
-      print('❌ Error loading current user: $e');
-      // ✅ FALLBACK KE DATA LOKAL JIKA ERROR
-      final user = await _apiService.getCurrentUser();
-      if (user != null) {
-        setState(() {
-          _currentUser = user;
-        });
-        print('🔄 Fallback to local user data');
-        _debugDocumentStatus();
-      }
-    } finally {
+      print('🎉 SUPER USER DATA LOADED!');
+      _debugSuperUserData(superData);
+      return;
+    }
+    
+    // ✅ FALLBACK KE METHOD LAMA
+    await _loadUserInfoFromServer();
+    // ... rest of existing code
+    
+  } catch (e) {
+    print('❌ Error loading current user: $e');
+    await _loadLocalDataFallback();
+  } finally {
+    if (mounted) {
       setState(() {
         _isLoading = false;
         _isRefreshing = false;
       });
     }
   }
+}
 
-// ✅ DEBUG: TAMPILKAN STATUS DOKUMEN - DENGAN LOGIC YANG SAMA
-void _debugDocumentStatus() {
-  print('🐛 === DOCUMENT STATUS DEBUG ===');
-  print('📄 KTP Status: ${_currentUser['foto_ktp'] ?? 'NULL'}');
-  print('📄 KK Status: ${_currentUser['foto_kk'] ?? 'NULL'}');
-  print('📄 Foto Diri Status: ${_currentUser['foto_diri'] ?? 'NULL'}');
+// ✅ DEBUG SUPER USER DATA
+void _debugSuperUserData(Map<String, dynamic> userData) {
+  print('🐛 === SUPER USER DATA DEBUG ===');
   
-  // ✅ GUNAKAN METHOD YANG SAMA UNTUK CEK STATUS
-  final ktpUploaded = _isDocumentUploadedToServer('ktp');
-  final kkUploaded = _isDocumentUploadedToServer('kk');
-  final diriUploaded = _isDocumentUploadedToServer('diri');
+  print('🔑 SYSTEM INFO:');
+  print('   - user_id: ${userData['user_id']}');
+  print('   - id: ${userData['id']}');
+  print('   - user_key: ${userData['user_key']}');
+  print('   - token: ${userData['token']}');
+  print('   - status_user: ${userData['status_user']}');
   
-  print('✅ KTP Uploaded to Server: $ktpUploaded');
-  print('✅ KK Uploaded to Server: $kkUploaded');
-  print('✅ Foto Diri Uploaded to Server: $diriUploaded');
+  print('👤 BASIC INFO:');
+  print('   - username: ${userData['username']}');
+  print('   - nama: ${userData['nama']}');
+  print('   - email: ${userData['email']}');
+  print('   - telp: ${userData['telp']}');
+  
+  print('📄 DOCUMENT INFO:');
+  print('   - foto_ktp: ${userData['foto_ktp']}');
+  print('   - foto_kk: ${userData['foto_kk']}');
+  print('   - foto_diri: ${userData['foto_diri']}');
+  print('   - foto_bukti: ${userData['foto_bukti']}');
+  
+  print('🏠 ADDRESS INFO:');
+  print('   - alamat: ${userData['alamat']}');
+  print('   - ktp_alamat: ${userData['ktp_alamat']}');
+  print('   - domisili_alamat: ${userData['domisili_alamat']}');
+  
+  print('📋 PERSONAL INFO:');
+  print('   - job: ${userData['job']}');
+  print('   - pekerjaan: ${userData['pekerjaan']}');
+  print('   - birth_place: ${userData['birth_place']}');
+  print('   - tempat_lahir: ${userData['tempat_lahir']}');
+  
+  print('🎯 TOTAL KEYS: ${userData.keys.length}');
+  print('📋 ALL KEYS: ${userData.keys.toList()}');
+  print('🐛 === DEBUG END ===');
+}
+
+// ✅ HELPER: CEK APAKAH DATA SUDAH LENGKAP
+bool _hasCompleteData() {
+  final hasBasicInfo = _currentUser['username'] != null || 
+                      _currentUser['nama'] != null || 
+                      _currentUser['email'] != null;
+  
+  final hasDocumentInfo = _currentUser['foto_ktp'] != null || 
+                         _currentUser['foto_kk'] != null || 
+                         _currentUser['foto_diri'] != null;
+  
+  return hasBasicInfo && hasDocumentInfo;
+}
+
+// ✅ FALLBACK: LOAD DATA DARI DASHBOARD
+Future<void> _loadFromDashboardFallback() async {
+  try {
+    print('🔄 Trying dashboard fallback...');
+    final dashboardResult = await _apiService.getDashboardDataRobust();
+    
+    if (dashboardResult['success'] == true && dashboardResult['data'] != null) {
+      final dashboardData = dashboardResult['data'];
+      final profileData = dashboardData['profile'] ?? {};
+      
+      if (profileData.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _currentUser = {..._currentUser, ...profileData};
+          });
+        }
+        print('✅ Profile data updated from dashboard fallback');
+      }
+    }
+  } catch (e) {
+    print('❌ Dashboard fallback failed: $e');
+    await _loadLocalDataFallback();
+  }
+}
+
+// ✅ FALLBACK: LOAD DATA LOKAL
+Future<void> _loadLocalDataFallback() async {
+  try {
+    print('🔄 Trying local data fallback...');
+    final user = await _apiService.getCurrentUser();
+    if (user != null) {
+      if (mounted) {
+        setState(() {
+          _currentUser = user;
+        });
+      }
+      print('✅ Using local user data');
+    } else {
+      print('❌ No local user data available');
+    }
+  } catch (e) {
+    print('❌ Local data fallback failed: $e');
+  }
+}
+
+// ✅ AUTO-REFRESH SETELAH EDIT PROFILE
+void _onProfileUpdated(Map<String, dynamic> updatedData) {
+  print('🔄 Profile updated callback received');
+  print('📦 Updated data keys: ${updatedData.keys}');
+  
+  setState(() {
+    // ✅ UPDATE CURRENT USER DENGAN DATA BARU
+    _currentUser = {..._currentUser, ...updatedData};
+  });
+  
+  // ✅ REFRESH DATA DARI SERVER UNTUK MEMASTIKAN
+  _refreshProfile();
+  
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Profile berhasil diperbarui'),
+      backgroundColor: Colors.green,
+      duration: Duration(seconds: 2),
+    ),
+  );
+}
+
+// ✅ UPDATE: DEBUG METHOD UNTUK TAMPILKAN DATA DARI getUserInfo
+void _debugAllUserData(Map<String, dynamic> userData) {
+  print('🐛 === COMPLETE USER DATA DEBUG (FROM getUserInfo) ===');
+  
+  print('👤 Basic Info from getUserInfo:');
+  print('   - username: ${userData['username']}');
+  print('   - nama: ${userData['nama']}');
+  print('   - email: ${userData['email']}');
+  print('   - telp: ${userData['telp']}');
+  print('   - alamat: ${userData['alamat']}');
+  
+  print('📄 Document Status from getUserInfo:');
+  print('   - foto_ktp: ${userData['foto_ktp']}');
+  print('   - foto_kk: ${userData['foto_kk']}');
+  print('   - foto_diri: ${userData['foto_diri']}');
+  print('   - foto_bukti: ${userData['foto_bukti']}');
+  
+  print('🔑 System Info:');
+  print('   - user_id: ${userData['user_id']}');
+  print('   - id: ${userData['id']}');
+  print('   - user_key: ${userData['user_key']}');
+  print('   - status_user: ${userData['status_user']}');
+  
+  print('🏠 Address Info:');
+  print('   - ktp_alamat: ${userData['ktp_alamat']}');
+  print('   - ktp_rt: ${userData['ktp_rt']}');
+  print('   - ktp_rw: ${userData['ktp_rw']}');
+  print('   - ktp_id_regency: ${userData['ktp_id_regency']}');
+  print('   - domisili_alamat: ${userData['domisili_alamat']}');
+  
+  print('📋 Personal Info:');
+  print('   - job: ${userData['job']}');
+  print('   - pekerjaan: ${userData['pekerjaan']}');
+  print('   - birth_place: ${userData['birth_place']}');
+  print('   - tempatLahir: ${userData['tempatLahir']}');
+  
   print('🐛 === DEBUG END ===');
 }
 
@@ -1016,14 +1196,30 @@ String? _getDocumentServerUrl(String type) {
     }
   }
 
-  // ✅ REFRESH PROFILE DATA
-  Future<void> _refreshProfile() async {
-    setState(() => _isRefreshing = true);
+// ✅ UPDATE: REFRESH PROFILE YANG LEBIH ROBUST DENGAN getUserInfo
+Future<void> _refreshProfile() async {
+  try {
+    if (mounted) {
+      setState(() {
+        _isRefreshing = true;
+        _uploadError = null;
+      });
+    }
+    
+    print('🔄 Manual refresh triggered with getUserInfo...');
+    
+    // ✅ LOAD DATA TERBARU DARI getUserInfo API
+    await _loadUserInfoFromServer();
+    
+    // ✅ LOAD DATA TAMBAHAN DARI SUMBER LAIN
     await _loadCurrentUser();
+    
+    // ✅ PANGGIL CALLBACK JIKA ADA
     widget.onProfileUpdated?.call();
     
     if (mounted) {
       setState(() => _isRefreshing = false);
+      
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Profile berhasil diperbarui'),
@@ -1032,7 +1228,23 @@ String? _getDocumentServerUrl(String type) {
         ),
       );
     }
+    
+  } catch (e) {
+    print('❌ Refresh error: $e');
+    if (mounted) {
+      setState(() => _isRefreshing = false);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal memperbarui profile: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
+}
+
 
   // ✅ BUILD PROFILE HEADER
   Widget _buildProfileHeader() {
@@ -1305,15 +1517,14 @@ String? _getDocumentServerUrl(String type) {
     );
   }
 
-  // ✅ HELPER: COUNT UPLOADED DOCUMENTS - HANYA 3 FILE
-// ✅ HELPER: COUNT UPLOADED DOCUMENTS - GUNAKAN LOGIC YANG SAMA
-int _countUploadedDocuments() {
-  int count = 0;
-  if (_isDocumentUploadedToServer('ktp')) count++;
-  if (_isDocumentUploadedToServer('kk')) count++;
-  if (_isDocumentUploadedToServer('diri')) count++;
-  return count;
-}
+  // ✅ HELPER: COUNT UPLOADED DOCUMENTS - GUNAKAN LOGIC YANG SAMA
+  int _countUploadedDocuments() {
+    int count = 0;
+    if (_isDocumentUploadedToServer('ktp')) count++;
+    if (_isDocumentUploadedToServer('kk')) count++;
+    if (_isDocumentUploadedToServer('diri')) count++;
+    return count;
+  }
 
   // ✅ BUILD PERSONAL INFO SECTION
   Widget _buildPersonalInfoSection() {
@@ -1432,7 +1643,7 @@ int _countUploadedDocuments() {
     );
   }
 
-  // ✅ BUILD COOPERATIVE INFO SECTION
+  // ✅ BUILD COOPERATIVE INFO SECTION DENGAN USER KEY
   Widget _buildCooperativeInfoSection() {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1460,11 +1671,177 @@ int _countUploadedDocuments() {
             _buildInfoTile(Icons.calendar_today, 'Bergabung Sejak', _getTahunGabung()),
             _buildInfoTile(Icons.verified, 'Status Keanggotaan', 'Aktif'),
             _buildInfoTile(Icons.fingerprint, 'ID Member', _currentUser['id']?.toString() ?? _currentUser['user_id']?.toString() ?? '-'),
+            // ✅ TAMBAHKAN USER KEY DI SINI - FIXED
+            _buildInfoTile(Icons.vpn_key, 'User Key', _getUserKeyDisplay(), maxLines: 2),
           ],
         ),
       ),
     );
   }
+
+// ✅ BUILD SUPER API ACCESS SECTION
+Widget _buildApiAccessSection() {
+  // ✅ AMBIL DATA DARI SEMUA SUMBER YANG MUNGKIN
+  final userKey = _currentUser['user_key']?.toString() ?? 
+                 _currentUser['token']?.toString() ?? 
+                 'Tidak tersedia';
+  
+  final userId = _currentUser['user_id']?.toString() ?? 
+                _currentUser['id']?.toString() ?? 
+                'Tidak tersedia';
+  
+  final username = _currentUser['username']?.toString() ?? 'Tidak tersedia';
+
+  return Card(
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    elevation: 2,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.api, color: Colors.purple[700]),
+              const SizedBox(width: 8),
+              const Text(
+                'API Access Information',
+                style: TextStyle(
+                  fontSize: 18, 
+                  fontWeight: FontWeight.bold
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 20),
+          
+          // ✅ SYSTEM INFO
+          _buildInfoTile(Icons.vpn_key, 'User Key', 
+            userKey != 'Tidak tersedia' ? _getUserKeyDisplay(userKey) : 'Tidak tersedia', 
+            maxLines: 2),
+          
+          _buildInfoTile(Icons.fingerprint, 'User ID', userId, maxLines: 1),
+          _buildInfoTile(Icons.person, 'Username', username, maxLines: 1),
+          
+          const SizedBox(height: 16),
+          
+          if (userKey != 'Tidak tersedia') ...[
+            Text(
+              'Gunakan data berikut untuk testing API di Postman:',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 12),
+            
+            // ✅ COPY USER KEY BUTTON
+            SizedBox(
+              width: double.infinity,
+              height: 45,
+              child: ElevatedButton.icon(
+                onPressed: () => _copyUserKeyToClipboard(userKey),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple[700],
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.content_copy, size: 20),
+                label: const Text(
+                  'Copy User Key',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            
+            const SizedBox(height: 12),
+            
+            // ✅ CURL COMMAND EXAMPLE
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.purple[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.purple[200]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Contoh curl command untuk getInbox:',
+                    style: TextStyle(
+                      color: Colors.purple[700],
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    'curl -X POST "http://demo.bsdeveloper.id/api/transaction/getAllinbox" \\\\\n'
+                    '  -H "DEVICE-ID: 12341231313131" \\\\\n'
+                    '  -H "x-api-key: $userKey" \\\\\n'
+                    '  -H "Content-Type: application/x-www-form-urlencoded" \\\\\n'
+                    '  -d ""',
+                    style: TextStyle(
+                      color: Colors.purple[700],
+                      fontSize: 10,
+                      fontFamily: 'Monospace',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'User ID: $userId | Username: $username',
+                    style: TextStyle(
+                      color: Colors.purple[600],
+                      fontSize: 10,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            _buildInfoTile(Icons.vpn_key, 'User Key', 'Tidak tersedia', maxLines: 1),
+            const SizedBox(height: 8),
+            Text(
+              'User key tidak tersedia. Silakan refresh profile.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: _refreshProfile,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh Data'),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
+// ✅ FIX: FUNCTION UNTUK DISPLAY USER KEY
+String _getUserKeyDisplay([String? userKey]) {
+  // Jika ada parameter, gunakan parameter
+  if (userKey != null && userKey.isNotEmpty) {
+    return userKey.length > 20 ? '${userKey.substring(0, 20)}...' : userKey;
+  }
+  
+  // Jika tidak ada parameter, ambil dari _currentUser
+  final keyFromUser = _currentUser['user_key']?.toString() ?? 
+                     _currentUser['token']?.toString() ?? 
+                     'Tidak tersedia';
+  
+  return keyFromUser.length > 20 ? '${keyFromUser.substring(0, 20)}...' : keyFromUser;
+}
 
   // ✅ BUILD ACTION BUTTONS
   Widget _buildActionButtons() {
@@ -1528,43 +1905,45 @@ int _countUploadedDocuments() {
     );
   }
 
-  // ✅ HELPER: BUILD INFO TILE
-  Widget _buildInfoTile(IconData icon, String label, String value, {int maxLines = 1}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: Colors.green[600], size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
+// ✅ HELPER: BUILD INFO TILE YANG LEBIH SAFE
+Widget _buildInfoTile(IconData icon, String label, String? value, {int maxLines = 1}) {
+  final displayValue = value ?? '-';
+  
+  return Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: Colors.green[600], size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: maxLines,
-                  overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                displayValue,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
                 ),
-              ],
-            ),
+                maxLines: maxLines,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
 
   // ✅ HELPER: BUILD PROGRESS STEP
   Widget _buildProgressStep(int step, String label, bool isCompleted) {
@@ -1603,17 +1982,22 @@ int _countUploadedDocuments() {
     );
   }
 
-  // ✅ HELPER: GET PROFILE IMAGE
-  ImageProvider? _getProfileImage() {
+// ✅ HELPER: GET PROFILE IMAGE YANG LEBIH SAFE
+ImageProvider? _getProfileImage() {
+  try {
     final fotoDiri = _currentUser['foto_diri'];
     if (fotoDiri != null && 
         fotoDiri.toString().isNotEmpty && 
         fotoDiri != 'uploaded' &&
         fotoDiri.toString().startsWith('http')) {
-      return NetworkImage(fotoDiri);
+      return NetworkImage(fotoDiri.toString());
     }
     return null;
+  } catch (e) {
+    print('❌ Error loading profile image: $e');
+    return null;
   }
+}
 
   // ✅ HELPER: GET PROFILE PLACEHOLDER
   Widget? _getProfilePlaceholder() {
@@ -1654,128 +2038,218 @@ int _countUploadedDocuments() {
     return now.year.toString();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Profil Saya'),
-          backgroundColor: Colors.green[800],
-          foregroundColor: Colors.white,
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(70.0),
-        child: AppBar(
-          title: const Padding(
-            padding: EdgeInsets.only(bottom: 10.0),
-            child: Text(
-              'Profil Saya',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-          ),
-          backgroundColor: Colors.green[800],
-          foregroundColor: Colors.white,
-          elevation: 8,
-          shadowColor: Colors.green.withOpacity(0.5),
-          shape: NotchedAppBarShape(),
-          automaticallyImplyLeading: false,
-          centerTitle: true,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _isRefreshing ? null : _refreshProfile,
-              tooltip: 'Refresh Profile',
-            ),
-          ],
-        ),
+  // ✅ COPY USER KEY TO CLIPBOARD
+  void _copyUserKeyToClipboard(String userKey) {
+    // Import 'package:flutter/services.dart' di atas
+    Clipboard.setData(ClipboardData(text: userKey));
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('User key berhasil disalin ke clipboard!'),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 2),
       ),
-      body: RefreshIndicator(
-        onRefresh: _refreshProfile,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              // ✅ ERROR MESSAGE
-              if (_uploadError != null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.red[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red[200]!),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.error_outline, color: Colors.red[700], size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _uploadError!,
-                          style: TextStyle(
-                            color: Colors.red[700],
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.close, color: Colors.red[700], size: 16),
-                        onPressed: () => setState(() => _uploadError = null),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+    );
+    
+    print('📋 User key copied to clipboard: ${userKey.substring(0, 10)}...');
+  }
 
-              // ✅ PROFILE HEADER
-              _buildProfileHeader(),
-
-              const SizedBox(height: 30),
-
-              // ✅ DOKUMEN SECTION (HANYA 3 FILE YANG DITAMPILKAN)
-              _buildDocumentsSection(),
-
-              const SizedBox(height: 16),
-
-              // ✅ INFORMASI PRIBADI
-              _buildPersonalInfoSection(),
-
-              const SizedBox(height: 16),
-
-              // ✅ ALAMAT KTP
-              _buildKtpAddressSection(),
-
-              const SizedBox(height: 16),
-
-              // ✅ ALAMAT DOMISILI
-              _buildDomisiliAddressSection(),
-
-              const SizedBox(height: 16),
-
-              // ✅ INFORMASI KOPERASI
-              _buildCooperativeInfoSection(),
-
-              const SizedBox(height: 30),
-
-              // ✅ ACTION BUTTONS
-              _buildActionButtons(),
-
-              const SizedBox(height: 20),
-            ],
+@override
+Widget build(BuildContext context) {
+  if (_isLoading) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Profil Saya'),
+        backgroundColor: Colors.green[800],
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshProfile,
+            tooltip: 'Refresh Profile',
           ),
+        ],
+      ),
+      body: const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Memuat data profile...'),
+          ],
         ),
       ),
     );
   }
+
+  // ✅ CEK JIKA DATA USER MASIH KOSONG
+  final hasUserData = _currentUser.isNotEmpty && 
+                      (_currentUser['username'] != null || 
+                       _currentUser['nama'] != null);
+
+  if (!hasUserData) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Profil Saya'),
+        backgroundColor: Colors.green[800],
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshProfile,
+            tooltip: 'Refresh Profile',
+          ),
+        ],
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            const Text(
+              'Data profile tidak tersedia',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Silakan refresh atau login ulang',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _refreshProfile,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh Data'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  return Scaffold(
+    appBar: PreferredSize(
+      preferredSize: const Size.fromHeight(70.0),
+      child: AppBar(
+        title: const Padding(
+          padding: EdgeInsets.only(bottom: 10.0),
+          child: Text(
+            'Profil Saya',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+        ),
+        backgroundColor: Colors.green[800],
+        foregroundColor: Colors.white,
+        elevation: 8,
+        shadowColor: Colors.green.withOpacity(0.5),
+        shape: NotchedAppBarShape(),
+        automaticallyImplyLeading: false,
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: _isRefreshing 
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.refresh),
+            onPressed: _isRefreshing ? null : _refreshProfile,
+            tooltip: 'Refresh Profile',
+          ),
+        ],
+      ),
+    ),
+    body: RefreshIndicator(
+      onRefresh: _refreshProfile,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            // ✅ ERROR MESSAGE
+            if (_uploadError != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.red[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.red[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _uploadError!,
+                        style: TextStyle(
+                          color: Colors.red[700],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.close, color: Colors.red[700], size: 16),
+                      onPressed: () => setState(() => _uploadError = null),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            // ✅ PROFILE HEADER
+            _buildProfileHeader(),
+
+            const SizedBox(height: 30),
+
+            // ✅ DOKUMEN SECTION
+            _buildDocumentsSection(),
+
+            const SizedBox(height: 16),
+
+            // ✅ INFORMASI PRIBADI
+            _buildPersonalInfoSection(),
+
+            const SizedBox(height: 16),
+
+            // ✅ ALAMAT KTP
+            _buildKtpAddressSection(),
+
+            const SizedBox(height: 16),
+
+            // ✅ ALAMAT DOMISILI
+            _buildDomisiliAddressSection(),
+
+            const SizedBox(height: 16),
+
+            // ✅ INFORMASI KOPERASI (dengan user key)
+            _buildCooperativeInfoSection(),
+
+            const SizedBox(height: 16),
+
+            // ✅ API ACCESS SECTION BARU
+            _buildApiAccessSection(),
+
+            const SizedBox(height: 30),
+
+            // ✅ ACTION BUTTONS
+            _buildActionButtons(),
+
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    ),
+  );
+}
 }

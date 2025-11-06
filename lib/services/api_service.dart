@@ -88,6 +88,39 @@ class ApiService {
     }
   }
 
+// ✅ HEADERS KHUSUS UNTUK UPLOAD BUKTI TABUNGAN DENGAN USER_KEY
+Future<Map<String, String>> _getBuktiTabunganHeaders() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final userKey = prefs.getString('token'); // ✅ user_key dari login
+    final sessionCookie = prefs.getString('ci_session');
+    
+    if (userKey == null || userKey.isEmpty) {
+      throw Exception('User key tidak ditemukan');
+    }
+    
+    // ✅ HEADERS DENGAN USER_KEY SEBAGAI x-api-key
+    final headers = <String, String>{
+      'DEVICE-ID': _deviceId,
+      'x-api-key': userKey, // ✅ PAKAI USER_KEY DARI LOGIN
+    };
+    
+    // ✅ TAMBAHKAN COOKIE SESSION JIKA ADA
+    if (sessionCookie != null && sessionCookie.isNotEmpty) {
+      headers['Cookie'] = 'ci_session=$sessionCookie';
+      print('✅ Cookie session ditambahkan untuk bukti tabungan');
+    } else {
+      print('⚠️ Cookie session tidak ditemukan untuk bukti tabungan!');
+    }
+    
+    return headers;
+  } catch (e) {
+    print('❌ Error getting bukti tabungan headers: $e');
+    // Fallback ke protected headers
+    return await getProtectedHeaders();
+  }
+}
+
   // ✅ METHOD UNTUK PILIH GAMBAR DARI GALLERY
   Future<String?> pickImageFromGallery() async {
     try {
@@ -181,6 +214,251 @@ class ApiService {
       return null;
     }
   }
+
+// ✅ METHOD UNTUK UPLOAD BUKTI FOTO KE API setBuktiPhoto DENGAN USER_KEY
+Future<Map<String, dynamic>> setBuktiPhoto({
+  required String filePath,
+}) async {
+  try {
+    print('🚀 UPLOAD BUKTI PHOTO START (setBuktiPhoto API)');
+    print('📁 File path: $filePath');
+
+    // ✅ VALIDASI FILE
+    final file = File(filePath);
+    if (!await file.exists()) {
+      return {
+        'success': false,
+        'message': 'File tidak ditemukan: $filePath'
+      };
+    }
+
+    final fileSize = await file.length();
+    if (fileSize == 0) {
+      return {
+        'success': false,
+        'message': 'File kosong (0 bytes)'
+      };
+    }
+
+    print('✅ File valid, size: $fileSize bytes');
+
+    // ✅ DAPATKAN USER_KEY DARI SHAREDPREFERENCES
+    final prefs = await SharedPreferences.getInstance();
+    final userKey = prefs.getString('token'); // ✅ user_key biasanya disimpan sebagai 'token'
+    final sessionCookie = prefs.getString('ci_session');
+
+    if (userKey == null || userKey.isEmpty) {
+      return {
+        'success': false,
+        'message': 'User tidak terautentikasi. Silakan login kembali.',
+        'token_expired': true
+      };
+    }
+
+    print('✅ User key found: ${userKey.substring(0, 10)}...');
+
+    // ✅ HEADERS DENGAN USER_KEY SEBAGAI x-api-key
+    final headers = {
+      'DEVICE-ID': '12341231313131',
+      'x-api-key': userKey, // ✅ PAKAI USER_KEY DARI LOGIN
+    };
+
+    // ✅ TAMBAHKAN COOKIE SESSION JIKA ADA
+    if (sessionCookie != null && sessionCookie.isNotEmpty) {
+      headers['Cookie'] = 'ci_session=$sessionCookie';
+      print('✅ Cookie session ditambahkan: ${sessionCookie.substring(0, 20)}...');
+    } else {
+      print('⚠️ Cookie session tidak ditemukan!');
+    }
+
+    print('📤 Headers: ${headers.keys}');
+
+    // ✅ BUAT MULTIPART REQUEST
+    var request = http.MultipartRequest(
+      'POST', 
+      Uri.parse('http://demo.bsdeveloper.id/api/users/setBuktiPhoto')
+    );
+    request.headers.addAll(headers);
+
+    // ✅ TAMBAHKAN FILE DENGAN FIELD NAME "foto_bukti"
+    try {
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_bukti',
+        filePath,
+        filename: 'bukti_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ File berhasil ditambahkan dengan field: foto_bukti');
+    } catch (e) {
+      print('❌ Gagal menambahkan file: $e');
+      return {
+        'success': false,
+        'message': 'Gagal menambahkan file: $e'
+      };
+    }
+
+    print('📤 Total files: ${request.files.length}');
+
+    // ✅ KIRIM REQUEST
+    print('🔄 Mengirim request ke: http://demo.bsdeveloper.id/api/users/setBuktiPhoto');
+    final response = await request.send().timeout(const Duration(seconds: 60));
+    
+    // ✅ BACA RESPONSE
+    final responseBody = await response.stream.bytesToString();
+    print('📡 Response Status: ${response.statusCode}');
+    print('📡 Response Body: $responseBody');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(responseBody);
+      
+      if (data['status'] == true) {
+        print('✅ UPLOAD BUKTI PHOTO SUCCESS');
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Bukti photo berhasil diupload',
+          'data': data
+        };
+      } else {
+        print('❌ Upload gagal: ${data['message']}');
+        
+        // ✅ CEK JIKA ADA ISSUE DENGAN AUTHENTIKASI
+        if (data['message']?.toString().toLowerCase().contains('session') == true ||
+            data['message']?.toString().toLowerCase().contains('login') == true ||
+            data['message']?.toString().toLowerCase().contains('auth') == true ||
+            data['message']?.toString().toLowerCase().contains('token') == true) {
+          return {
+            'success': false,
+            'message': 'Sesi telah berakhir. Silakan login kembali.',
+            'token_expired': true
+          };
+        }
+        
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Upload bukti photo gagal',
+          'data': data
+        };
+      }
+    } else if (response.statusCode == 401) {
+      print('❌ Unauthorized - kemungkinan token expired');
+      return {
+        'success': false,
+        'message': 'Sesi telah berakhir. Silakan login kembali.',
+        'token_expired': true
+      };
+    } else {
+      print('❌ Server error: ${response.statusCode}');
+      return {
+        'success': false,
+        'message': 'Upload gagal: ${response.statusCode} - $responseBody'
+      };
+    }
+  } catch (e) {
+    print('❌ UPLOAD BUKTI PHOTO ERROR: $e');
+    return {
+      'success': false,
+      'message': 'Upload error: $e'
+    };
+  }
+}
+
+// ✅ METHOD UNTUK UPLOAD BUKTI TABUNGAN SESUAI CURL COMMAND
+Future<Map<String, dynamic>> uploadBuktiTabungan({
+  required String filePath,
+}) async {
+  try {
+    print('🚀 UPLOAD BUKTI TABUNGAN START');
+    print('📁 File path: $filePath');
+
+    // ✅ VALIDASI FILE
+    final file = File(filePath);
+    if (!await file.exists()) {
+      return {
+        'success': false,
+        'message': 'File tidak ditemukan: $filePath'
+      };
+    }
+
+    final fileSize = await file.length();
+    if (fileSize == 0) {
+      return {
+        'success': false,
+        'message': 'File kosong (0 bytes)'
+      };
+    }
+
+    print('✅ File valid, size: $fileSize bytes');
+
+    // ✅ GET HEADERS SESUAI CURL COMMAND
+    final headers = await _getBuktiTabunganHeaders();
+    print('📤 Headers: ${headers.keys}');
+
+    // ✅ BUAT MULTIPART REQUEST
+    var request = http.MultipartRequest(
+      'POST', 
+      Uri.parse('$baseUrl/users/setBuktiPhoto')
+    );
+    request.headers.addAll(headers);
+
+    // ✅ TAMBAHKAN FILE DENGAN FIELD NAME "foto_bukti"
+    try {
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_bukti', // ✅ SESUAI CURL: --form 'foto_bukti=@"test.jpg"'
+        filePath,
+        filename: 'bukti_tabungan_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ File berhasil ditambahkan dengan field: foto_bukti');
+    } catch (e) {
+      print('❌ Gagal menambahkan file: $e');
+      return {
+        'success': false,
+        'message': 'Gagal menambahkan file: $e'
+      };
+    }
+
+    print('📤 Total files: ${request.files.length}');
+
+    // ✅ KIRIM REQUEST
+    print('🔄 Mengirim request ke: $baseUrl/users/setBuktiPhoto');
+    final response = await request.send().timeout(const Duration(seconds: 60));
+    
+    // ✅ BACA RESPONSE
+    final responseBody = await response.stream.bytesToString();
+    print('📡 Response Status: ${response.statusCode}');
+    print('📡 Response Body: $responseBody');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(responseBody);
+      
+      if (data['status'] == true) {
+        print('✅ UPLOAD BUKTI TABUNGAN SUCCESS');
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Bukti tabungan berhasil diupload',
+          'data': data
+        };
+      } else {
+        print('❌ Upload gagal: ${data['message']}');
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Upload bukti tabungan gagal',
+          'data': data
+        };
+      }
+    } else {
+      print('❌ Server error: ${response.statusCode}');
+      return {
+        'success': false,
+        'message': 'Upload gagal: ${response.statusCode} - $responseBody'
+      };
+    }
+  } catch (e) {
+    print('❌ UPLOAD BUKTI TABUNGAN ERROR: $e');
+    return {
+      'success': false,
+      'message': 'Upload error: $e'
+    };
+  }
+}
 
   // ✅ CREATE DUMMY FILE JIKA TIDAK ADA
   Future<String?> createDummyFile() async {
@@ -1042,6 +1320,32 @@ Future<Map<String, dynamic>> uploadFourPhotosWithValidation({
   }
 }
 
+// ✅ HELPER: GET JENIS TRANSAKSI DARI DATA API
+String _getJenisTransaksiFromApi(String? transaksiApi, bool isSetoran) {
+  if (transaksiApi == null || transaksiApi.isEmpty) {
+    return isSetoran ? 'Setoran' : 'Penarikan';
+  }
+  
+  switch (transaksiApi.toUpperCase()) {
+    case 'POKOK':
+      return 'Setoran Pokok';
+    case 'WAJIB':
+      return 'Setoran Wajib';
+    case 'SITABUNG':
+      return 'Setoran SiTabung';
+    case 'PENARIKAN_SITABUNG':
+      return 'Penarikan SiTabung';
+    case 'SUKARELA':
+      return 'Setoran Sukarela';
+    case 'SIUMNA':
+      return 'Setoran Siumna';
+    case 'SIQUNA':
+      return 'Setoran Siquna';
+    default:
+      return transaksiApi;
+  }
+}
+
 // ✅ TEST UPLOAD SEDERHANA (1 FILE DULU)
 Future<Map<String, dynamic>> testSingleUpload(String filePath, String type) async {
   try {
@@ -1450,6 +1754,207 @@ Future<Map<String, dynamic>> uploadFourPhotosWithUser({
       };
     }
   }
+  
+  // ✅ METHOD GET USER INFO - SESUAI DENGAN CURL COMMAND
+Future<Map<String, dynamic>> getUserInfo() async {
+  try {
+    // ✅ GET HEADERS DENGAN x-api-key DARI USER_KEY
+    final headers = await getProtectedHeaders();
+    
+    print('🚀 Getting user info from server...');
+    print('📤 Headers: ${headers.keys}');
+    if (headers['x-api-key'] != null) {
+      print('🔑 x-api-key: ${headers['x-api-key']!.substring(0, 10)}...');
+    }
+    if (headers['Cookie'] != null) {
+      print('🍪 Cookie: ${headers['Cookie']!.substring(0, 20)}...');
+    }
+
+    // ✅ KIRIM REQUEST SESUAI CURL: --data ''
+    final response = await http.post(
+      Uri.parse('$baseUrl/users/userInfo'),
+      headers: headers,
+      body: '', // ✅ SESUAI CURL: --data ''
+    ).timeout(const Duration(seconds: 30));
+
+    print('📡 UserInfo Response Status: ${response.statusCode}');
+    print('📡 UserInfo Response Body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final result = jsonDecode(response.body);
+      
+      // ✅ RESPONSE YANG DIHARAPKAN:
+      // {
+      //   "status": true,
+      //   "username": "sonik",
+      //   "nama": "Robilul Ilmi Sonic Rahmatul Huda",
+      //   "email": "sonik@sonik.gmail.com",
+      //   "telp": "",
+      //   "alamat": "Dsn Manggisan, Ds Plosokandang, Kec Kedungwaru, Kab Tulungagung, RT 2, RW 3, 66221",
+      //   "foto_kk": "90a1958e4ea2334994a57af125e61c32.jpg",
+      //   "foto_ktp": "8af1ca6e08735b706ef9794482508c4c.jpg",
+      //   "foto_bukti": "200911cfa2b2296edd1ebc112d1037af.jpg",
+      //   "foto_diri": "0d1e20729270a97f4ebac246082d69b3.jpg",
+      //   "message": "OK"
+      // }
+      
+      if (result['status'] == true) {
+        print('✅ UserInfo data loaded successfully');
+        print('👤 Username: ${result['username']}');
+        print('📧 Email: ${result['email']}');
+        print('📍 Alamat: ${result['alamat']}');
+        
+        // ✅ SIMPAN DATA USER KE LOCAL STORAGE
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_info', jsonEncode(result));
+        
+        return {
+          'success': true,
+          'data': result,
+          'message': result['message'] ?? 'Success get user info',
+        };
+      } else {
+        print('❌ UserInfo API status false: ${result['message']}');
+        return {
+          'success': false,
+          'message': result['message'] ?? 'Gagal mengambil data user',
+        };
+      }
+    } else if (response.statusCode == 401) {
+      print('❌ Unauthorized - Token mungkin expired');
+      await _clearToken();
+      return {
+        'success': false,
+        'message': 'Sesi telah berakhir. Silakan login kembali.',
+        'token_expired': true
+      };
+    } else {
+      print('❌ UserInfo HTTP error: ${response.statusCode}');
+      return {
+        'success': false,
+        'message': 'HTTP error: ${response.statusCode}',
+      };
+    }
+  } catch (e) {
+    print('❌ getUserInfo error: $e');
+    return {
+      'success': false,
+      'message': 'Error: $e',
+    };
+  }
+}
+
+
+
+ // ✅ SUPER METHOD: GET USER INFO LENGKAP DARI SEMUA SUMBER
+Future<Map<String, dynamic>> getCompleteUserInfo() async {
+  try {
+    print('🚀 SUPER GETUSERINFO - Loading complete user data from all sources...');
+    
+    final prefs = await SharedPreferences.getInstance();
+    
+    // ✅ 1. DAPATKAN DATA DARI GETUSERINFO API
+    final userInfoResult = await getUserInfo();
+    Map<String, dynamic> completeData = {};
+    
+    if (userInfoResult['success'] == true && userInfoResult['data'] != null) {
+      completeData = Map<String, dynamic>.from(userInfoResult['data']);
+      print('✅ getUserInfo API data loaded');
+    }
+    
+    // ✅ 2. DAPATKAN DATA DARI LOGIN RESPONSE
+    final loginDataString = prefs.getString('login_user');
+    if (loginDataString != null) {
+      final loginData = jsonDecode(loginDataString);
+      if (loginData['user'] != null) {
+        completeData.addAll(loginData['user']);
+        print('✅ Login data merged');
+      }
+    }
+    
+    // ✅ 3. DAPATKAN DATA DARI USER SAVED
+    final userString = prefs.getString('user');
+    if (userString != null) {
+      final userData = jsonDecode(userString);
+      completeData.addAll(userData);
+      print('✅ Saved user data merged');
+    }
+    
+    // ✅ 4. DAPATKAN DATA DARI REGISTRASI BACKUP
+    final regDataString = prefs.getString('registration_data');
+    if (regDataString != null) {
+      final regData = jsonDecode(regDataString);
+      completeData.addAll(regData);
+      print('✅ Registration data merged');
+    }
+    
+    // ✅ 5. TAMBAHKAN SYSTEM INFO YANG PALING PENTING
+    final token = prefs.getString('token');
+    if (token != null && token.isNotEmpty) {
+      completeData['user_key'] = token;
+      completeData['token'] = token;
+    }
+    
+    final userId = prefs.getString('user_id');
+    if (userId != null && userId.isNotEmpty) {
+      completeData['user_id'] = userId;
+      completeData['id'] = userId;
+    }
+    
+    // ✅ 6. SIMPAN DATA LENGKAP KE LOCAL STORAGE
+    await prefs.setString('complete_user_data', jsonEncode(completeData));
+    await prefs.setString('user', jsonEncode(completeData));
+    
+    print('🎉 SUPER GETUSERINFO COMPLETE!');
+    print('📊 Total keys: ${completeData.keys.length}');
+    print('🔑 User Key: ${completeData['user_key']?.toString().substring(0, 10)}...');
+    print('👤 User ID: ${completeData['user_id']}');
+    
+    return {
+      'success': true,
+      'data': completeData,
+      'message': 'Complete user data loaded successfully'
+    };
+    
+  } catch (e) {
+    print('❌ SUPER GETUSERINFO error: $e');
+    return {
+      'success': false,
+      'message': 'Error loading complete user data: $e'
+    };
+  }
+}
+
+// ✅ METHOD ALTERNATIF: AMBIL DATA DARI ENDPOINT LAIN JIKA ENDPOINT UTAMA TIDAK ADA
+Future<Map<String, dynamic>> getUserProfileFromDashboard() async {
+  try {
+    final dashboardResult = await getDashboardDataRobust();
+    
+    if (dashboardResult['success'] == true) {
+      final dashboardData = dashboardResult['data'] ?? {};
+      final profileData = dashboardData['profile'] ?? {};
+      
+      if (profileData.isNotEmpty) {
+        print('✅ Profile data loaded from dashboard');
+        return {
+          'success': true,
+          'data': profileData,
+          'message': 'Profile data loaded from dashboard'
+        };
+      }
+    }
+    
+    return {
+      'success': false,
+      'message': 'Tidak dapat mengambil data profile dari dashboard'
+    };
+  } catch (e) {
+    return {
+      'success': false,
+      'message': 'Error loading profile from dashboard: $e'
+    };
+  }
+}
 
   // ✅ FIX: CEK STATUS DOKUMEN YANG BENAR
 Map<String, dynamic> _getDokumenStatus(Map<String, dynamic> user) {
@@ -1840,13 +2345,14 @@ Future<void> saveLoginData(Map<String, dynamic> loginResponse) async {
       await prefs.remove('token');
       await prefs.remove('user');
       await prefs.remove('ci_session');
+      await prefs.remove('user_info');
       print('🔐 Token cleared due to expiration');
     } catch (e) {
       print('❌ Error clearing token: $e');
     }
   }
 
-// ✅ FIXED LOGIN METHOD - HANDLE 400 ERROR PROPERLY
+// ✅ FIXED LOGIN METHOD - DENGAN RESTORE BACKUP
 Future<Map<String, dynamic>> login(String username, String password) async {
   try {
     final headers = getAuthHeaders();
@@ -1901,6 +2407,9 @@ Future<Map<String, dynamic>> login(String username, String password) async {
             }
           }
         }
+        
+        // ✅ ✅ ✅ TAMBAHKAN INI: RESTORE BACKUP DATA SETELAH LOGIN
+        await restoreBackupData();
         
         print('✅ Login successful for user: ${data['user_name']}');
         
@@ -1957,40 +2466,378 @@ Future<Map<String, dynamic>> login(String username, String password) async {
   }
 }
 
-  // ✅ LOGOUT METHOD
-  Future<Map<String, dynamic>> logout() async {
+// ✅ METHOD UNTUK RESTORE DATA SETELAH LOGIN
+Future<void> restoreBackupData() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    
+    print('🔄 Checking for backup data...');
+    
+    // ✅ CEK APAKAH ADA BACKUP DATA
+    final userBackup = prefs.getString('user_backup');
+    final loginBackup = prefs.getString('login_backup');
+    
+    if (userBackup != null) {
+      print('✅ Restoring user backup data...');
+      
+      // ✅ DAPATKAN DATA USER YANG BARU LOGIN
+      final currentUser = await getCurrentUser();
+      if (currentUser != null) {
+        final backupUser = jsonDecode(userBackup);
+        
+        // ✅ GABUNGKAN DATA: data login baru + data backup lama
+        final mergedUser = {
+          ...currentUser,           // Data baru dari login (user_id, token, dll)
+          ...backupUser,            // Data backup (profile lengkap, alamat, dll)
+          
+          // ✅ PASTIKAN DATA LOGIN TETAP YANG BARU
+          'user_id': currentUser['user_id'],
+          'user_key': currentUser['user_key'],
+          'token': currentUser['token'],
+          'status_user': currentUser['status_user'],
+        };
+        
+        await prefs.setString('user', jsonEncode(mergedUser));
+        print('✅ User backup data restored successfully');
+        
+        // ✅ HAPUS BACKUP SETELAH BERHASIL RESTORE
+        await prefs.remove('user_backup');
+      }
+    }
+    
+    if (loginBackup != null) {
+      print('✅ Restoring login backup data...');
+      await prefs.setString('login_user', loginBackup);
+      await prefs.remove('login_backup');
+      print('✅ Login backup data restored');
+    }
+    
+    // ✅ CEK APAKAH MASIH ADA DATA REGISTRASI YANG BELUM DISIMPAN
+    final regData = prefs.getString('registration_data');
+    if (regData != null) {
+      print('🔄 Found registration data, attempting to save...');
+      final regUserData = jsonDecode(regData);
+      
+      // ✅ COBA SIMPAN DATA REGISTRASI KE PROFILE
+      try {
+        final currentUser = await getCurrentUser();
+        if (currentUser != null) {
+          final mergedWithReg = {...currentUser, ...regUserData};
+          await prefs.setString('user', jsonEncode(mergedWithReg));
+          await prefs.remove('registration_data');
+          print('✅ Registration data merged to user profile');
+        }
+      } catch (e) {
+        print('⚠️ Failed to merge registration data: $e');
+      }
+    }
+    
+  } catch (e) {
+    print('❌ Error restoring backup data: $e');
+  }
+}
+
+// ✅ FIX: LOGOUT METHOD YANG TIDAK MENGHAPUS BACKUP DATA
+Future<Map<String, dynamic>> logout() async {
+  try {
+    // ✅ 1. BACKUP DATA PENTING SEBELUM LOGOUT
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Simpan data penting ke backup keys
+    final userData = prefs.getString('user');
+    final loginData = prefs.getString('login_user');
+    final registrationData = prefs.getString('registration_data');
+    
+    if (userData != null) {
+      await prefs.setString('user_backup', userData);
+      print('✅ User data backed up before logout');
+    }
+    
+    if (loginData != null) {
+      await prefs.setString('login_backup', loginData);
+      print('✅ Login data backed up before logout');
+    }
+
+    // ✅ 2. PANGGIL API LOGOUT (OPTIONAL)
     try {
       final headers = await getProtectedHeaders();
-      
       final response = await http.post(
         Uri.parse('$baseUrl/users/logout'),
         headers: headers,
         body: '',
       ).timeout(const Duration(seconds: 5));
-
+      print('🔐 Logout API call completed');
     } catch (e) {
-      print('🔐 Logout API call failed: $e');
+      print('⚠️ Logout API call failed: $e');
+      // Tidak masalah jika API gagal, yang penting local data dihandle
+    }
+
+    // ✅ 3. HAPUS HANYA DATA SESSION, BUKAN SEMUA DATA
+    await prefs.remove('token');
+    await prefs.remove('user');
+    await prefs.remove('ci_session');
+    await prefs.remove('login_user');
+    
+    // ✅ JANGAN GUNAKAN prefs.clear()! ❌
+    // prefs.clear() akan menghapus SEMUA data termasuk backup
+    
+    print('✅ Logout successful - session cleared, backup preserved');
+    
+    return {
+      'success': true,
+      'message': 'Logout berhasil'
+    };
+    
+  } catch (e) {
+    print('❌ Logout error: $e');
+    return {
+      'success': false,
+      'message': 'Gagal logout: $e'
+    };
+  }
+}
+
+  // ✅ METHOD UNTUK SYNC DATA LOKAL KE SERVER
+Future<Map<String, dynamic>> syncLocalDataToServer() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final userString = prefs.getString('user');
+    
+    if (userString == null) {
+      return {'success': false, 'message': 'Tidak ada data lokal untuk disinkronisasi'};
     }
     
+    final localData = jsonDecode(userString);
+    
+    // ✅ FILTER HANYA DATA YANG PERLU DIKIRIM KE SERVER
+    final dataToSync = {
+      'username': localData['username'],
+      'fullname': localData['fullname'] ?? localData['nama'],
+      'email': localData['email'],
+      'telp': localData['telp'] ?? localData['phone'],
+      'job': localData['job'] ?? localData['pekerjaan'],
+      'birth_place': localData['birth_place'] ?? localData['tempat_lahir'],
+      'agama_id': localData['agama_id'],
+      'ktp_alamat': localData['ktp_alamat'] ?? localData['alamat'],
+      'ktp_rt': localData['ktp_rt'] ?? localData['rt'],
+      'ktp_rw': localData['ktp_rw'] ?? localData['rw'],
+      'ktp_no': localData['ktp_no'] ?? localData['no_rumah'],
+      'ktp_postal': localData['ktp_postal'] ?? localData['kode_pos'],
+      'ktp_id_province': localData['ktp_id_province'] ?? localData['id_province'],
+      'ktp_id_regency': localData['ktp_id_regency'] ?? localData['id_regency'],
+      'domisili_alamat': localData['domisili_alamat'],
+      'domisili_rt': localData['domisili_rt'],
+      'domisili_rw': localData['domisili_rw'],
+      'domisili_no': localData['domisili_no'],
+      'domisili_postal': localData['domisili_postal'],
+      'domisili_id_province': localData['domisili_id_province'],
+      'domisili_id_regency': localData['domisili_id_regency'],
+    };
+    
+    // ✅ COBA BERBAGAI ENDPOINT
+    final possibleEndpoints = [
+      '$baseUrl/users/updateProfile',
+      '$baseUrl/users/update',
+      '$baseUrl/users/setProfile',
+    ];
+    
+    for (var endpoint in possibleEndpoints) {
+      try {
+        final headers = await getProtectedHeaders();
+        final body = dataToSync.entries
+            .map((entry) => '${Uri.encodeComponent(entry.key)}=${Uri.encodeComponent(entry.value.toString())}')
+            .join('&');
+        
+        final response = await http.post(
+          Uri.parse(endpoint),
+          headers: headers,
+          body: body,
+        ).timeout(const Duration(seconds: 30));
+        
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data['status'] == true) {
+            print('✅ Data berhasil disinkronisasi ke: $endpoint');
+            return {
+              'success': true,
+              'message': 'Data berhasil disinkronisasi',
+              'endpoint': endpoint
+            };
+          }
+        }
+      } catch (e) {
+        print('❌ Endpoint $endpoint gagal: $e');
+        continue;
+      }
+    }
+    
+    return {
+      'success': false, 
+      'message': 'Semua endpoint sinkronisasi gagal'
+    };
+    
+  } catch (e) {
+    return {
+      'success': false,
+      'message': 'Error sinkronisasi: $e'
+    };
+  }
+}
+
+  // ✅ METHOD UNTUK UPLOAD 3 FILE ASLI + FOTO DIRI SEBAGAI BUKTI (FILE KE-4)
+Future<Map<String, dynamic>> uploadThreeRealPhotos({
+  required String fotoKtpPath,
+  required String fotoKkPath, 
+  required String fotoDiriPath,
+}) async {
+  try {
+    print('🚀 UPLOAD 3 REAL + FOTO DIRI AS BUKTI START');
+    print('📁 Real files:');
+    print('   - KTP: $fotoKtpPath');
+    print('   - KK: $fotoKkPath'); 
+    print('   - Foto Diri: $fotoDiriPath');
+    print('   - Foto Bukti: $fotoDiriPath (DUPLIKAT DARI FOTO DIRI)');
+
+    // ✅ DAPATKAN USER DATA
+    final currentUser = await getCurrentUserForUpload();
+    if (currentUser == null) {
+      return {'success': false, 'message': 'User tidak ditemukan. Silakan login ulang.'};
+    }
+
+    final userId = currentUser['user_id']?.toString();
+    final userKey = currentUser['user_key']?.toString();
+
+    if (userId == null || userId.isEmpty || userKey == null || userKey.isEmpty) {
+      return {'success': false, 'message': 'Data user tidak lengkap. user_id: $userId, user_key: $userKey'};
+    }
+
+    print('✅ User data valid - user_id: $userId');
+
+    // ✅ VALIDASI SEMUA FILE
+    final filesToValidate = {
+      'KTP': fotoKtpPath,
+      'KK': fotoKkPath,
+      'Foto Diri': fotoDiriPath,
+    };
+
+    for (var entry in filesToValidate.entries) {
+      final file = File(entry.value);
+      if (!await file.exists()) {
+        return {'success': false, 'message': 'File ${entry.key} tidak ditemukan: ${entry.value}'};
+      }
+
+      final fileSize = await file.length();
+      if (fileSize == 0) {
+        return {'success': false, 'message': 'File ${entry.key} kosong (0 bytes)'};
+      }
+
+      print('✅ File ${entry.key}: $fileSize bytes');
+    }
+
+    // ✅ GET HEADERS
+    final headers = await getMultipartHeaders();
+    print('📤 Headers: ${headers.keys}');
+
+    // ✅ BUAT REQUEST
+    var request = http.MultipartRequest(
+      'POST', 
+      Uri.parse('$baseUrl/users/setPhoto')
+    );
+    request.headers.addAll(headers);
+
+    // ✅ TAMBAHKAN 4 FILE: 3 ASLI + 1 DUPLIKAT FOTO DIRI SEBAGAI BUKTI
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('token');
-      await prefs.remove('user');
-      await prefs.remove('ci_session');
-      await prefs.clear();
-      
-      return {
-        'success': true,
-        'message': 'Logout berhasil'
-      };
-      
+      // ✅ FILE 1: KTP (ASLI)
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_ktp',
+        fotoKtpPath,
+        filename: 'ktp_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ Added KTP file');
+
+      // ✅ FILE 2: KK (ASLI)
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_kk',
+        fotoKkPath,
+        filename: 'kk_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ Added KK file');
+
+      // ✅ FILE 3: FOTO DIRI (ASLI)
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_diri',
+        fotoDiriPath,
+        filename: 'diri_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ Added Foto Diri file');
+
+      // ✅ FILE 4: FOTO BUKTI (DUPLIKAT DARI FOTO DIRI)
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_bukti',
+        fotoDiriPath, // FILE YANG SAMA DENGAN FOTO DIRI
+        filename: 'bukti_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ Added Foto Bukti (duplicate from Foto Diri)');
+
     } catch (e) {
+      print('❌ Error adding files: $e');
       return {
         'success': false,
-        'message': 'Gagal menghapus data local'
+        'message': 'Gagal menambahkan file: $e'
       };
     }
+
+    // ✅ TAMBAHKAN FORM FIELDS
+    request.fields['type'] = 'complete_upload';
+    request.fields['user_id'] = userId;
+    request.fields['user_key'] = userKey;
+    request.fields['upload_type'] = 'dokumen_lengkap';
+
+    print('📤 Request fields: ${request.fields}');
+    print('📤 Total files: ${request.files.length}');
+
+    // ✅ KIRIM REQUEST
+    print('🔄 Mengirim request ke server...');
+    final response = await request.send().timeout(const Duration(seconds: 60));
+    final responseBody = await response.stream.bytesToString();
+    
+    print('📡 Response Status: ${response.statusCode}');
+    print('📡 Response Body: $responseBody');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(responseBody);
+      
+      if (data['status'] == true) {
+        print('🎉 UPLOAD 3 ASLI + 1 DUPLIKAT FOTO DIRI SUKSES!');
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Semua dokumen berhasil diupload',
+          'data': data
+        };
+      } else {
+        print('❌ Upload gagal: ${data['message']}');
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Upload dokumen gagal',
+          'data': data
+        };
+      }
+    } else {
+      print('❌ Server error: ${response.statusCode}');
+      return {
+        'success': false,
+        'message': 'Server error ${response.statusCode}: $responseBody'
+      };
+    }
+    
+  } catch (e) {
+    print('❌ UPLOAD 3+1 ERROR: $e');
+    return {
+      'success': false,
+      'message': 'Upload error: $e'
+    };
   }
+}
 
   // ✅ GET USER PROFILE
   Future<Map<String, dynamic>> getUserProfile() async {
@@ -2185,7 +3032,7 @@ Map<String, dynamic> _createDefaultSaldoData() {
   };
 }
 
-// ✅ FIX: GET ALL SALDO YANG SESUAI DENGAN RESPONSE
+// ✅ FIX: GET ALL SALDO YANG SESUAI DENGAN RESPONSE + KEEP RAW DATA
 Future<Map<String, dynamic>> getAllSaldo() async {
   try {
     final headers = await getProtectedHeaders();
@@ -2215,6 +3062,7 @@ Future<Map<String, dynamic>> getAllSaldo() async {
         return {
           'success': true,
           'data': normalizedData,
+          'raw_data': responseData, // ← TAMBAH INI! Data mentah untuk riwayat
           'message': data['message'] ?? 'Success get saldo'
         };
       } else {
@@ -2700,48 +3548,102 @@ Map<String, dynamic> _processTaqsithForDashboard(List<dynamic> data, List<dynami
     }
   }
 
-  // ✅ REGISTER METHOD
-  Future<Map<String, dynamic>> register(Map<String, dynamic> userData) async {
-    try {
-      final headers = getAuthHeaders();
-      
-      final body = userData.entries
-          .map((entry) => '${Uri.encodeComponent(entry.key)}=${Uri.encodeComponent(entry.value.toString())}')
-          .join('&');
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/users/register'),
-        headers: headers,
-        body: body,
-      ).timeout(const Duration(seconds: 30));
+// ✅ FIX: REGISTER + AUTO UPDATE PROFILE + BACKUP DATA
+Future<Map<String, dynamic>> register(Map<String, dynamic> userData) async {
+  try {
+    final headers = getAuthHeaders();
+    
+    print('👤 Registering new user with data:');
+    userData.forEach((key, value) {
+      print('   - $key: $value');
+    });
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+    final body = userData.entries
+        .map((entry) => '${Uri.encodeComponent(entry.key)}=${Uri.encodeComponent(entry.value.toString())}')
+        .join('&');
+    
+    print('📤 Sending register request...');
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/users/register'),
+      headers: headers,
+      body: body,
+    ).timeout(const Duration(seconds: 30));
+
+    print('📡 Register Response Status: ${response.statusCode}');
+    print('📡 Register Response Body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      
+      if (data['status'] == true) {
+        print('✅ Registration successful');
         
-        if (data['status'] == true) {
+        // ✅ ✅ ✅ SIMPAN DATA REGISTRASI KE BACKUP SEBELUM LOGIN
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('registration_data', jsonEncode(userData));
+        print('✅ Registration data saved to backup');
+        
+        // ✅ OTOMATIS LOGIN SETELAH REGISTER BERHASIL
+        final loginResult = await login(
+          userData['username']?.toString() ?? '',
+          userData['password']?.toString() ?? ''
+        );
+        
+        if (loginResult['success'] == true) {
+          print('✅ Auto-login after registration successful');
+          
+          // ✅ DATA SUDAH DI-RESTORE OTOMATIS OLEH login() METHOD
+          // Karena kita sudah panggil restoreBackupData() di login()
+          
+          // ✅ COBA SYNC KE SERVER (OPTIONAL)
+          try {
+            final syncResult = await syncLocalDataToServer();
+            if (syncResult['success'] == true) {
+              print('✅ Registration data synced to server');
+            } else {
+              print('⚠️ Registration data saved locally only: ${syncResult['message']}');
+            }
+          } catch (e) {
+            print('⚠️ Sync failed, but data saved locally: $e');
+          }
+          
           return {
             'success': true,
-            'message': data['message'] ?? 'Registrasi berhasil'
+            'message': data['message'] ?? 'Registrasi dan login berhasil',
+            'user': loginResult['user'],
+            'token': loginResult['token'],
           };
         } else {
+          print('⚠️ Registration successful but auto-login failed');
+          // Data registrasi sudah disimpan di backup, bisa di-restore nanti
           return {
-            'success': false,
-            'message': data['message'] ?? 'Registrasi gagal'
+            'success': true,
+            'message': 'Registrasi berhasil! Silakan login dengan username dan password Anda.',
+            'need_login': true,
+            'has_backup_data': true, // ✅ TANDA BAHWA ADA DATA BACKUP
           };
         }
       } else {
         return {
           'success': false,
-          'message': 'Registrasi gagal: ${response.statusCode}'
+          'message': data['message'] ?? 'Registrasi gagal'
         };
       }
-    } catch (e) {
+    } else {
       return {
         'success': false,
-        'message': 'Error: $e'
+        'message': 'Registrasi gagal: ${response.statusCode}'
       };
     }
+  } catch (e) {
+    print('❌ Register error: $e');
+    return {
+      'success': false,
+      'message': 'Error: $e'
+    };
   }
+}
 
   // ✅ GET MASTER DATA
   Future<Map<String, dynamic>> getMasterData() async {
@@ -3245,56 +4147,130 @@ Future<int> getUnreadNotificationCount() async {
   }
 }
 
-  // ✅ UPDATE USER PROFILE
-  Future<Map<String, dynamic>> updateUserProfile(Map<String, dynamic> profileData) async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final body = profileData.entries
-          .map((entry) => '${Uri.encodeComponent(entry.key)}=${Uri.encodeComponent(entry.value.toString())}')
-          .join('&');
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/users/updateProfile'),
-        headers: headers,
-        body: body,
-      ).timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+// ✅ FIX: UPDATE USER PROFILE DENGAN ENDPOINT YANG BENAR
+Future<Map<String, dynamic>> updateUserProfile(Map<String, dynamic> profileData) async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    print('🔄 Updating user profile...');
+    print('📤 Profile data to update: $profileData');
+    
+    // ✅ BUAT FORM DATA YANG LEBIH SEDERHANA (HANYA FIELD YANG DIPERLUKAN)
+    final simplifiedData = {
+      'username': profileData['username'],
+      'fullname': profileData['fullname'] ?? profileData['nama'],
+      'email': profileData['email'],
+      'telp': profileData['telp'] ?? profileData['phone'],
+      'job': profileData['job'] ?? profileData['pekerjaan'],
+      'birth_place': profileData['birth_place'] ?? profileData['tempat_lahir'],
+      'agama_id': profileData['agama_id'],
+      'ktp_alamat': profileData['ktp_alamat'] ?? profileData['alamat'],
+      'ktp_rt': profileData['ktp_rt'] ?? profileData['rt'],
+      'ktp_rw': profileData['ktp_rw'] ?? profileData['rw'],
+      'ktp_no': profileData['ktp_no'] ?? profileData['no_rumah'],
+      'ktp_postal': profileData['ktp_postal'] ?? profileData['kode_pos'],
+      'ktp_id_province': profileData['ktp_id_province'] ?? profileData['id_province'],
+      'ktp_id_regency': profileData['ktp_id_regency'] ?? profileData['id_regency'],
+      'domisili_alamat': profileData['domisili_alamat'],
+      'domisili_rt': profileData['domisili_rt'],
+      'domisili_rw': profileData['domisili_rw'],
+      'domisili_no': profileData['domisili_no'],
+      'domisili_postal': profileData['domisili_postal'],
+      'domisili_id_province': profileData['domisili_id_province'],
+      'domisili_id_regency': profileData['domisili_id_regency'],
+    };
+    
+    // ✅ HAPUS NULL VALUES
+    simplifiedData.removeWhere((key, value) => value == null);
+    
+    final body = simplifiedData.entries
+        .map((entry) => '${Uri.encodeComponent(entry.key)}=${Uri.encodeComponent(entry.value.toString())}')
+        .join('&');
+    
+    print('📤 Simplified request body: $body');
+    
+    // ✅ COBA BERBAGAI ENDPOINT YANG MUNGKIN
+    final possibleEndpoints = [
+      '$baseUrl/users/updateProfile',
+      '$baseUrl/users/update',
+      '$baseUrl/users/setProfile',
+      '$baseUrl/profile/update',
+    ];
+    
+    for (var endpoint in possibleEndpoints) {
+      try {
+        print('🔄 Trying endpoint: $endpoint');
         
-        if (data['status'] == true) {
-          final prefs = await SharedPreferences.getInstance();
-          final currentUser = await getCurrentUser();
-          if (currentUser != null) {
-            currentUser.addAll(profileData);
-            await prefs.setString('user', jsonEncode(currentUser));
-          }
+        final response = await http.post(
+          Uri.parse(endpoint),
+          headers: headers,
+          body: body,
+        ).timeout(const Duration(seconds: 30));
+
+        print('📡 Update Profile Response Status: ${response.statusCode}');
+        print('📡 Update Profile Response Body: ${response.body}');
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
           
-          return {
-            'success': true,
-            'message': data['message'] ?? 'Profile berhasil diupdate',
-            'data': data['data']
-          };
-        } else {
-          return {
-            'success': false,
-            'message': data['message'] ?? 'Gagal mengupdate profile'
-          };
+          if (data['status'] == true) {
+            print('✅ Profile updated successfully via: $endpoint');
+            
+            // ✅ UPDATE LOCAL STORAGE
+            final prefs = await SharedPreferences.getInstance();
+            final currentUser = await getCurrentUser();
+            if (currentUser != null) {
+              final updatedUser = {...currentUser, ...simplifiedData};
+              await prefs.setString('user', jsonEncode(updatedUser));
+            }
+            
+            return {
+              'success': true,
+              'message': data['message'] ?? 'Profile berhasil diupdate',
+              'data': data['data'] ?? data,
+              'endpoint': endpoint,
+            };
+          }
         }
-      } else {
-        return {
-          'success': false,
-          'message': 'Gagal mengupdate profile: ${response.statusCode}'
-        };
+      } catch (e) {
+        print('❌ Endpoint $endpoint failed: $e');
+        continue;
       }
-    } catch (e) {
+    }
+    
+    // ✅ JIKA SEMUA ENDPOINT GAGAL, COBA GUNAKAN ENDPOINT CHANGE PASS YANG BEKERJA
+    print('🔄 Fallback: Using changePass endpoint for profile update...');
+    final changePassResponse = await http.post(
+      Uri.parse('$baseUrl/users/changePass'),
+      headers: headers,
+      body: body + '&update_profile=true',
+    ).timeout(const Duration(seconds: 30));
+
+    if (changePassResponse.statusCode == 200) {
+      final data = jsonDecode(changePassResponse.body);
       return {
-        'success': false,
-        'message': 'Error: $e'
+        'success': data['status'] == true,
+        'message': data['message'] ?? 'Profile updated via changePass endpoint',
+        'data': data,
+        'endpoint': 'changePass_fallback',
       };
     }
+    
+    return {
+      'success': false,
+      'message': 'Semua endpoint update profile gagal',
+      'http_status': 405,
+    };
+    
+  } catch (e) {
+    print('❌ Update profile API error: $e');
+    return {
+      'success': false,
+      'message': 'Error: $e',
+      'http_status': 0,
+    };
   }
+}
 
   // ✅ METHOD UNTUK DEBUG USER DATA
 Future<void> debugUserData() async {

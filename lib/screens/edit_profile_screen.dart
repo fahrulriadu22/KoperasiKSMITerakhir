@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ✅ TAMBAHKAN INI
+import 'dart:convert'; // ✅ TAMBAHKAN INI
 import '../services/api_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -59,117 +61,233 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _sameAsKtp = false;
   String? _errorMessage;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadUserData();
+@override
+void initState() {
+  super.initState();
+  
+  // ✅ LOAD USER DATA DULU
+  _loadUserData();
+  
+  // ✅ LOAD MASTER DATA SETELAH BUILD COMPLETE
+  WidgetsBinding.instance.addPostFrameCallback((_) {
     _loadMasterData();
-  }
+  });
+}
 
-  // ✅ LOAD USER DATA KE FORM
-  void _loadUserData() {
-    print('👤 Loading user data for editing...');
+// ✅ FIX: LOAD USER DATA DENGAN AUTO-FILL DARI REGISTER
+void _loadUserData() {
+  print('👤 Loading user data for editing...');
+  print('📦 Initial user data keys: ${widget.user.keys}');
+  
+  // ✅ DEBUG: TAMPILKAN SEMUA DATA YANG TERSEDIA
+  widget.user.forEach((key, value) {
+    print('   - $key: $value');
+  });
+  
+  setState(() {
+    // ✅ Load data dasar - prioritaskan field yang ada
+    _fullNameController.text = widget.user['fullname'] ?? 
+                              widget.user['fullName'] ?? 
+                              widget.user['nama'] ?? 
+                              widget.user['name'] ?? 
+                              '';
     
+    _emailController.text = widget.user['email'] ?? '';
+    
+    _phoneController.text = widget.user['telp'] ??  // Field utama dari backend
+                           widget.user['phone'] ?? 
+                           widget.user['noTelepon'] ?? 
+                           widget.user['telepon'] ?? 
+                           '';
+    
+    _jobController.text = widget.user['job'] ?? 
+                         widget.user['pekerjaan'] ?? 
+                         widget.user['work'] ?? 
+                         '';
+    
+    _birthPlaceController.text = widget.user['birth_place'] ?? 
+                                widget.user['tempat_lahir'] ?? 
+                                widget.user['tempatLahir'] ?? 
+                                widget.user['birthPlace'] ?? 
+                                '';
+    
+    _selectedAgama = widget.user['agama_id']?.toString() ?? 
+                    widget.user['agama']?.toString() ?? 
+                    '1';
+    
+    // ✅ Data KTP - prioritaskan field utama
+    _ktpAlamatController.text = widget.user['alamat'] ??  // Field utama
+                               widget.user['ktp_alamat'] ?? 
+                               widget.user['alamatKtp'] ?? 
+                               widget.user['address'] ?? 
+                               '';
+    
+    _ktpRtController.text = widget.user['rt'] ??  // Field utama
+                           widget.user['ktp_rt'] ?? 
+                           widget.user['rtKtp'] ?? 
+                           '';
+    
+    _ktpRwController.text = widget.user['rw'] ??  // Field utama
+                           widget.user['ktp_rw'] ?? 
+                           widget.user['rwKtp'] ?? 
+                           '';
+    
+    _ktpNoController.text = widget.user['no_rumah'] ??  // Field utama
+                           widget.user['ktp_no'] ?? 
+                           widget.user['noRumahKtp'] ?? 
+                           widget.user['house_number'] ?? 
+                           '';
+    
+    _ktpPostalController.text = widget.user['kode_pos'] ??  // Field utama
+                               widget.user['ktp_postal'] ?? 
+                               widget.user['kodePosKtp'] ?? 
+                               widget.user['postal_code'] ?? 
+                               '';
+    
+    _selectedProvinsiKtp = widget.user['id_province']?.toString() ??  // Field utama
+                          widget.user['ktp_id_province']?.toString();
+    
+    _selectedKotaKtp = widget.user['id_regency']?.toString() ??  // Field utama
+                      widget.user['ktp_id_regency']?.toString();
+    
+    // ✅ Data Domisili
+    _domisiliAlamatController.text = widget.user['domisili_alamat'] ?? 
+                                    widget.user['alamatDomisili'] ?? 
+                                    widget.user['domisili_address'] ?? 
+                                    '';
+    
+    _domisiliRtController.text = widget.user['domisili_rt'] ?? 
+                                widget.user['rtDomisili'] ?? 
+                                '';
+    
+    _domisiliRwController.text = widget.user['domisili_rw'] ?? 
+                                widget.user['rwDomisili'] ?? 
+                                '';
+    
+    _domisiliNoController.text = widget.user['domisili_no'] ?? 
+                                widget.user['noRumahDomisili'] ?? 
+                                '';
+    
+    _domisiliPostalController.text = widget.user['domisili_postal'] ?? 
+                                    widget.user['kodePosDomisili'] ?? 
+                                    '';
+    
+    _selectedProvinsiDomisili = widget.user['domisili_id_province']?.toString();
+    _selectedKotaDomisili = widget.user['domisili_id_regency']?.toString();
+    
+    // ✅ Check jika alamat domisili sama dengan KTP
+    // Jika data domisili kosong, anggap sama dengan KTP
+    final domisiliEmpty = _domisiliAlamatController.text.isEmpty &&
+                         _domisiliRtController.text.isEmpty &&
+                         _domisiliRwController.text.isEmpty;
+    
+    _sameAsKtp = domisiliEmpty || 
+                 (_domisiliAlamatController.text == _ktpAlamatController.text &&
+                  _domisiliRtController.text == _ktpRtController.text &&
+                  _domisiliRwController.text == _ktpRwController.text);
+    
+    // ✅ Jika sameAsKtp, copy data dari KTP ke Domisili
+    if (_sameAsKtp && !domisiliEmpty) {
+      _domisiliAlamatController.text = _ktpAlamatController.text;
+      _domisiliRtController.text = _ktpRtController.text;
+      _domisiliRwController.text = _ktpRwController.text;
+      _domisiliNoController.text = _ktpNoController.text;
+      _domisiliPostalController.text = _ktpPostalController.text;
+      _selectedProvinsiDomisili = _selectedProvinsiKtp;
+      _selectedKotaDomisili = _selectedKotaKtp;
+    }
+  });
+  
+  print('✅ User data loaded:');
+  print('   - Full Name: ${_fullNameController.text}');
+  print('   - Email: ${_emailController.text}');
+  print('   - Phone: ${_phoneController.text}');
+  print('   - KTP Address: ${_ktpAlamatController.text}');
+  print('   - Domisili Address: ${_domisiliAlamatController.text}');
+  print('   - Same as KTP: $_sameAsKtp');
+  print('   - KTP Province: $_selectedProvinsiKtp');
+  print('   - KTP City: $_selectedKotaKtp');
+}
+
+// ✅ FIX: LOAD MASTER DATA DENGAN BETTER ERROR HANDLING
+Future<void> _loadMasterData() async {
+  try {
+    print('🔄 Loading master data...');
     setState(() {
-      // ✅ Load data dari user
-      _fullNameController.text = widget.user['fullname'] ?? widget.user['fullName'] ?? '';
-      _emailController.text = widget.user['email'] ?? '';
-      _phoneController.text = widget.user['phone'] ?? widget.user['noTelepon'] ?? '';
-      _jobController.text = widget.user['job'] ?? widget.user['pekerjaan'] ?? '';
-      _birthPlaceController.text = widget.user['birth_place'] ?? widget.user['tempatLahir'] ?? '';
-      _selectedAgama = widget.user['agama_id']?.toString() ?? widget.user['agama']?.toString();
-      
-      // ✅ Data KTP
-      _ktpAlamatController.text = widget.user['ktp_alamat'] ?? widget.user['alamatKtp'] ?? '';
-      _ktpRtController.text = widget.user['ktp_rt'] ?? widget.user['rtKtp'] ?? '';
-      _ktpRwController.text = widget.user['ktp_rw'] ?? widget.user['rwKtp'] ?? '';
-      _ktpNoController.text = widget.user['ktp_no'] ?? widget.user['noRumahKtp'] ?? '';
-      _ktpPostalController.text = widget.user['ktp_postal'] ?? widget.user['kodePosKtp'] ?? '';
-      _selectedProvinsiKtp = widget.user['ktp_id_province']?.toString();
-      _selectedKotaKtp = widget.user['ktp_id_regency']?.toString();
-      
-      // ✅ Data Domisili
-      _domisiliAlamatController.text = widget.user['domisili_alamat'] ?? widget.user['alamatDomisili'] ?? '';
-      _domisiliRtController.text = widget.user['domisili_rt'] ?? widget.user['rtDomisili'] ?? '';
-      _domisiliRwController.text = widget.user['domisili_rw'] ?? widget.user['rwDomisili'] ?? '';
-      _domisiliNoController.text = widget.user['domisili_no'] ?? widget.user['noRumahDomisili'] ?? '';
-      _domisiliPostalController.text = widget.user['domisili_postal'] ?? widget.user['kodePosDomisili'] ?? '';
-      _selectedProvinsiDomisili = widget.user['domisili_id_province']?.toString();
-      _selectedKotaDomisili = widget.user['domisili_id_regency']?.toString();
-      
-      // ✅ Check jika alamat domisili sama dengan KTP
-      _sameAsKtp = _domisiliAlamatController.text.isEmpty || 
-                   _domisiliAlamatController.text == _ktpAlamatController.text;
+      _isLoadingMasterData = true;
+      _errorMessage = null;
     });
-    
-    print('✅ User data loaded successfully');
-  }
 
-  // ✅ LOAD MASTER DATA (PROVINSI, KOTA, AGAMA)
-  Future<void> _loadMasterData() async {
-    try {
-      print('🔄 Loading master data...');
-      setState(() {
-        _isLoadingMasterData = true;
-        _errorMessage = null;
-      });
-
-      // Load provinsi
-      final provinsiResult = await _apiService.getProvince();
-      if (provinsiResult['success'] == true && mounted) {
-        final data = provinsiResult['data'];
-        if (data is List) {
-          setState(() {
-            _provinsiList = data;
-          });
-          print('✅ Provinces loaded: ${_provinsiList.length} items');
-        }
+    // ✅ LOAD PROVINSI
+    final provinsiResult = await _apiService.getProvince();
+    if (provinsiResult['success'] == true && mounted) {
+      final data = provinsiResult['data'];
+      if (data is List) {
+        setState(() {
+          _provinsiList = data;
+        });
+        print('✅ Provinces loaded: ${_provinsiList.length} items');
         
-        // Load kota untuk KTP jika ada
+        // ✅ LOAD KOTA UNTUK KTP JIKA ADA PROVINSI YANG DIPILIH
         if (_selectedProvinsiKtp != null && _selectedProvinsiKtp!.isNotEmpty) {
+          print('🏙️ Loading KTP kota for province: $_selectedProvinsiKtp');
           await _loadKota(_selectedProvinsiKtp!, true);
+        } else {
+          print('ℹ️ No KTP province selected, skipping kota load');
         }
         
-        // Load kota untuk domisili jika ada
+        // ✅ LOAD KOTA UNTUK DOMISILI JIKA ADA PROVINSI YANG DIPILIH
         if (_selectedProvinsiDomisili != null && _selectedProvinsiDomisili!.isNotEmpty) {
+          print('🏙️ Loading Domisili kota for province: $_selectedProvinsiDomisili');
           await _loadKota(_selectedProvinsiDomisili!, false);
+        } else {
+          print('ℹ️ No Domisili province selected, skipping kota load');
         }
       } else {
-        throw Exception('Gagal memuat data provinsi: ${provinsiResult['message']}');
+        print('❌ Provinces data is not a list: ${data.runtimeType}');
       }
+    } else {
+      print('❌ Failed to load provinces: ${provinsiResult['message']}');
+      throw Exception('Gagal memuat data provinsi: ${provinsiResult['message']}');
+    }
 
-      // Load master data untuk agama
-      final masterResult = await _apiService.getMasterData();
-      if (masterResult['success'] == true && mounted) {
-        final data = masterResult['data'];
-        if (data is Map && data.containsKey('agama')) {
-          setState(() {
-            _agamaList = data['agama'] ?? [];
-          });
-          print('✅ Agama loaded: ${_agamaList.length} items');
-        }
-      }
-
-    } catch (e) {
-      print('❌ Error loading master data: $e');
-      if (mounted) {
+    // ✅ LOAD AGAMA
+    final masterResult = await _apiService.getMasterData();
+    if (masterResult['success'] == true && mounted) {
+      final data = masterResult['data'];
+      if (data is Map && data.containsKey('agama')) {
         setState(() {
-          _errorMessage = 'Gagal memuat data provinsi dan agama: $e';
+          _agamaList = data['agama'] ?? [];
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gagal memuat data provinsi dan agama: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        print('✅ Agama loaded: ${_agamaList.length} items');
+      } else {
+        print('❌ Agama data not found in master data');
       }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoadingMasterData = false);
-      }
+    } else {
+      print('❌ Failed to load master data: ${masterResult['message']}');
+      // Jangan throw error untuk agama, karena tidak critical
+    }
+
+  } catch (e) {
+    print('❌ Error loading master data: $e');
+    if (mounted) {
+      setState(() {
+        _errorMessage = 'Gagal memuat data provinsi dan agama: $e';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal memuat data provinsi dan agama: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  } finally {
+    if (mounted) {
+      setState(() => _isLoadingMasterData = false);
     }
   }
+}
 
   // ✅ LOAD DATA KOTA BERDASARKAN PROVINSI
   Future<void> _loadKota(String idProvinsi, bool forKtp) async {
@@ -216,164 +334,269 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  // ✅ METHOD UPDATE PROFILE
-  Future<void> _updateProfile() async {
-    if (!_formKey.currentState!.validate()) {
+// ✅ FIX: UPDATE PROFILE DENGAN WORKAROUND LOKAL + ENDPOINT ALTERNATIF
+Future<void> _updateProfile() async {
+  if (!_formKey.currentState!.validate()) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Harap perbaiki error pada form terlebih dahulu'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+    return;
+  }
+
+  // ✅ Validasi password jika diisi
+  if (_newPasswordController.text.isNotEmpty) {
+    if (_oldPasswordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Harap perbaiki error pada form terlebih dahulu'),
+          content: Text('Harap masukkan password lama untuk mengubah password'),
           backgroundColor: Colors.orange,
         ),
       );
       return;
     }
 
-    // ✅ Validasi password jika diisi
-    if (_newPasswordController.text.isNotEmpty) {
-      if (_oldPasswordController.text.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Harap masukkan password lama untuk mengubah password'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
-
-      if (_newPasswordController.text.length < 6) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Password baru minimal 6 karakter'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
-
-      if (_newPasswordController.text != _confirmPasswordController.text) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Konfirmasi password tidak cocok'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
+    if (_newPasswordController.text.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password baru minimal 6 karakter'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
     }
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    if (_newPasswordController.text != _confirmPasswordController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Konfirmasi password tidak cocok'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+  }
 
+  setState(() {
+    _isLoading = true;
+    _errorMessage = null;
+  });
+
+  try {
+    print('🔄 Starting profile update with workaround...');
+
+    // ✅ PREPARE UPDATE DATA
+    final updatedData = {
+      // Data dasar
+      'username': widget.user['username'] ?? '',
+      'fullname': _fullNameController.text.trim(),
+      'nama': _fullNameController.text.trim(),
+      'email': _emailController.text.trim(),
+      'telp': _phoneController.text.trim(),
+      'phone': _phoneController.text.trim(),
+      'job': _jobController.text.trim(),
+      'pekerjaan': _jobController.text.trim(),
+      'birth_place': _birthPlaceController.text.trim(),
+      'tempat_lahir': _birthPlaceController.text.trim(),
+      'agama_id': _selectedAgama ?? '1',
+      
+      // Data KTP
+      'ktp_alamat': _ktpAlamatController.text.trim(),
+      'alamat': _ktpAlamatController.text.trim(),
+      'ktp_rt': _ktpRtController.text.trim(),
+      'rt': _ktpRtController.text.trim(),
+      'ktp_rw': _ktpRwController.text.trim(),
+      'rw': _ktpRwController.text.trim(),
+      'ktp_no': _ktpNoController.text.trim(),
+      'no_rumah': _ktpNoController.text.trim(),
+      'ktp_postal': _ktpPostalController.text.trim(),
+      'kode_pos': _ktpPostalController.text.trim(),
+      'ktp_id_province': _selectedProvinsiKtp ?? '',
+      'id_province': _selectedProvinsiKtp ?? '',
+      'ktp_id_regency': _selectedKotaKtp ?? '',
+      'id_regency': _selectedKotaKtp ?? '',
+      
+      // Data Domisili
+      'domisili_alamat': _sameAsKtp ? _ktpAlamatController.text.trim() : _domisiliAlamatController.text.trim(),
+      'domisili_rt': _sameAsKtp ? _ktpRtController.text.trim() : _domisiliRtController.text.trim(),
+      'domisili_rw': _sameAsKtp ? _ktpRwController.text.trim() : _domisiliRwController.text.trim(),
+      'domisili_no': _sameAsKtp ? _ktpNoController.text.trim() : _domisiliNoController.text.trim(),
+      'domisili_postal': _sameAsKtp ? _ktpPostalController.text.trim() : _domisiliPostalController.text.trim(),
+      'domisili_id_province': _sameAsKtp ? (_selectedProvinsiKtp ?? '') : (_selectedProvinsiDomisili ?? ''),
+      'domisili_id_regency': _sameAsKtp ? (_selectedKotaKtp ?? '') : (_selectedKotaDomisili ?? ''),
+    };
+
+    // ✅ Hapus field yang kosong
+    updatedData.removeWhere((key, value) => value.toString().isEmpty);
+
+    print('📤 Update data prepared: ${updatedData.keys}');
+
+    // ✅ 1. SIMPAN DATA KE LOCAL STORAGE (WORKAROUND UTAMA)
+    final localResult = await _saveProfileDataLocally(updatedData);
+    
+    // ✅ 2. COBA UPDATE KE SERVER (SECONDARY)
+    Map<String, dynamic> serverResult = {'success': false, 'message': 'Skip server update'};
     try {
-      print('🔄 Starting profile update...');
+      serverResult = await _apiService.updateUserProfile(updatedData);
+    } catch (e) {
+      print('⚠️ Server update failed, using local only: $e');
+    }
 
-      // ✅ Prepare update data
-      final updatedData = {
-        'username': widget.user['username'] ?? '',
-        'fullname': _fullNameController.text.trim(),
-        'email': _emailController.text.trim(),
-        'phone': _phoneController.text.trim(),
-        'job': _jobController.text.trim(),
-        'birth_place': _birthPlaceController.text.trim(),
-        'agama_id': _selectedAgama ?? '1',
-        
-        // Data KTP
-        'ktp_alamat': _ktpAlamatController.text.trim(),
-        'ktp_rt': _ktpRtController.text.trim(),
-        'ktp_rw': _ktpRwController.text.trim(),
-        'ktp_no': _ktpNoController.text.trim(),
-        'ktp_postal': _ktpPostalController.text.trim(),
-        'ktp_id_province': _selectedProvinsiKtp ?? '',
-        'ktp_id_regency': _selectedKotaKtp ?? '',
-        
-        // Data Domisili
-        'domisili_alamat': _sameAsKtp ? _ktpAlamatController.text.trim() : _domisiliAlamatController.text.trim(),
-        'domisili_rt': _sameAsKtp ? _ktpRtController.text.trim() : _domisiliRtController.text.trim(),
-        'domisili_rw': _sameAsKtp ? _ktpRwController.text.trim() : _domisiliRwController.text.trim(),
-        'domisili_no': _sameAsKtp ? _ktpNoController.text.trim() : _domisiliNoController.text.trim(),
-        'domisili_postal': _sameAsKtp ? _ktpPostalController.text.trim() : _domisiliPostalController.text.trim(),
-        'domisili_id_province': _sameAsKtp ? (_selectedProvinsiKtp ?? '') : (_selectedProvinsiDomisili ?? ''),
-        'domisili_id_regency': _sameAsKtp ? (_selectedKotaKtp ?? '') : (_selectedKotaDomisili ?? ''),
+    // ✅ 3. UPDATE PASSWORD JIKA DIISI
+    Map<String, dynamic> passwordResult = {'success': true};
+    if (_newPasswordController.text.isNotEmpty) {
+      print('🔐 Updating password...');
+      passwordResult = await _apiService.changePassword(
+        _oldPasswordController.text.trim(),
+        _newPasswordController.text.trim(),
+        _confirmPasswordController.text.trim(),
+      );
+    }
+
+    if (!mounted) return;
+
+    setState(() => _isLoading = false);
+
+    // ✅ EVALUATE RESULTS
+    final localSuccess = localResult['success'] == true;
+    final serverSuccess = serverResult['success'] == true;
+    final passwordSuccess = passwordResult['success'] == true;
+
+    if (localSuccess) {
+      print('✅ Profile data saved locally');
+      
+      // ✅ PREPARE COMPLETE DATA UNTUK DIKIRIM KE PARENT
+      final completeUpdatedData = {
+        ...updatedData,
+        // ✅ TAMBAHKAN DATA EXISTING YANG TIDAK DIUBAH
+        'user_id': widget.user['user_id'],
+        'id': widget.user['id'],
+        'status_user': widget.user['status_user'],
+        'foto_ktp': widget.user['foto_ktp'],
+        'foto_kk': widget.user['foto_kk'],
+        'foto_diri': widget.user['foto_diri'],
+        'foto_bukti': widget.user['foto_bukti'],
+        'user_key': widget.user['user_key'],
+        'status': widget.user['status'],
+        'message': widget.user['message'],
       };
 
-      // ✅ Hapus field yang kosong
-      updatedData.removeWhere((key, value) => value.toString().isEmpty);
+      // ✅ Hapus field yang null
+      completeUpdatedData.removeWhere((key, value) => value == null);
 
-      print('📤 Sending update data: $updatedData');
-
-      // ✅ Update profile
-      final profileResult = await _apiService.updateUserProfile(updatedData);
+      print('📋 Complete updated data for parent callback');
       
-      // ✅ Update password jika diisi
-      Map<String, dynamic> passwordResult = {'success': true};
+      // ✅ PANGGIL CALLBACK DENGAN DATA YANG LENGKAP
+      widget.onProfileUpdated(completeUpdatedData);
+      
+      // ✅ CLEAR PASSWORD FIELDS SETELAH SUKSES
+      _oldPasswordController.clear();
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
+      
+      // ✅ SHOW SUCCESS MESSAGE
+      String message = 'Profile berhasil disimpan ✅';
       if (_newPasswordController.text.isNotEmpty) {
-        print('🔐 Updating password...');
-        passwordResult = await _apiService.changePassword(
-          _oldPasswordController.text.trim(),
-          _newPasswordController.text.trim(),
-          _confirmPasswordController.text.trim(),
-        );
+        message = passwordSuccess
+          ? 'Profile dan password berhasil diupdate ✅'
+          : 'Profile berhasil disimpan, tetapi gagal mengubah password';
       }
-
-      setState(() => _isLoading = false);
-
-      if (!mounted) return;
-
-      if (profileResult['success'] == true) {
-        print('✅ Profile update successful');
-        
-        // ✅ Panggil callback untuk update data di parent
-        widget.onProfileUpdated(updatedData);
-        
-        // ✅ Clear password fields setelah sukses
-        _oldPasswordController.clear();
-        _newPasswordController.clear();
-        _confirmPasswordController.clear();
-        
-        String message = 'Profile berhasil diupdate ✅';
-        if (_newPasswordController.text.isNotEmpty) {
-          message = passwordResult['success'] == true
-            ? 'Profile dan password berhasil diupdate ✅'
-            : 'Profile berhasil diupdate, tetapi gagal mengubah password';
-        }
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-        
-        Navigator.pop(context);
-      } else {
-        print('❌ Profile update failed: ${profileResult['message']}');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(profileResult['message'] ?? 'Gagal mengupdate profile'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      
+      if (!serverSuccess) {
+        message += '\n(Data disimpan secara lokal)';
       }
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Error: $e';
-      });
       
-      if (!mounted) return;
-      
-      print('❌ Update profile error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Terjadi kesalahan: $e'),
+          content: Text(message),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      
+      // ✅ NAVIGATE BACK SETELAH BERHASIL
+      Navigator.pop(context);
+      
+    } else {
+      print('❌ Local save failed: ${localResult['message']}');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal menyimpan data: ${localResult['message']}'),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
     }
+  } catch (e) {
+    setState(() {
+      _isLoading = false;
+      _errorMessage = 'Error: $e';
+    });
+    
+    if (!mounted) return;
+    
+    print('❌ Update profile error: $e');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Terjadi kesalahan: $e'),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
+}
+
+// ✅ WORKAROUND: SIMPAN DATA KE LOCAL STORAGE
+Future<Map<String, dynamic>> _saveProfileDataLocally(Map<String, dynamic> updatedData) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // ✅ GET CURRENT USER DATA
+    final currentUserString = prefs.getString('user');
+    if (currentUserString == null) {
+      return {'success': false, 'message': 'Data user tidak ditemukan'};
+    }
+    
+    final currentUser = jsonDecode(currentUserString);
+    
+    // ✅ MERGE DATA LAMA DENGAN DATA BARU
+    final mergedUser = {...currentUser, ...updatedData};
+    
+    // ✅ SIMPAN KE SHARED PREFERENCES
+    await prefs.setString('user', jsonEncode(mergedUser));
+    
+    // ✅ SIMPAN JUGA KE login_user JIKA ADA
+    final loginUserString = prefs.getString('login_user');
+    if (loginUserString != null) {
+      final loginData = jsonDecode(loginUserString);
+      if (loginData['user'] != null) {
+        final updatedLoginData = {
+          ...loginData,
+          'user': {...loginData['user'], ...updatedData}
+        };
+        await prefs.setString('login_user', jsonEncode(updatedLoginData));
+      }
+    }
+    
+    print('✅ Profile data saved locally successfully');
+    print('📊 Updated keys: ${mergedUser.keys}');
+    
+    return {
+      'success': true,
+      'message': 'Data berhasil disimpan secara lokal',
+      'data': mergedUser
+    };
+    
+  } catch (e) {
+    print('❌ Local save error: $e');
+    return {
+      'success': false,
+      'message': 'Gagal menyimpan data lokal: $e'
+    };
+  }
+}
 
   // ✅ PERBAIKAN: Build dropdown dengan handling duplicate values dan error handling
   Widget _buildDropdown({

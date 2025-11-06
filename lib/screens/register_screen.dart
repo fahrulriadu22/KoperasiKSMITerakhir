@@ -244,93 +244,158 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-  // ✅ HANDLE REGISTER
-  void _handleRegister() async {
-    if (!_validateAllForms()) return;
+// ✅ FIX: HANDLE REGISTER - TANPA AUTO LOGIN
+void _handleRegister() async {
+  if (!_validateAllForms()) return;
 
-    setState(() => _isLoading = true);
+  setState(() => _isLoading = true);
 
-    try {
-      // Check user exist
-      final checkResult = await _apiService.checkUserExist(
-        usernameController.text.trim(),
-        emailController.text.trim(),
-      );
+  try {
+    // Check user exist
+    final checkResult = await _apiService.checkUserExist(
+      usernameController.text.trim(),
+      emailController.text.trim(),
+    );
 
-      if (checkResult['exists'] == true) {
-        setState(() => _isLoading = false);
-        _showErrorDialog(checkResult['message'] ?? 'Username atau email sudah terdaftar.');
-        return;
-      }
-
-      // Prepare register data
-      final userData = {
-        // Data Umum
-        'username': usernameController.text.trim(),
-        'password': passwordController.text.trim(),
-        'email': emailController.text.trim(),
-        'fullname': fullnameController.text.trim(),
-        'fax': faxController.text.trim().isEmpty ? "-" : faxController.text.trim(),
-        'phone': phoneController.text.trim(),
-        'job': jobController.text.trim().isEmpty ? "Karyawan Swasta" : jobController.text.trim(),
-        'birth_place': birthPlaceController.text.trim(),
-        'birth_date': _selectedBirthDate != null 
-            ? '${_selectedBirthDate!.year}-${_selectedBirthDate!.month.toString().padLeft(2, '0')}-${_selectedBirthDate!.day.toString().padLeft(2, '0')}' 
-            : '2000-01-01',
-
-        // Identitas
-        'agama_id': agamaIdController.text.trim(),
-        'cabang_id': cabangIdController.text.trim(),
-        'jenis_identitas': jenisIdentitasController.text.trim(),
-        'tanggal_berlaku': _selectedTanggalBerlaku != null
-            ? '${_selectedTanggalBerlaku!.year}-${_selectedTanggalBerlaku!.month.toString().padLeft(2, '0')}-${_selectedTanggalBerlaku!.day.toString().padLeft(2, '0')}'
-            : '2025-12-31',
-        'nomor_identitas': nomorIdentitasController.text.trim(),
-        'sumber_informasi': sumberInformasiController.text.trim(),
-
-        // Data KTP
-        'ktp_alamat': ktpAlamatController.text.trim(),
-        'ktp_rt': ktpRtController.text.trim().isEmpty ? "001" : ktpRtController.text.trim(),
-        'ktp_rw': ktpRwController.text.trim().isEmpty ? "001" : ktpRwController.text.trim(),
-        'ktp_id_province': _selectedProvinsiKtp ?? "35",
-        'ktp_id_regency': _selectedKotaKtp ?? "3578",
-        'ktp_postal': ktpPostalController.text.trim().isEmpty ? "60111" : ktpPostalController.text.trim(),
-        'ktp_no': ktpNoController.text.trim().isEmpty ? "01" : ktpNoController.text.trim(),
-
-        // Data Domisili
-        'domisili_alamat': _sameAsKtp ? ktpAlamatController.text.trim() : domisiliAlamatController.text.trim(),
-        'domisili_rt': _sameAsKtp ? ktpRtController.text.trim() : domisiliRtController.text.trim(),
-        'domisili_rw': _sameAsKtp ? ktpRwController.text.trim() : domisiliRwController.text.trim(),
-        'domisili_id_regency': _sameAsKtp ? (_selectedKotaKtp ?? "3578") : (_selectedKotaDomisili ?? "3578"),
-        'domisili_postal': _sameAsKtp ? ktpPostalController.text.trim() : domisiliPostalController.text.trim(),
-        'domisili_no': _sameAsKtp ? ktpNoController.text.trim() : domisiliNoController.text.trim(),
-
-        // Data Ahli Waris
-        'nama_ahli_waris': namaAhliWarisController.text.trim().isEmpty ? fullnameController.text.trim() : namaAhliWarisController.text.trim(),
-        'tempat_lahir_ahli_waris': tempatLahirAhliWarisController.text.trim().isEmpty ? birthPlaceController.text.trim() : tempatLahirAhliWarisController.text.trim(),
-        'tanggal_lahir_ahli_waris': _selectedTanggalLahirAhliWaris != null
-            ? '${_selectedTanggalLahirAhliWaris!.year}-${_selectedTanggalLahirAhliWaris!.month.toString().padLeft(2, '0')}-${_selectedTanggalLahirAhliWaris!.day.toString().padLeft(2, '0')}'
-            : '2000-01-01',
-        'hubungan': hubunganController.text.trim(),
-      };
-
-      // Call register API
-      final result = await _apiService.register(userData);
-
+    if (checkResult['exists'] == true) {
       setState(() => _isLoading = false);
-
-      if (!mounted) return;
-
-      if (result['success'] == true) {
-        _showSuccessDialog(result['message'] ?? 'Pendaftaran berhasil!');
-      } else {
-        _showErrorDialog(result['message'] ?? 'Registrasi gagal. Silakan coba lagi.');
-      }
-    } catch (e) {
-      setState(() => _isLoading = false);
-      _showErrorDialog('Terjadi kesalahan: $e');
+      _showErrorDialog(checkResult['message'] ?? 'Username atau email sudah terdaftar.');
+      return;
     }
+
+    // Prepare register data
+    final userData = {
+      // Data Umum
+      'username': usernameController.text.trim(),
+      'password': passwordController.text.trim(),
+      'email': emailController.text.trim(),
+      'fullname': fullnameController.text.trim(),
+      'fax': faxController.text.trim().isEmpty ? "-" : faxController.text.trim(),
+      'phone': phoneController.text.trim(),
+      'job': jobController.text.trim().isEmpty ? "Karyawan Swasta" : jobController.text.trim(),
+      'birth_place': birthPlaceController.text.trim(),
+      'birth_date': _selectedBirthDate != null 
+          ? '${_selectedBirthDate!.year}-${_selectedBirthDate!.month.toString().padLeft(2, '0')}-${_selectedBirthDate!.day.toString().padLeft(2, '0')}' 
+          : '2000-01-01',
+
+      // Identitas
+      'agama_id': agamaIdController.text.trim(),
+      'cabang_id': cabangIdController.text.trim(),
+      'jenis_identitas': jenisIdentitasController.text.trim(),
+      'tanggal_berlaku': _selectedTanggalBerlaku != null
+          ? '${_selectedTanggalBerlaku!.year}-${_selectedTanggalBerlaku!.month.toString().padLeft(2, '0')}-${_selectedTanggalBerlaku!.day.toString().padLeft(2, '0')}'
+          : '2025-12-31',
+      'nomor_identitas': nomorIdentitasController.text.trim(),
+      'sumber_informasi': sumberInformasiController.text.trim(),
+
+      // Data KTP
+      'ktp_alamat': ktpAlamatController.text.trim(),
+      'ktp_rt': ktpRtController.text.trim().isEmpty ? "001" : ktpRtController.text.trim(),
+      'ktp_rw': ktpRwController.text.trim().isEmpty ? "001" : ktpRwController.text.trim(),
+      'ktp_id_province': _selectedProvinsiKtp ?? "35",
+      'ktp_id_regency': _selectedKotaKtp ?? "3578",
+      'ktp_postal': ktpPostalController.text.trim().isEmpty ? "60111" : ktpPostalController.text.trim(),
+      'ktp_no': ktpNoController.text.trim().isEmpty ? "01" : ktpNoController.text.trim(),
+
+      // Data Domisili
+      'domisili_alamat': _sameAsKtp ? ktpAlamatController.text.trim() : domisiliAlamatController.text.trim(),
+      'domisili_rt': _sameAsKtp ? ktpRtController.text.trim() : domisiliRtController.text.trim(),
+      'domisili_rw': _sameAsKtp ? ktpRwController.text.trim() : domisiliRwController.text.trim(),
+      'domisili_id_regency': _sameAsKtp ? (_selectedKotaKtp ?? "3578") : (_selectedKotaDomisili ?? "3578"),
+      'domisili_postal': _sameAsKtp ? ktpPostalController.text.trim() : domisiliPostalController.text.trim(),
+      'domisili_no': _sameAsKtp ? ktpNoController.text.trim() : domisiliNoController.text.trim(),
+
+      // Data Ahli Waris
+      'nama_ahli_waris': namaAhliWarisController.text.trim().isEmpty ? fullnameController.text.trim() : namaAhliWarisController.text.trim(),
+      'tempat_lahir_ahli_waris': tempatLahirAhliWarisController.text.trim().isEmpty ? birthPlaceController.text.trim() : tempatLahirAhliWarisController.text.trim(),
+      'tanggal_lahir_ahli_waris': _selectedTanggalLahirAhliWaris != null
+          ? '${_selectedTanggalLahirAhliWaris!.year}-${_selectedTanggalLahirAhliWaris!.month.toString().padLeft(2, '0')}-${_selectedTanggalLahirAhliWaris!.day.toString().padLeft(2, '0')}'
+          : '2000-01-01',
+      'hubungan': hubunganController.text.trim(),
+    };
+
+    print('📤 Sending complete registration data...');
+    
+    // Call register API
+    final result = await _apiService.register(userData);
+
+    setState(() => _isLoading = false);
+
+    if (!mounted) return;
+
+    if (result['success'] == true) {
+      print('✅ Registration successful');
+      
+      // ✅ FIX: HAPUS AUTO-LOGIN, LANGSUNG KE LOGIN SCREEN
+      _showSuccessDialogManualLogin(
+        result['message'] ?? 'Pendaftaran berhasil! Silakan login dengan username dan password Anda.'
+      );
+      
+    } else {
+      print('❌ Registration failed: ${result['message']}');
+      _showErrorDialog(result['message'] ?? 'Registrasi gagal. Silakan coba lagi.');
+    }
+  } catch (e) {
+    setState(() => _isLoading = false);
+    print('❌ Register error: $e');
+    _showErrorDialog('Terjadi kesalahan: $e');
   }
+}
+
+// ✅ FIX: DIALOG UNTUK LOGIN MANUAL SETELAH REGISTER BERHASIL
+void _showSuccessDialogManualLogin(String message) {
+  showDialog(
+    context: context,
+    barrierDismissible: false, // User harus klik tombol
+    builder: (_) => AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.check_circle, color: Colors.green),
+          SizedBox(width: 8),
+          Text('Pendaftaran Berhasil'),
+        ],
+      ),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context); // Tutup dialog
+            // Langsung navigate ke login screen
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+              (route) => false, // Hapus semua route sebelumnya
+            );
+          },
+          child: const Text('LOGIN SEKARANG'),
+        )
+      ],
+    ),
+  );
+}
+
+// ✅ DIALOG UNTUK LOGIN MANUAL
+void _showSuccessDialogWithLogin(String message) {
+  showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('Pendaftaran Berhasil 🎉'),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+            );
+          },
+          child: const Text('LOGIN SEKARANG'),
+        )
+      ],
+    ),
+  );
+}
 
   // ✅ VALIDATE ALL FORMS
   bool _validateAllForms() {

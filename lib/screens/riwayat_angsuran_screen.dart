@@ -53,96 +53,168 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
   bool _hasError = false;
   String _errorMessage = '';
   late String _selectedAngsuranType;
-
-  // ✅ Daftar jenis angsuran SYARIAH - HANYA SEMUA & TAQSITH YANG AKTIF
-  final List<Map<String, dynamic>> _angsuranTypes = [
-    {'id': 'semua', 'name': 'Semua', 'icon': Icons.all_inclusive, 'color': Colors.green, 'is_active': true},
-    {'id': 'mudharabah', 'name': 'Mudharabah', 'icon': Icons.account_balance, 'color': Colors.green, 'is_active': false},
-    {'id': 'murabahah', 'name': 'Murabahah', 'icon': Icons.shopping_cart, 'color': Colors.blue, 'is_active': false},
-    {'id': 'musyarakah', 'name': 'Musyarakah', 'icon': Icons.handshake, 'color': Colors.orange, 'is_active': false},
-    {'id': 'ijarah', 'name': 'Ijarah', 'icon': Icons.home_work, 'color': Colors.purple, 'is_active': false},
-    {'id': 'qardh', 'name': 'Qardh Hasan', 'icon': Icons.volunteer_activism, 'color': Colors.teal, 'is_active': false},
-    {'id': 'wakalah', 'name': 'Wakalah', 'icon': Icons.assignment, 'color': Colors.indigo, 'is_active': false},
-    {'id': 'taqsith', 'name': 'Taqsith', 'icon': Icons.payments, 'color': Colors.deepPurple, 'is_active': true},
-  ];
+  List<Map<String, dynamic>> _angsuranTypes = [];
 
   @override
   void initState() {
     super.initState();
     
     // ✅ SET INITIAL VALUE BERDASARKAN PARAMETER
-    _selectedAngsuranType = widget.initialAngsuranType ?? 'semua';
+    _selectedAngsuranType = 'semua';
     
     _loadRiwayatAngsuran();
   }
 
-// ✅ PERBAIKAN: Method untuk load data taqsith dari API getAlltaqsith
-Future<void> _loadRiwayatAngsuran() async {
-  if (mounted) {
-    setState(() {
-      _isLoading = true;
-      _hasError = false;
-      _errorMessage = '';
-    });
-  }
-
-  try {
-    print('🚀 Memulai load data taqsith dari getAlltaqsith API...');
-    
-    // ✅ PANGGIL API GETALLTAQSITH YANG BARU
-    final result = await _apiService.getAlltaqsith();
-    
-    print('📊 Response getAlltaqsith: ${result['success']}');
-    print('📊 Message: ${result['message']}');
-    
+  // ✅ LOAD DATA DARI API
+  Future<void> _loadRiwayatAngsuran() async {
     if (mounted) {
       setState(() {
-        if (result['success'] == true) {
-          final data = result['data'];
-          final dataMaster = result['data_master'];
-          
-          // ✅ SIMPAN DATA MASTER
-          if (dataMaster is List && dataMaster.isNotEmpty) {
-            _dataMaster = List<Map<String, dynamic>>.from(dataMaster);
-            print('✅ Berhasil load ${_dataMaster.length} data master');
-          } else {
-            _dataMaster = [];
-            print('⚠️ Data master kosong');
-          }
-          
-          // ✅ KONVERSI DATA TAQSITH DARI API
-          if (data is List && data.isNotEmpty) {
-            _riwayatAngsuran = _parseTaqsithData(data);
-            print('✅ Berhasil load ${_riwayatAngsuran.length} data taqsith');
+        _isLoading = true;
+        _hasError = false;
+        _errorMessage = '';
+      });
+    }
+
+    try {
+      print('🚀 Memulai load data dari getAlltaqsith API...');
+      
+      // ✅ PANGGIL API GETALLTAQSITH
+      final result = await _apiService.getAlltaqsith();
+      
+      print('📊 Response getAlltaqsith: ${result['success']}');
+      print('📊 Message: ${result['message']}');
+      
+      if (mounted) {
+        setState(() {
+          if (result['success'] == true) {
+            final data = result['data'];
+            final dataMaster = result['data_master'];
+            
+            // ✅ SIMPAN DATA MASTER
+            if (dataMaster is List && dataMaster.isNotEmpty) {
+              _dataMaster = List<Map<String, dynamic>>.from(dataMaster);
+              print('✅ Berhasil load ${_dataMaster.length} data master');
+            } else {
+              _dataMaster = [];
+              print('⚠️ Data master kosong');
+            }
+            
+            // ✅ KONVERSI DATA DARI API
+            if (data is List && data.isNotEmpty) {
+              _riwayatAngsuran = _parseTaqsithData(data);
+              print('✅ Berhasil load ${_riwayatAngsuran.length} data pembiayaan');
+              
+              // ✅ GENERATE JENIS ANGSURAN DARI DATA YANG ADA
+              _generateAngsuranTypes();
+            } else {
+              _riwayatAngsuran = [];
+              print('⚠️ Data pembiayaan kosong atau bukan list');
+            }
           } else {
             _riwayatAngsuran = [];
-            print('⚠️ Data taqsith kosong atau bukan list');
+            _dataMaster = [];
+            _hasError = true;
+            _errorMessage = result['message'] ?? 'Gagal memuat data pembiayaan';
+            print('❌ API Error: $_errorMessage');
           }
-        } else {
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading data: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+          _errorMessage = 'Gagal memuat data: $e';
           _riwayatAngsuran = [];
           _dataMaster = [];
-          _hasError = true;
-          _errorMessage = result['message'] ?? 'Gagal memuat data taqsith';
-          print('❌ API Error: $_errorMessage');
-        }
-        _isLoading = false;
-      });
-    }
-  } catch (e) {
-    print('❌ Error loading taqsith: $e');
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-        _errorMessage = 'Gagal memuat data: $e';
-        _riwayatAngsuran = [];
-        _dataMaster = [];
-      });
+        });
+      }
     }
   }
-}
 
-  // ✅ PERBAIKAN: PARSING DATA TAQSITH DARI API GETALLTAQSITH
+  // ✅ GENERATE JENIS ANGSURAN DARI DATA YANG ADA
+  void _generateAngsuranTypes() {
+    final types = <Map<String, dynamic>>[];
+    
+    // ✅ TAMBAHKAN "SEMUA" SEBAGAI DEFAULT
+    types.add({
+      'id': 'semua', 
+      'name': 'Semua', 
+      'icon': Icons.all_inclusive, 
+      'color': Colors.green, 
+      'is_active': true,
+      'total': _getTotalAngsuran('semua')
+    });
+    
+    // ✅ EKSTRAK JENIS UNIK DARI DATA
+    final uniqueTypes = <String, Map<String, dynamic>>{};
+    
+    for (var angsuran in _riwayatAngsuran) {
+      final jenis = angsuran['jenis']?.toString() ?? 'taqsith';
+      final namaBarang = angsuran['nama_barang']?.toString() ?? 'Produk';
+      final idKredit = angsuran['id_kredit']?.toString() ?? '';
+      
+      if (!uniqueTypes.containsKey(jenis)) {
+        // ✅ TENTUKAN ICON DAN COLOR BERDASARKAN JENIS
+        final iconData = _getIconForType(jenis);
+        final color = _getColorForType(jenis);
+        
+        uniqueTypes[jenis] = {
+          'id': jenis,
+          'name': '$namaBarang (ID: $idKredit)',
+          'icon': iconData,
+          'color': color,
+          'is_active': true,
+          'total': _getTotalAngsuran(jenis)
+        };
+      }
+    }
+    
+    // ✅ TAMBAHKAN KE LIST
+    types.addAll(uniqueTypes.values.toList());
+    
+    setState(() {
+      _angsuranTypes = types;
+    });
+    
+    print('✅ Generated ${_angsuranTypes.length} angsuran types');
+  }
+
+  // ✅ GET ICON BERDASARKAN JENIS
+  IconData _getIconForType(String jenis) {
+    final jenisLower = jenis.toLowerCase();
+    if (jenisLower.contains('handphone') || jenisLower.contains('hp')) {
+      return Icons.phone_android;
+    } else if (jenisLower.contains('motor') || jenisLower.contains('vario')) {
+      return Icons.motorcycle;
+    } else if (jenisLower.contains('mobil')) {
+      return Icons.directions_car;
+    } else if (jenisLower.contains('rumah')) {
+      return Icons.house;
+    } else {
+      return Icons.payments;
+    }
+  }
+
+  // ✅ GET COLOR BERDASARKAN JENIS
+  Color _getColorForType(String jenis) {
+    final jenisLower = jenis.toLowerCase();
+    if (jenisLower.contains('handphone') || jenisLower.contains('hp')) {
+      return Colors.blue;
+    } else if (jenisLower.contains('motor') || jenisLower.contains('vario')) {
+      return Colors.orange;
+    } else if (jenisLower.contains('mobil')) {
+      return Colors.red;
+    } else if (jenisLower.contains('rumah')) {
+      return Colors.green;
+    } else {
+      return Colors.purple;
+    }
+  }
+
+  // ✅ PARSING DATA DARI API - SESUAI STRUCTURE POSTMAN
   List<Map<String, dynamic>> _parseTaqsithData(List<dynamic> apiData) {
     final List<Map<String, dynamic>> parsedData = [];
     
@@ -159,15 +231,21 @@ Future<void> _loadRiwayatAngsuran() async {
           final statusMaster = masterData?['status']?.toString() ?? 'TEPAT WAKTU';
           final angsuranMaster = double.tryParse(masterData?['angsuran']?.toString() ?? '0') ?? 0;
           
+          // ✅ GUNAKAN ID_KREDIT + NAMA_BARANG SEBAGAI JENIS
+          final jenisPembiayaan = '$idKredit-$namaBarang';
+          
           if (angsuranList is List && angsuranList.isNotEmpty) {
             for (var angsuranItem in angsuranList) {
               if (angsuranItem is Map<String, dynamic>) {
-                // ✅ PARSE DATA DARI RESPONSE API TAQSITH
+                // ✅ PARSE DATA DARI RESPONSE API
                 final harga = double.tryParse(angsuranItem['harga']?.toString() ?? '0') ?? 0;
                 final sisa = double.tryParse(angsuranItem['sisa']?.toString() ?? '0') ?? 0;
                 final ke = int.tryParse(angsuranItem['ke']?.toString() ?? '0') ?? 0;
                 final hargaBagiHasil = double.tryParse(angsuranItem['harga_bagi_hasil']?.toString() ?? '0') ?? 0;
                 final sisaBagiHasil = double.tryParse(angsuranItem['sisa_bagi_hasil']?.toString() ?? '0') ?? 0;
+                final tanggalBuat = angsuranItem['tanggal_buat']?.toString() ?? '';
+                final invNo = angsuranItem['inv_no']?.toString() ?? '';
+                final idRujukan = angsuranItem['id_rujukan']?.toString() ?? '';
                 
                 // ✅ TENTUKAN STATUS BERDASARKAN SISA
                 String statusAngsuran = 'aktif';
@@ -177,21 +255,24 @@ Future<void> _loadRiwayatAngsuran() async {
                   statusAngsuran = 'berjalan';
                 }
                 
+                // ✅ HITUNG TOTAL ANGSURAN (18 BULAN)
+                final totalAngsuran = angsuranMaster > 0 ? angsuranMaster * 18 : harga * 18;
+                
                 parsedData.add({
-                  'id': '${angsuranItem['id_rujukan']}_${angsuranItem['ke']}',
-                  'tanggal': angsuranItem['tanggal_buat']?.toString() ?? '',
-                  'no_invoice': angsuranItem['inv_no']?.toString() ?? '',
+                  'id': '${idRujukan}_$ke',
+                  'tanggal': tanggalBuat,
+                  'no_invoice': invNo,
                   'jumlah': harga,
                   'sisa_angsuran': sisa,
                   'ke': ke,
                   'id_kredit': idKredit,
                   'nama_barang': namaBarang,
-                  'jenis': 'taqsith',
-                  'keterangan': 'Angsuran Taqsith $namaBarang - Cicilan ke-$ke',
+                  'jenis': jenisPembiayaan,
+                  'keterangan': 'Angsuran $namaBarang - Cicilan ke-$ke',
                   'status': statusAngsuran,
                   'harga_bagi_hasil': hargaBagiHasil,
                   'sisa_bagi_hasil': sisaBagiHasil,
-                  'total_angsuran': angsuranMaster > 0 ? angsuranMaster * 18 : harga * 18,
+                  'total_angsuran': totalAngsuran,
                   'tenor': _extractTenor(jangkaWaktu),
                   'jangka_waktu': jangkaWaktu,
                   'status_master': statusMaster,
@@ -201,19 +282,49 @@ Future<void> _loadRiwayatAngsuran() async {
             }
           } else {
             // ✅ JIKA TIDAK ADA ANGSURAN, TAMPILKAN DATA KREDIT SAJA
-            print('⚠️ Tidak ada data angsuran untuk kredit $idKredit');
+            print('⚠️ Tidak ada data angsuran untuk kredit $idKredit - $namaBarang');
+            
+            parsedData.add({
+              'id': 'kredit_$idKredit',
+              'tanggal': '',
+              'no_invoice': '',
+              'jumlah': 0,
+              'sisa_angsuran': 0,
+              'ke': 0,
+              'id_kredit': idKredit,
+              'nama_barang': namaBarang,
+              'jenis': jenisPembiayaan,
+              'keterangan': 'Pembiayaan $namaBarang (Belum ada angsuran)',
+              'status': 'belum mulai',
+              'harga_bagi_hasil': 0,
+              'sisa_bagi_hasil': 0,
+              'total_angsuran': angsuranMaster * 18,
+              'tenor': _extractTenor(jangkaWaktu),
+              'jangka_waktu': jangkaWaktu,
+              'status_master': statusMaster,
+              'angsuran_master': angsuranMaster,
+            });
           }
         }
       } catch (e) {
-        print('❌ Error parsing taqsith item: $e');
+        print('❌ Error parsing item: $e');
       }
     }
     
-    // ✅ URUTKAN BERDASARKAN TANGGAL (TERBARU DIATAS)
+    // ✅ URUTKAN BERDASARKAN TANGGAL (TERBARU DIATAS) DAN STATUS
     parsedData.sort((a, b) {
       final dateA = DateTime.tryParse(a['tanggal'] ?? '') ?? DateTime(2000);
       final dateB = DateTime.tryParse(b['tanggal'] ?? '') ?? DateTime(2000);
-      return dateB.compareTo(dateA);
+      
+      if (dateA != DateTime(2000) && dateB != DateTime(2000)) {
+        return dateB.compareTo(dateA);
+      } else if (dateA != DateTime(2000)) {
+        return -1;
+      } else if (dateB != DateTime(2000)) {
+        return 1;
+      } else {
+        return (b['nama_barang'] ?? '').compareTo(a['nama_barang'] ?? '');
+      }
     });
     
     return parsedData;
@@ -244,26 +355,24 @@ Future<void> _loadRiwayatAngsuran() async {
     }
   }
 
-  // ✅ PERBAIKAN: Filter riwayat - HANYA TAQSITH YANG ADA DATANYA
+  // ✅ FILTER RIWAYAT BERDASARKAN JENIS YANG DIPILIH
   List<Map<String, dynamic>> get _filteredRiwayat {
     try {
       if (_selectedAngsuranType == 'semua') {
         return _riwayatAngsuran;
       }
       
-      if (_selectedAngsuranType == 'taqsith') {
-        return _riwayatAngsuran;
-      }
-      
-      // ✅ UNTUK JENIS LAINNYA - KOSONG (BELUM TERINTEGRASI)
-      return [];
+      return _riwayatAngsuran.where((angsuran) {
+        final jenis = angsuran['jenis']?.toString() ?? '';
+        return jenis == _selectedAngsuranType;
+      }).toList();
     } catch (e) {
       print('❌ Error filtering: $e');
       return [];
     }
   }
 
-  // ✅ PERBAIKAN: Get total angsuran
+  // ✅ GET TOTAL ANGSURAN
   double _getTotalAngsuran(String jenisId) {
     try {
       if (jenisId == 'semua') {
@@ -277,26 +386,24 @@ Future<void> _loadRiwayatAngsuran() async {
         });
       }
       
-      if (jenisId == 'taqsith') {
-        return _riwayatAngsuran.fold(0.0, (sum, angsuran) {
-          try {
-            final jumlah = (angsuran['jumlah'] as num?)?.toDouble() ?? 0.0;
-            return sum + jumlah;
-          } catch (e) {
-            return sum;
-          }
-        });
-      }
-      
-      // ✅ UNTUK JENIS LAINNYA - 0 (BELUM TERINTEGRASI)
-      return 0.0;
+      return _riwayatAngsuran.where((angsuran) {
+        final jenis = angsuran['jenis']?.toString() ?? '';
+        return jenis == jenisId;
+      }).fold(0.0, (sum, angsuran) {
+        try {
+          final jumlah = (angsuran['jumlah'] as num?)?.toDouble() ?? 0.0;
+          return sum + jumlah;
+        } catch (e) {
+          return sum;
+        }
+      });
     } catch (e) {
       print('❌ Error calculating total: $e');
       return 0.0;
     }
   }
 
-  // ✅ PERBAIKAN: Format currency
+  // ✅ FORMAT CURRENCY
   String _formatCurrency(double amount) {
     try {
       if (amount == 0) return 'Rp 0';
@@ -310,7 +417,7 @@ Future<void> _loadRiwayatAngsuran() async {
     }
   }
 
-  // ✅ PERBAIKAN: Get status color
+  // ✅ GET STATUS COLOR
   Color _getStatusColor(String status) {
     try {
       final statusStr = status.toString().toLowerCase();
@@ -331,6 +438,8 @@ Future<void> _loadRiwayatAngsuran() async {
         case 'unpaid':
         case 'ditolak':
           return Colors.red;
+        case 'belum mulai':
+          return Colors.orange;
         default: return Colors.grey;
       }
     } catch (e) {
@@ -338,45 +447,41 @@ Future<void> _loadRiwayatAngsuran() async {
     }
   }
 
-  // ✅ PERBAIKAN: Get angsuran color
+  // ✅ GET ANGSURAN COLOR
   Color _getAngsuranColor(String jenis) {
     try {
-      final jenisStr = jenis.toString().toLowerCase();
-      switch (jenisStr) {
-        case 'taqsith': return Colors.deepPurple;
-        case 'mudharabah': return Colors.green;
-        case 'murabahah': return Colors.blue;
-        case 'musyarakah': return Colors.orange;
-        case 'ijarah': return Colors.purple;
-        case 'qardh': return Colors.teal;
-        case 'wakalah': return Colors.indigo;
-        default: return Colors.grey;
+      final jenisLower = jenis.toLowerCase();
+      if (jenisLower.contains('handphone') || jenisLower.contains('hp')) {
+        return Colors.blue;
+      } else if (jenisLower.contains('motor') || jenisLower.contains('vario')) {
+        return Colors.orange;
+      } else if (jenisLower.contains('mobil')) {
+        return Colors.red;
+      } else if (jenisLower.contains('rumah')) {
+        return Colors.green;
+      } else {
+        return Colors.purple;
       }
     } catch (e) {
       return Colors.grey;
     }
   }
 
-  // ✅ PERBAIKAN: Get angsuran name
+  // ✅ GET ANGSURAN NAME
   String _getAngsuranName(String jenis) {
     try {
-      final jenisStr = jenis.toString().toLowerCase();
-      switch (jenisStr) {
-        case 'taqsith': return 'Taqsith';
-        case 'mudharabah': return 'Mudharabah';
-        case 'murabahah': return 'Murabahah';
-        case 'musyarakah': return 'Musyarakah';
-        case 'ijarah': return 'Ijarah';
-        case 'qardh': return 'Qardh Hasan';
-        case 'wakalah': return 'Wakalah';
-        default: return jenisStr.isNotEmpty ? jenisStr : 'Angsuran';
+      // ✅ EKSTRAK NAMA BARANG DARI JENIS (format: id-nama)
+      final parts = jenis.split('-');
+      if (parts.length > 1) {
+        return parts.sublist(1).join('-'); // Ambil bagian nama setelah id
       }
+      return jenis;
     } catch (e) {
       return 'Angsuran';
     }
   }
 
-  // ✅ PERBAIKAN: Format tanggal
+  // ✅ FORMAT TANGGAL
   String _formatTanggal(String? tanggal) {
     if (tanggal == null || tanggal.isEmpty) return '-';
     
@@ -388,11 +493,11 @@ Future<void> _loadRiwayatAngsuran() async {
     }
   }
 
-  // ✅ PERBAIKAN: Tampilkan dialog detail
+  // ✅ TAMPILKAN DIALOG DETAIL
   void _showDetailAngsuran(Map<String, dynamic> angsuran) {
     try {
       final jumlah = (angsuran['jumlah'] as num?)?.toDouble() ?? 0;
-      final jenis = angsuran['jenis']?.toString() ?? 'taqsith';
+      final jenis = angsuran['jenis']?.toString() ?? '';
       final sisaAngsuran = (angsuran['sisa_angsuran'] as num?)?.toDouble() ?? 0;
       final totalAngsuran = (angsuran['total_angsuran'] as num?)?.toDouble() ?? (jumlah * 18);
       final tanggal = _formatTanggal(angsuran['tanggal']?.toString());
@@ -401,11 +506,12 @@ Future<void> _loadRiwayatAngsuran() async {
       final noInvoice = angsuran['no_invoice']?.toString() ?? '-';
       final tenor = angsuran['tenor']?.toString() ?? '18';
       final ke = angsuran['ke']?.toString() ?? '0';
-      final namaBarang = angsuran['nama_barang']?.toString() ?? 'Handphone';
+      final namaBarang = angsuran['nama_barang']?.toString() ?? 'Produk';
       final hargaBagiHasil = (angsuran['harga_bagi_hasil'] as num?)?.toDouble() ?? 0;
       final sisaBagiHasil = (angsuran['sisa_bagi_hasil'] as num?)?.toDouble() ?? 0;
       final jangkaWaktu = angsuran['jangka_waktu']?.toString() ?? '18 Bulan';
       final statusMaster = angsuran['status_master']?.toString() ?? 'TEPAT WAKTU';
+      final idKredit = angsuran['id_kredit']?.toString() ?? '';
 
       showDialog(
         context: context,
@@ -438,7 +544,7 @@ Future<void> _loadRiwayatAngsuran() async {
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
-                          Icons.payments,
+                          _getIconForType(jenis),
                           color: Colors.white,
                           size: 24,
                         ),
@@ -449,7 +555,7 @@ Future<void> _loadRiwayatAngsuran() async {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _getAngsuranName(jenis),
+                              namaBarang,
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -457,13 +563,11 @@ Future<void> _loadRiwayatAngsuran() async {
                               ),
                             ),
                             Text(
-                              namaBarang,
+                              'ID Kredit: $idKredit',
                               style: const TextStyle(
                                 fontSize: 14,
                                 color: Colors.grey,
                               ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
@@ -481,7 +585,7 @@ Future<void> _loadRiwayatAngsuran() async {
                       children: [
                         // INFO UTAMA
                         const Text(
-                          'Detail Pembiayaan Taqsith',
+                          'Detail Pembiayaan',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -490,9 +594,9 @@ Future<void> _loadRiwayatAngsuran() async {
                         ),
                         const SizedBox(height: 16),
                         
-                        _buildDetailItem('Jenis Pembiayaan', _getAngsuranName(jenis)),
-                        _buildDetailItem('No. Invoice', noInvoice),
+                        _buildDetailItem('ID Kredit', idKredit),
                         _buildDetailItem('Produk', namaBarang),
+                        _buildDetailItem('No. Invoice', noInvoice),
                         _buildDetailItem('Keterangan', keterangan),
                         _buildDetailItem('Tanggal', tanggal),
                         _buildDetailItem('Angsuran Ke', '$ke dari $tenor'),
@@ -506,7 +610,7 @@ Future<void> _loadRiwayatAngsuran() async {
                         const SizedBox(height: 16),
                         
                         // PROGRESS BAR
-                        if (totalAngsuran > 0 && sisaAngsuran >= 0)
+                        if (totalAngsuran > 0 && sisaAngsuran >= 0 && status != 'belum mulai')
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -681,7 +785,7 @@ Future<void> _loadRiwayatAngsuran() async {
     );
   }
 
-  // ✅ PERBAIKAN: Build error widget
+  // ✅ BUILD ERROR WIDGET
   Widget _buildErrorWidget() {
     return Center(
       child: Column(
@@ -721,43 +825,32 @@ Future<void> _loadRiwayatAngsuran() async {
     );
   }
 
-  // ✅ PERBAIKAN: Build empty state widget
+  // ✅ BUILD EMPTY STATE WIDGET
   Widget _buildEmptyState() {
-    final isTaqsithSelected = _selectedAngsuranType == 'taqsith';
-    final isSemuaSelected = _selectedAngsuranType == 'semua';
-    
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            isTaqsithSelected || isSemuaSelected ? Icons.payments_outlined : Icons.build_circle_outlined,
-            size: 80, 
-            color: Colors.grey[400]
-          ),
+          Icon(Icons.payments_outlined, size: 80, color: Colors.grey[400]),
           const SizedBox(height: 16),
-          Text(
-            isTaqsithSelected || isSemuaSelected 
-                ? 'Belum ada riwayat taqsith'
-                : 'Fitur ${_getAngsuranName(_selectedAngsuranType)}',
-            style: const TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.bold),
+          const Text(
+            'Belum ada riwayat pembiayaan',
+            style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 40),
             child: Text(
-              isTaqsithSelected || isSemuaSelected
-                  ? 'Data riwayat pembiayaan akan muncul setelah Anda melakukan transaksi taqsith'
-                  : 'Fitur ${_getAngsuranName(_selectedAngsuranType)} belum terintegrasi dengan API',
+              'Data riwayat pembiayaan akan muncul setelah Anda melakukan transaksi',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
+              style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
           ),
           const SizedBox(height: 20),
           ElevatedButton.icon(
             onPressed: _loadRiwayatAngsuran,
             icon: const Icon(Icons.refresh),
-            label: Text(isTaqsithSelected || isSemuaSelected ? 'Refresh Data' : 'Kembali ke Taqsith'),
+            label: const Text('Refresh Data'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
@@ -781,7 +874,7 @@ Future<void> _loadRiwayatAngsuran() async {
           title: const Padding(
             padding: EdgeInsets.only(bottom: 10.0),
             child: Text(
-              'Riwayat Pembiayaan Taqsith',
+              'Riwayat Pembiayaan',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
@@ -809,7 +902,7 @@ Future<void> _loadRiwayatAngsuran() async {
       ),
       body: Column(
         children: [
-          // ✅ Header Info - Total Semua Angsuran
+          // ✅ HEADER INFO - TOTAL SEMUA ANGSURAN
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
@@ -820,7 +913,7 @@ Future<void> _loadRiwayatAngsuran() async {
             child: Column(
               children: [
                 const Text(
-                  'Total Semua Pembiayaan Taqsith',
+                  'Total Semua Pembiayaan',
                   style: TextStyle(fontSize: 16, color: Colors.green, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
@@ -834,132 +927,114 @@ Future<void> _loadRiwayatAngsuran() async {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '$filteredCount transaksi taqsith',
+                  '$filteredCount transaksi',
                   style: TextStyle(color: Colors.green[600], fontWeight: FontWeight.w500),
                 ),
               ],
             ),
           ),
 
-          // ✅ Jenis Angsuran Syariah Filter
-          Container(
-            height: 100,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.all(12),
-              itemCount: _angsuranTypes.length,
-              itemBuilder: (context, index) {
-                final type = _angsuranTypes[index];
-                final isSelected = _selectedAngsuranType == type['id'];
-                final isActive = type['is_active'] == true;
-                final totalAngsuran = _getTotalAngsuran(type['id'] as String);
-
-                return GestureDetector(
-                  onTap: isActive ? () {
-                    setState(() {
-                      _selectedAngsuranType = type['id'] as String;
-                    });
-                  } : null,
-                  child: Container(
-                    width: 120,
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected 
-                          ? (type['color'] as Color).withOpacity(0.15)
-                          : (isActive ? Colors.white : Colors.grey[100]),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isSelected 
-                            ? type['color'] as Color 
-                            : (isActive ? Colors.grey[300]! : Colors.grey[400]!),
-                        width: isSelected ? 2 : 1,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(isSelected ? 0.1 : 0.05),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Stack(
-                          children: [
-                            Icon(
-                              type['icon'] as IconData,
-                              color: isActive ? type['color'] as Color : Colors.grey[400],
-                              size: 24,
-                            ),
-                            if (!isActive)
-                              Positioned(
-                                right: 0,
-                                top: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(2),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.orange,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.lock,
-                                    color: Colors.white,
-                                    size: 8,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          type['name'] as String,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: isActive ? type['color'] as Color : Colors.grey[500],
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          isActive ? _formatCurrency(totalAngsuran) : 'Coming Soon',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: isActive 
-                                ? (isSelected ? Colors.black87 : Colors.black54)
-                                : Colors.grey[500],
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
+          // ✅ JENIS ANGSURAN FILTER - DYNAMIC DARI DATA
+          if (_angsuranTypes.isNotEmpty)
+            Container(
+              height: 100,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
                   ),
-                );
-              },
-            ),
-          ),
+                ],
+              ),
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.all(12),
+                itemCount: _angsuranTypes.length,
+                itemBuilder: (context, index) {
+                  final type = _angsuranTypes[index];
+                  final isSelected = _selectedAngsuranType == type['id'];
+                  final isActive = type['is_active'] == true;
+                  final totalAngsuran = _getTotalAngsuran(type['id'] as String);
 
-          // ✅ Loading Indicator
+                  return GestureDetector(
+                    onTap: isActive ? () {
+                      setState(() {
+                        _selectedAngsuranType = type['id'] as String;
+                      });
+                    } : null,
+                    child: Container(
+                      width: 120,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: isSelected 
+                            ? (type['color'] as Color).withOpacity(0.15)
+                            : (isActive ? Colors.white : Colors.grey[100]),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected 
+                              ? type['color'] as Color 
+                              : (isActive ? Colors.grey[300]! : Colors.grey[400]!),
+                          width: isSelected ? 2 : 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(isSelected ? 0.1 : 0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            type['icon'] as IconData,
+                            color: isActive ? type['color'] as Color : Colors.grey[400],
+                            size: 24,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            type['name'] as String,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isActive ? type['color'] as Color : Colors.grey[500],
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatCurrency(totalAngsuran),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: isActive 
+                                  ? (isSelected ? Colors.black87 : Colors.black54)
+                                  : Colors.grey[500],
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+          // ✅ LOADING INDICATOR
           if (_isLoading) 
             const LinearProgressIndicator(
               backgroundColor: Colors.green,
               color: Colors.green,
             ),
 
-          // ✅ Riwayat List
+          // ✅ RIWAYAT LIST
           Expanded(
             child: _isLoading
                 ? const Center(
@@ -969,7 +1044,7 @@ Future<void> _loadRiwayatAngsuran() async {
                         CircularProgressIndicator(color: Colors.green),
                         SizedBox(height: 16),
                         Text(
-                          'Memuat data pembiayaan taqsith...',
+                          'Memuat data pembiayaan...',
                           style: TextStyle(color: Colors.green),
                         ),
                       ],
@@ -989,7 +1064,7 @@ Future<void> _loadRiwayatAngsuran() async {
                               itemBuilder: (context, index) {
                                 final angsuran = _filteredRiwayat[index];
                                 final jumlah = (angsuran['jumlah'] as num?)?.toDouble() ?? 0;
-                                final jenis = angsuran['jenis']?.toString() ?? 'taqsith';
+                                final jenis = angsuran['jenis']?.toString() ?? '';
                                 final sisaAngsuran = (angsuran['sisa_angsuran'] as num?)?.toDouble() ?? 0;
                                 final status = angsuran['status']?.toString() ?? 'aktif';
                                 final keterangan = angsuran['keterangan']?.toString() ?? 'Angsuran ${_getAngsuranName(jenis)}';
@@ -998,6 +1073,7 @@ Future<void> _loadRiwayatAngsuran() async {
                                 final tenor = angsuran['tenor']?.toString() ?? '18';
                                 final namaBarang = angsuran['nama_barang']?.toString() ?? 'Produk';
                                 final hargaBagiHasil = (angsuran['harga_bagi_hasil'] as num?)?.toDouble() ?? 0;
+                                final idKredit = angsuran['id_kredit']?.toString() ?? '';
 
                                 return Card(
                                   margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -1014,7 +1090,7 @@ Future<void> _loadRiwayatAngsuran() async {
                                         shape: BoxShape.circle,
                                       ),
                                       child: Icon(
-                                        Icons.payments,
+                                        _getIconForType(jenis),
                                         color: _getAngsuranColor(jenis),
                                         size: 20,
                                       ),
@@ -1035,7 +1111,7 @@ Future<void> _loadRiwayatAngsuran() async {
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                               Text(
-                                                keterangan,
+                                                'ID: $idKredit • $keterangan',
                                                 style: const TextStyle(
                                                   fontSize: 12,
                                                   color: Colors.grey,
@@ -1046,28 +1122,12 @@ Future<void> _loadRiwayatAngsuran() async {
                                             ],
                                           ),
                                         ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: _getAngsuranColor(jenis).withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(4),
-                                            border: Border.all(color: _getAngsuranColor(jenis)),
-                                          ),
-                                          child: Text(
-                                            _getAngsuranName(jenis),
-                                            style: TextStyle(
-                                              color: _getAngsuranColor(jenis),
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
                                       ],
                                     ),
                                     subtitle: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text('$tanggal • Invoice: ${angsuran['no_invoice']}'),
+                                        Text('$tanggal • ${angsuran['no_invoice']}'),
                                         const SizedBox(height: 4),
                                         Row(
                                           children: [
@@ -1132,7 +1192,7 @@ Future<void> _loadRiwayatAngsuran() async {
                                               fontWeight: FontWeight.w500,
                                             ),
                                           ),
-                                        if (sisaAngsuran == 0)
+                                        if (sisaAngsuran == 0 && status != 'belum mulai')
                                           Text(
                                             'LUNAS',
                                             style: TextStyle(

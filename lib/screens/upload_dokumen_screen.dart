@@ -60,7 +60,7 @@ class _UploadDokumenScreenState extends State<UploadDokumenScreen> {
         _debugServerDocumentStatus();
       }
       
-      // ✅ INITIALIZE TEMPORARY STORAGE & CARI DUMMY BUKTI OTOMATIS
+      // ✅ INITIALIZE TEMPORARY STORAGE
       await _storageService.loadFilesFromStorage();
       print('✅ TemporaryStorageService initialized');
       _storageService.printDebugInfo();
@@ -443,7 +443,7 @@ Future<void> _uploadAllFiles() async {
   _showUploadConfirmationDialog();
 }
 
-// ✅ DIALOG KONFIRMASI UPLOAD YANG LEBIH INFORMATIF
+// ✅ PERBAIKAN: DIALOG KONFIRMASI UPLOAD - GUNAKAN FOTO_DIRI UNTUK FOTO_BUKTI
 void _showUploadConfirmationDialog() {
   // ✅ HITUNG FILE YANG AKAN DIUPLOAD
   final filesToUpload = [
@@ -458,11 +458,11 @@ void _showUploadConfirmationDialog() {
     builder: (context) => AlertDialog(
       title: const Text('Upload 4 File ke Server?'),
       content: Text(
-        'Sistem akan mengupload $filesToUpload file asli + 1 file dummy:\n\n'
+        'Sistem akan mengupload $filesToUpload file asli + 1 file duplikat foto diri:\n\n'
         '${!_isDocumentUploadedToServer('ktp') && _storageService.hasKtpFile ? '• KTP (ASLI)\n' : ''}'
         '${!_isDocumentUploadedToServer('kk') && _storageService.hasKkFile ? '• Kartu Keluarga (ASLI)\n' : ''}'
         '${!_isDocumentUploadedToServer('diri') && _storageService.hasDiriFile ? '• Foto Diri (ASLI)\n' : ''}'
-        '• File Dummy Bukti (OTOMATIS)\n\n'
+        '• Foto Bukti (DUPLIKAT DARI FOTO DIRI)\n\n'
         'Total: ${filesToUpload + 1} file akan dikirim ke server.'
       ),
       actions: [
@@ -485,7 +485,7 @@ void _showUploadConfirmationDialog() {
   );
 }
 
-// ✅ PROSES UPLOAD YANG SEBENARNYA - MENGGUNAKAN 3 ASLI + 1 DUMMY
+// ✅ PERBAIKAN: PROSES UPLOAD - GUNAKAN 3 ASLI + FOTO_DIRI SEBAGAI BUKTI
 Future<void> _startUploadProcess() async {
   if (mounted && !_isNavigating) {
     setState(() {
@@ -493,7 +493,7 @@ Future<void> _startUploadProcess() async {
     });
   }
 
-  print('🚀 Starting upload process with 3 REAL + 1 DUMMY system...');
+  print('🚀 Starting upload process with 3 REAL + FOTO_DIRI AS BUKTI...');
   
   try {
     // ✅ VALIDASI FILE LOKAL
@@ -510,28 +510,17 @@ Future<void> _startUploadProcess() async {
       throw Exception('Path file tidak valid. Silakan pilih ulang file.');
     }
 
-    // ✅ BUAT/CARI DUMMY FILE
-    String? dummyFilePath = await _apiService.getDummyFilePath();
-    if (dummyFilePath == null) {
-      dummyFilePath = await _apiService.createDummyFile();
-    }
-
-    if (dummyFilePath == null) {
-      throw Exception('Gagal membuat file dummy untuk upload.');
-    }
-
     print('📁 File paths for upload:');
     print('   - KTP: $ktpPath');
     print('   - KK: $kkPath');
     print('   - Foto Diri: $diriPath');
-    print('   - Dummy: $dummyFilePath');
+    print('   - Foto Bukti: $diriPath (SAMA DENGAN FOTO DIRI)');
 
-    // ✅ GUNAKAN METHOD 3 ASLI + 1 DUMMY YANG BARU
-    final result = await _apiService.uploadThreeRealOneDummy(
+    // ✅ PERBAIKAN: GUNAKAN METHOD BARU YANG MENGGUNAKAN FOTO_DIRI UNTUK FOTO_BUKTI
+    final result = await _apiService.uploadThreeRealPhotos(
       fotoKtpPath: ktpPath,
       fotoKkPath: kkPath,
       fotoDiriPath: diriPath,
-      dummyFilePath: dummyFilePath,
     );
 
     if (mounted && !_isNavigating) {
@@ -1010,85 +999,85 @@ void _proceedToDashboard() {
     );
   }
 
-  // ✅ BUILD UPLOAD MANUAL SECTION
-  Widget _buildUploadManualSection() {
-    final allFilesComplete = _storageService.isAllFilesComplete;
-    final hasAnyFile = _storageService.hasAnyFile;
+// ✅ BUILD UPLOAD MANUAL SECTION
+Widget _buildUploadManualSection() {
+  final allFilesComplete = _storageService.isAllFilesComplete;
+  final hasAnyFile = _storageService.hasAnyFile;
 
-    // ✅ CEK APAKAH ADA FILE YANG BELUM TERUPLOAD KE SERVER
-    final hasPendingUpload = hasAnyFile && 
-        (!_isDocumentUploadedToServer('ktp') || 
-         !_isDocumentUploadedToServer('kk') || 
-         !_isDocumentUploadedToServer('diri'));
+  // ✅ CEK APAKAH ADA FILE YANG BELUM TERUPLOAD KE SERVER
+  final hasPendingUpload = hasAnyFile && 
+      (!_isDocumentUploadedToServer('ktp') || 
+       !_isDocumentUploadedToServer('kk') || 
+       !_isDocumentUploadedToServer('diri'));
 
-    if (!hasPendingUpload && !allFilesComplete) return const SizedBox.shrink();
+  if (!hasPendingUpload && !allFilesComplete) return const SizedBox.shrink();
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue[200]!),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Icon(Icons.cloud_upload, color: Colors.blue[700], size: 24),
-              const SizedBox(width: 8),
-              Text(
-                allFilesComplete ? 'Siap Upload 4 File!' : 'Upload Manual',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue[700],
-                ),
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.blue[50],
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: Colors.blue[200]!),
+    ),
+    child: Column(
+      children: [
+        Row(
+          children: [
+            Icon(Icons.cloud_upload, color: Colors.blue[700], size: 24),
+            const SizedBox(width: 8),
+            Text(
+              allFilesComplete ? 'Siap Upload 4 File!' : 'Upload Manual',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.blue[700],
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            allFilesComplete 
-                ? 'Semua 3 dokumen sudah lengkap. Sistem akan menambahkan 1 file dummy bukti otomatis. Total 4 file akan diupload ke server.'
-                : 'Upload dokumen yang sudah dipilih atau lengkapi semua dokumen terlebih dahulu.',
-            style: TextStyle(fontSize: 12, color: Colors.blue[700]),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            height: 45,
-            child: ElevatedButton.icon(
-              onPressed: _storageService.isUploading ? null : _uploadAllFiles,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: allFilesComplete ? Colors.green[700] : Colors.blue[700],
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              icon: const Icon(Icons.cloud_upload, size: 20),
-              label: _storageService.isUploading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Text(
-                      allFilesComplete ? 'Upload 4 File ke Server' : 'Upload Manual',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
             ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          allFilesComplete 
+              ? 'Semua 3 dokumen sudah lengkap. Sistem akan menggunakan foto diri sebagai foto bukti. Total 4 file akan diupload ke server.'
+              : 'Upload dokumen yang sudah dipilih atau lengkapi semua dokumen terlebih dahulu.',
+          style: TextStyle(fontSize: 12, color: Colors.blue[700]),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          height: 45,
+          child: ElevatedButton.icon(
+            onPressed: _storageService.isUploading ? null : _uploadAllFiles,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: allFilesComplete ? Colors.green[700] : Colors.blue[700],
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            icon: const Icon(Icons.cloud_upload, size: 20),
+            label: _storageService.isUploading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Text(
+                    allFilesComplete ? 'Upload 4 File ke Server' : 'Upload Manual',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ], // TAMBAHKAN KURUNG TUTUP INI
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -1201,7 +1190,7 @@ void _proceedToDashboard() {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Upload 3 dokumen wajib + 1 dummy otomatis',
+                    'Upload 3 dokumen wajib + foto diri sebagai bukti',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.green[600],
@@ -1229,7 +1218,7 @@ void _proceedToDashboard() {
                       Icon(Icons.info_outline, color: Colors.green[700], size: 16),
                       const SizedBox(width: 4),
                       Text(
-                        'Status: $serverUploadedCount/3 di server • Dummy otomatis',
+                        'Status: $serverUploadedCount/3 di server • Foto diri sebagai bukti',
                         style: TextStyle(
                           color: Colors.green[700],
                           fontSize: 12,
@@ -1404,7 +1393,7 @@ void _proceedToDashboard() {
                             Expanded(
                               child: Text(
                                 'Upload semua 3 dokumen untuk pengalaman terbaik. '
-                                'File dummy bukti akan ditambahkan otomatis oleh sistem. '
+                                'Foto diri akan digunakan sebagai foto bukti. '
                                 'Dokumen akan disimpan sementara dan diupload otomatis ketika lengkap.',
                                 style: TextStyle(
                                   color: Colors.orange[700],
@@ -1417,48 +1406,50 @@ void _proceedToDashboard() {
                       ),
                     ],
 
-                    // TROUBLESHOOTING INFO
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue[200]!),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.help_outline, color: Colors.blue[700], size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Sistem 4 File:',
-                                style: TextStyle(
-                                  color: Colors.blue[700],
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '• Upload 3 file asli (KTP, KK, Foto Diri)\n'
-                            '• File dummy bukti ditambahkan otomatis oleh sistem\n'
-                            '• Total 4 file dikirim ke server\n'
-                            '• Ukuran maksimal 5MB per file\n'
-                            '• Format JPG/PNG didukung\n'
-                            '• Data tersimpan meski app ditutup',
-                            style: TextStyle(
-                              color: Colors.blue[700],
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+// TROUBLESHOOTING INFO
+const SizedBox(height: 16),
+Container(
+  padding: const EdgeInsets.all(12),
+  decoration: BoxDecoration(
+    color: Colors.blue[50],
+    borderRadius: BorderRadius.circular(8),
+    border: Border.all(color: Colors.blue[200]!),
+  ),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Icon(Icons.help_outline, color: Colors.blue[700], size: 18),
+          const SizedBox(width: 8),
+          Text(
+            'Sistem 4 File:',
+            style: TextStyle(
+              color: Colors.blue[700],
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 4),
+      Text(
+        '• Upload 3 file asli (KTP, KK, Foto Diri)\n'
+        '• Foto diri digunakan sebagai foto bukti\n'
+        '• Total 4 file dikirim ke server\n'
+        '• Tidak ada file dummy/dummy.jpg\n'
+        '• Semua file berasal dari user\n'
+        '• Ukuran maksimal 5MB per file\n'
+        '• Format JPG/PNG didukung\n'
+        '• Data tersimpan meski app ditutup',
+        style: TextStyle(
+          color: Colors.blue[700],
+          fontSize: 10,
+        ),
+      ),
+    ],
+  ),
+),
                   ],
                 ),
               ),
