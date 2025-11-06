@@ -91,7 +91,11 @@ void initState() {
   
   // ✅ SETUP NOTIFICATION LISTENER
   _setupNotificationListener();
+  
+  // ✅ PANGGIL DEBUG INBOX - INI YANG DITAMBAHIN!
+  _testInboxDebug(); // 🚀 PANGGIL DISINI
 }
+
 
   @override
   void dispose() {
@@ -119,11 +123,14 @@ void initState() {
   }
 
 
-// ✅ UPDATE _loadUnreadNotifications() METHOD
+// ✅ PERBAIKAN: LOAD UNREAD NOTIFICATIONS
 Future<void> _loadUnreadNotifications() async {
   try {
+    print('📥 Loading unread notifications...');
+    
     // Gunakan FirebaseService untuk get unread count
     final unreadCount = await firebaseService.getUnreadNotificationsCount();
+    print('📊 Unread count from FirebaseService: $unreadCount');
     
     if (mounted) {
       setState(() {
@@ -134,12 +141,53 @@ Future<void> _loadUnreadNotifications() async {
     // Juga refresh dari API untuk data terbaru
     final refreshResult = await firebaseService.refreshInboxData();
     if (refreshResult['success'] == true && mounted) {
+      final newUnreadCount = refreshResult['unread_count'] ?? 0;
+      print('🔄 Refreshed unread count: $newUnreadCount');
+      
       setState(() {
-        _unreadNotifications = refreshResult['unread_count'] ?? 0;
+        _unreadNotifications = newUnreadCount;
       });
     }
   } catch (e) {
     print('❌ Error loading notifications: $e');
+  }
+}
+
+// ✅ TAMBAHKAN METHOD TEST INBOX DI DASHBOARD
+void _testInboxDebug() async {
+  try {
+    print('🐛 === INBOX DEBUG ===');
+    
+    final result = await _apiService.getAllInbox();
+    print('📨 Inbox API Success: ${result['success']}');
+    
+    if (result['success'] == true) {
+      final inboxData = result['data'] ?? {};
+      final inboxList = inboxData['inbox'] ?? [];
+      final total = inboxData['total'] ?? 0;
+      final belumTerbaca = inboxData['belum_terbaca'] ?? 0;
+      
+      print('📬 Total Messages: $total');
+      print('🔴 Unread from API: $belumTerbaca');
+      print('📋 Messages Count: ${inboxList.length}');
+      
+      // Debug each message
+      for (var i = 0; i < inboxList.length; i++) {
+        final msg = inboxList[i];
+        print('   ${i+1}. ID: ${msg['id']}, Read: ${msg['read_status']}, Subject: ${msg['subject']}');
+      }
+      
+      // Update UI
+      setState(() {
+        _unreadNotifications = belumTerbaca;
+      });
+    } else {
+      print('❌ Inbox API failed: ${result['message']}');
+    }
+    
+    print('🐛 === DEBUG END ===');
+  } catch (e) {
+    print('❌ Inbox Debug Error: $e');
   }
 }
 
@@ -856,89 +904,99 @@ void _setupNotificationListener() {
     final totalTabungan = _calculateTotalTabungan();
     final userData = _currentUser ?? widget.user;
 
-    return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(70.0),
-        child: AppBar(
-          title: const Padding(
-            padding: EdgeInsets.only(bottom: 10.0),
-            child: Text(
-              'Beranda KSMI',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
+return Scaffold(
+  appBar: PreferredSize(
+    preferredSize: const Size.fromHeight(70.0),
+    child: AppBar(
+      title: const Padding(
+        padding: EdgeInsets.only(bottom: 10.0),
+        child: Text(
+          'Beranda KSMI',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
           ),
-          backgroundColor: Colors.green[700],
-          foregroundColor: Colors.white,
-          elevation: 8,
-          shadowColor: Colors.green.withOpacity(0.5),
-          shape: NotchedAppBarShape(),
-          automaticallyImplyLeading: false,
-          centerTitle: true,
-          actions: [
-            // ✅ NOTIFICATION BUTTON WITH BADGE
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
-              child: Stack(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications),
-                    onPressed: _showNotifications,
-                    tooltip: 'Notifikasi',
-                  ),
-                  if (_unreadNotifications > 0)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 16,
-                          minHeight: 16,
-                        ),
-                        child: Text(
-                          _unreadNotifications > 9 ? '9+' : _unreadNotifications.toString(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-
-            // ✅ REFRESH BUTTON
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
-              child: IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: _refreshData,
-                tooltip: 'Refresh Data',
-              ),
-            ),
-            
-            // ✅ LOGOUT BUTTON
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
-              child: IconButton(
-                icon: const Icon(Icons.logout),
-                onPressed: _logout,
-                tooltip: 'Logout',
-              ),
-            ),
-          ],
         ),
       ),
+      backgroundColor: Colors.green[700],
+      foregroundColor: Colors.white,
+      elevation: 8,
+      shadowColor: Colors.green.withOpacity(0.5),
+      shape: NotchedAppBarShape(),
+      automaticallyImplyLeading: false,
+      centerTitle: true,
+      actions: [
+        // ✅ TRIGGER NOTIFICATION BUTTON (BARU)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
+          child: IconButton(
+            icon: const Icon(Icons.send), // atau Icons.notification_add
+            onPressed: _triggerTestNotification,
+            tooltip: 'Test Notifikasi',
+          ),
+        ),
+
+        // ✅ NOTIFICATION BUTTON WITH BADGE
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
+          child: Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications),
+                onPressed: _showNotifications,
+                tooltip: 'Notifikasi',
+              ),
+              if (_unreadNotifications > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      _unreadNotifications > 9 ? '9+' : _unreadNotifications.toString(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+
+        // ✅ REFRESH BUTTON
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
+          child: IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshData,
+            tooltip: 'Refresh Data',
+          ),
+        ),
+        
+        // ✅ LOGOUT BUTTON
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
+          child: IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: _logout,
+            tooltip: 'Logout',
+          ),
+        ),
+      ],
+    ),
+  ),
       backgroundColor: Colors.green[50],
       body: SafeArea(
         child: RefreshIndicator(
@@ -1289,6 +1347,76 @@ void _setupNotificationListener() {
       ),
     );
   }
+
+  // ✅ METHOD UNTUK TRIGGER TEST NOTIFIKASI
+void _triggerTestNotification() async {
+  try {
+    final userData = _currentUser ?? widget.user;
+    final userId = userData['user_id']?.toString();
+    
+    if (userId == null || userId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User ID tidak ditemukan')),
+      );
+      return;
+    }
+
+    // ✅ TAMPILKAN LOADING
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    // ✅ PANGGIL API UNTUK KIRIM NOTIFIKASI TEST
+    final result = await _apiService.insertInbox(
+      subject: '🔔 Test Notifikasi dari Dashboard',
+      keterangan: 'Ini adalah notifikasi test yang dikirim dari dashboard app KSMI. '
+                 'Waktu: ${DateTime.now().toString().substring(11, 16)}',
+      userId: userId,
+    );
+
+    // ✅ TUTUP LOADING
+    if (mounted) Navigator.of(context).pop();
+
+    if (result['success'] == true) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Notifikasi test berhasil dikirim!'),
+            backgroundColor: Colors.green[700],
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        
+        // ✅ REFRESH UNREAD COUNT
+        await _loadUnreadNotifications();
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mengirim notifikasi: ${result['message']}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  } catch (e) {
+    if (mounted) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
 
   // ✅ FUNGSI EDIT MENU
   void _showEditMenuDialog(BuildContext context) {

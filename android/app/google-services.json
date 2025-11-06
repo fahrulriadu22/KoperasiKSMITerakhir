@@ -1,32 +1,13 @@
 {
   "project_info": {
-    "project_number": "416213423517",
-    "project_id": "arul-e87b3",
-    "storage_bucket": "arul-e87b3.firebasestorage.app"
+    "project_number": "725328966175",
+    "project_id": "koperasi-ksmi",
+    "storage_bucket": "koperasi-ksmi.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:416213423517:android:3947d59a05a364783f4b74",
-        "android_client_info": {
-          "package_name": "com.example.koperasi_fresh"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDcJ86U93kbUzyR8dillZxJVb2V9tIIYlU"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:416213423517:android:3d1d5bfcd710e8ab3f4b74",
+        "mobilesdk_app_id": "1:725328966175:android:ebb62a990daf9ce8cf5b2a",
         "android_client_info": {
           "package_name": "com.ksmi.koperasi"
         }
@@ -34,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDcJ86U93kbUzyR8dillZxJVb2V9tIIYlU"
+          "current_key": "AIzaSyC9TCBqJtLT_QZIcl7GJV6dVMwTQbQ5unE"
         }
       ],
       "services": {

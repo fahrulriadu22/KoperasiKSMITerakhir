@@ -152,24 +152,29 @@ class FirebaseService {
     }
   }
 
-  // ✅ CALCULATE UNREAD COUNT DARI INBOX DATA
-  static int _calculateUnreadCount(Map<String, dynamic> inboxData) {
-    try {
-      final inboxList = inboxData['inbox'] ?? [];
-      final unreadCount = inboxList.where((item) {
-        if (item is Map<String, dynamic>) {
-          final readStatus = item['read_status'] ?? item['is_read'] ?? '0';
-          return readStatus == '0' || readStatus == 0 || readStatus == false;
-        }
-        return false;
-      }).length;
-      
-      return unreadCount;
-    } catch (e) {
-      print('❌ Error calculating unread count: $e');
-      return 0;
-    }
+// ✅ PERBAIKAN: CALCULATE UNREAD COUNT DARI INBOX DATA
+static int _calculateUnreadCount(Map<String, dynamic> inboxData) {
+  try {
+    final inboxList = inboxData['inbox'] ?? [];
+    print('📊 Calculating unread from ${inboxList.length} messages');
+    
+    final unreadCount = inboxList.where((item) {
+      if (item is Map<String, dynamic>) {
+        final readStatus = item['read_status']?.toString() ?? '1';
+        final isUnread = readStatus == '0'; // ✅ '0' = belum dibaca
+        print('   - ID: ${item['id']}, Read: $readStatus, Unread: $isUnread');
+        return isUnread;
+      }
+      return false;
+    }).length;
+    
+    print('✅ Unread count calculated: $unreadCount');
+    return unreadCount;
+  } catch (e) {
+    print('❌ Error calculating unread count: $e');
+    return 0;
   }
+}
 
   // ✅ GET CURRENT UNREAD COUNT
   Future<int> getUnreadNotificationsCount() async {
