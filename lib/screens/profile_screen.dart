@@ -393,6 +393,123 @@ Future<void> _uploadProfilePhoto() async {
   }
 }
 
+// ✅ FIX: DIALOG SETELAH UPLOAD DENGAN STATUS VERIFIKASI
+void _showVerificationDialog() {
+  if (!mounted) return;
+  
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.upload_file, color: Colors.green),
+          SizedBox(width: 8),
+          Text('Upload Berhasil'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Dokumen Anda telah berhasil diupload ke server.',
+            style: TextStyle(fontSize: 14),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.schedule, color: Colors.orange, size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Status Verifikasi',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8),
+                Text(
+                  '• Menunggu verifikasi admin\n'
+                  '• Proses verifikasi: 1x24 jam\n'
+                  '• Anda dapat menggunakan aplikasi\n'
+                  '• Status akan diperbarui otomatis',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        ElevatedButton(
+          onPressed: () {
+            Navigator.pop(context);
+            _proceedToDashboard();
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+          ),
+          child: const Text('Lanjut ke Dashboard'),
+        ),
+      ],
+    ),
+  );
+}
+
+// ✅ METHOD UNTUK PROCEED TO DASHBOARD
+void _proceedToDashboard() {
+  print('🚀 Starting proceed to dashboard...');
+  
+  // ✅ GUNAKAN Future.microtask UNTUK MEMASTIKAN BUILD SELESAI
+  Future.microtask(() {
+    if (!mounted) {
+      print('🔄 Widget not mounted, skipping navigation');
+      return;
+    }
+
+    final updatedUser = Map<String, dynamic>.from(_currentUser);
+
+    print('🎯 Final navigation check:');
+    print('   - KTP Server: ${_isDocumentUploadedToServer('ktp')}');
+    print('   - KK Server: ${_isDocumentUploadedToServer('kk')}');
+    print('   - Foto Diri Server: ${_isDocumentUploadedToServer('diri')}');
+
+    try {
+      if (widget.onProfileUpdated != null) {
+        print('📞 Memanggil callback onProfileUpdated...');
+        widget.onProfileUpdated!();
+      } else {
+        print('🔄 Kembali ke previous screen...');
+        Navigator.pop(context);
+      }
+      print('✅ Navigation successful');
+    } catch (e) {
+      print('❌ Navigation error: $e');
+      // FALLBACK: Coba navigasi sederhana
+      if (mounted) {
+        try {
+          Navigator.pop(context);
+        } catch (e2) {
+          print('❌ Fallback navigation also failed: $e2');
+        }
+      }
+    }
+  });
+}
+
 // ✅ METHOD BARU: AMBIL FOTO PROFIL DARI KAMERA
 Future<void> _takeProfilePhoto() async {
   try {
@@ -744,65 +861,60 @@ void _checkAutoUpload() {
     );
   }
 
-  // ✅ PROSES UPLOAD YANG SEBENARNYA - 3 ASLI + 1 DUMMY
-  Future<void> _startUploadProcess() async {
+// ✅ PROSES UPLOAD YANG SEBENARNYA - 3 ASLI + 1 DUMMY
+Future<void> _startUploadProcess() async {
+  if (mounted) {
+    setState(() {
+      _isUploading = true;
+    });
+  }
+
+  print('🚀 Starting upload process with dummy system...');
+  
+  try {
+    // ✅ GUNAKAN UPLOAD WITH DUMMY SYSTEM YANG SUDAH FIX
+    final result = await _storageService.uploadWithDummySystem();
+
     if (mounted) {
       setState(() {
-        _isUploading = true;
+        _isUploading = false;
       });
     }
 
-    print('🚀 Starting upload process with dummy system...');
-    
-    try {
-      // ✅ GUNAKAN UPLOAD WITH DUMMY SYSTEM YANG SUDAH FIX
-      final result = await _storageService.uploadWithDummySystem();
+    if (result['success'] == true) {
+      // ✅ TAMPILKAN DIALOG VERIFIKASI SETELAH UPLOAD BERHASIL
+      _showVerificationDialog();
 
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-        });
-      }
-
-      if (result['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? 'Upload berhasil'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-
-        // ✅ REFRESH USER DATA SETELAH UPLOAD BERHASIL
-        print('🔄 Refreshing user data after successful upload...');
-        await _loadCurrentUser();
-        widget.onProfileUpdated?.call();
-        
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? 'Upload gagal'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-        });
-      }
+      // ✅ REFRESH USER DATA SETELAH UPLOAD BERHASIL
+      print('🔄 Refreshing user data after successful upload...');
+      await _loadCurrentUser();
+      widget.onProfileUpdated?.call();
       
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Upload error: $e'),
+          content: Text(result['message'] ?? 'Upload gagal'),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 4),
         ),
       );
     }
+  } catch (e) {
+    if (mounted) {
+      setState(() {
+        _isUploading = false;
+      });
+    }
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Upload error: $e'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      ),
+    );
   }
+}
 
   // ✅ SHOW IMAGE SOURCE DIALOG dengan opsi kamera
   void _showImageSourceDialog(String type, String documentName) {
@@ -881,7 +993,7 @@ void _checkAutoUpload() {
     );
   }
 
-// ✅ BUILD DOKUMEN CARD - GUNAKAN LOGIC YANG SAMA
+// ✅ BUILD DOKUMEN CARD - DENGAN STATUS VERIFIKASI YANG BENAR
 Widget _buildDokumenCard({
   required String type,
   required String title,
@@ -899,191 +1011,219 @@ Widget _buildDokumenCard({
 
   print('🎨 Building $type card - Server: $isUploadedToServer, Local: $hasLocalFile');
 
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, color: color, size: 24),
+  return Card(
+    elevation: 2,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    description,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  
-                  // ✅ STATUS INDICATOR (PRIORITAS SERVER STATUS)
-                  if (isUploadedToServer) ...[
-                    Row(
-                      children: [
-                        Icon(Icons.cloud_done, color: Colors.green, size: 14),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Terverifikasi di Server',
-                          style: TextStyle(
-                            color: Colors.green,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (serverUrl != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'URL: ${_shortenUrl(serverUrl)}',
-                        style: TextStyle(
-                          color: Colors.green[600],
-                          fontSize: 9,
-                          fontStyle: FontStyle.italic,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ] else if (hasLocalFile) ...[
-                    Row(
-                      children: [
-                        Icon(Icons.pending, color: Colors.orange, size: 14),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Menunggu Upload',
-                          style: TextStyle(
-                            color: Colors.orange,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 11,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${(fileInfo['size'] / 1024).toStringAsFixed(1)} KB',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (fileInfo['filename'] != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        fileInfo['filename'],
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 10,
-                          fontStyle: FontStyle.italic,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ] else ...[
-                    Row(
-                      children: [
-                        Icon(Icons.warning, color: Colors.red, size: 14),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Belum Diupload',
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Column(
-              mainAxisSize: MainAxisSize.min,
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // UPLOAD/GANTI BUTTON
-                SizedBox(
-                  width: 80,
-                  height: 36,
-                  child: ElevatedButton(
-                    onPressed: isUploading ? null : () => _showImageSourceDialog(type, title),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isUploadedToServer ? Colors.green : 
-                                    hasLocalFile ? Colors.orange : color,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                    child: isUploading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(
-                            isUploadedToServer ? '✓ Verified' : 
-                            hasLocalFile ? 'Upload' : 'Pilih',
-                            style: const TextStyle(fontSize: 12),
-                          ),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                if (hasLocalFile && !isUploadedToServer) ...[
-                  const SizedBox(height: 4),
-                  SizedBox(
-                    width: 80,
-                    height: 28,
-                    child: OutlinedButton(
-                      onPressed: isUploading ? null : () => _clearFile(type, title),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                
+                // ✅ ✅ ✅ STATUS INDICATOR YANG DIPERBAIKI - POINT 3 FULL
+                if (isUploadedToServer) ...[
+                  // ✅ FILE SUDAH DIUPLOAD TAPI MENUNGGU VERIFIKASI
+                  Row(
+                    children: [
+                      Icon(Icons.pending, color: Colors.orange, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Menunggu Verifikasi Admin', // ✅ SELALU TAMPILKAN INI
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 11,
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
                       ),
-                      child: const Text(
-                        'Hapus',
-                        style: TextStyle(fontSize: 10),
+                    ],
+                  ),
+                  if (serverUrl != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'File: ${_shortenUrl(serverUrl)}',
+                      style: TextStyle(
+                        color: Colors.orange[600],
+                        fontSize: 9,
+                        fontStyle: FontStyle.italic,
                       ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.green[200]!),
+                    ),
+                    child: Text(
+                      'File sudah diupload',
+                      style: TextStyle(
+                        color: Colors.green[700],
+                        fontSize: 9,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ] else if (hasLocalFile) ...[
+                  // ✅ FILE ADA DI LOKAL TAPI BELUM DIUPLOAD
+                  Row(
+                    children: [
+                      Icon(Icons.pending, color: Colors.orange, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Menunggu Upload ke Server',
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 11,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${(fileInfo['size'] / 1024).toStringAsFixed(1)} KB',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (fileInfo['filename'] != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      fileInfo['filename'],
+                      style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 10,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ] else ...[
+                  // ✅ BELUM ADA FILE
+                  Row(
+                    children: [
+                      Icon(Icons.warning, color: Colors.red, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Belum Diupload',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Silakan pilih file untuk diupload',
+                    style: TextStyle(
+                      color: Colors.grey[500],
+                      fontSize: 9,
                     ),
                   ),
                 ],
               ],
             ),
-          ],
-        ),
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // UPLOAD/GANTI BUTTON
+              SizedBox(
+                width: 80,
+                height: 36,
+                child: ElevatedButton(
+                  onPressed: isUploading ? null : () => _showImageSourceDialog(type, title),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isUploadedToServer ? Colors.green : 
+                                  hasLocalFile ? Colors.orange : color,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  child: isUploading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          isUploadedToServer ? '✓ Uploaded' :  // ✅ UBAH JADI "Uploaded"
+                          hasLocalFile ? 'Upload' : 'Pilih',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                ),
+              ),
+              if (hasLocalFile && !isUploadedToServer) ...[
+                const SizedBox(height: 4),
+                SizedBox(
+                  width: 80,
+                  height: 28,
+                  child: OutlinedButton(
+                    onPressed: isUploading ? null : () => _clearFile(type, title),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    child: const Text(
+                      'Hapus',
+                      style: TextStyle(fontSize: 10),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
-// ✅ FIX: GET DOCUMENT SERVER STATUS - SAMA PERSIS DENGAN UPLOAD_DOKUMEN_SCREEN
+// ✅ FIX: GET DOCUMENT STATUS DENGAN VERIFIKASI TERPISAH
 Map<String, dynamic> _getDocumentServerStatus(String type) {
   String? documentUrl;
   
@@ -1099,7 +1239,6 @@ Map<String, dynamic> _getDocumentServerStatus(String type) {
       break;
   }
   
-  // ✅ GUNAKAN LOGIC YANG SAMA PERSIS: CEK .jpg BUKAN http
   final isUploaded = documentUrl != null && 
                     documentUrl.toString().isNotEmpty && 
                     documentUrl != 'uploaded' &&
@@ -1134,7 +1273,7 @@ void _showSafeSnackBar(String message, {bool isError = false, int duration = 3})
   }
 }
 
-// ✅ INTEGRASI: CEK STATUS DOKUMEN YANG LEBIH AKURAT
+// ✅ FIX: STATUS VERIFIKASI YANG BENAR - CEK UPLOAD & VERIFIKASI TERPISAH
 bool _isDocumentUploadedToServer(String type) {
   String? documentUrl;
   
@@ -1152,25 +1291,18 @@ bool _isDocumentUploadedToServer(String type) {
   
   print('🔍 Document $type check: $documentUrl');
   
-  // ✅ FIX: CEK LEBIH DETAIL
+  // ✅ CEK APAKAH FILE SUDAH DIUPLOAD
   if (documentUrl == null || documentUrl.toString().isEmpty) {
     return false;
   }
   
   final urlString = documentUrl.toString();
   
-  // ✅ CEK BERBAGAI KONDISI YANG MENANDAKAN SUDAH UPLOAD
-  final isUploaded = 
-      // Ada filename dengan extension image
-      (urlString.contains('.jpg') || 
-       urlString.contains('.jpeg') || 
-       urlString.contains('.png')) ||
-      // Atau status uploaded
-      urlString == 'uploaded' ||
-      // Atau mengandung string tertentu
-      urlString.contains('upload') ||
-      // Atau panjang string menandakan filename
-      (urlString.length > 10 && !urlString.contains('null'));
+  // ✅ FILE DIANGGAP UPLOADED JIKA ADA FILENAME
+  final isUploaded = (urlString.contains('.jpg') || 
+                     urlString.contains('.jpeg') || 
+                     urlString.contains('.png')) ||
+                     urlString == 'uploaded';
   
   print('   → Uploaded: $isUploaded');
   return isUploaded;
@@ -1819,14 +1951,14 @@ void _showProfilePhotoOptions() {
     );
   }
 
-  // ✅ HELPER: COUNT UPLOADED DOCUMENTS - GUNAKAN LOGIC YANG SAMA
-  int _countUploadedDocuments() {
-    int count = 0;
-    if (_isDocumentUploadedToServer('ktp')) count++;
-    if (_isDocumentUploadedToServer('kk')) count++;
-    if (_isDocumentUploadedToServer('diri')) count++;
-    return count;
-  }
+// ✅ HELPER: COUNT UPLOADED DOCUMENTS - GUNAKAN LOGIC YANG SAMA
+int _countUploadedDocuments() {
+  int count = 0;
+  if (_isDocumentUploadedToServer('ktp')) count++;
+  if (_isDocumentUploadedToServer('kk')) count++;
+  if (_isDocumentUploadedToServer('diri')) count++;
+  return count;
+}
 
   // ✅ BUILD PERSONAL INFO SECTION
   Widget _buildPersonalInfoSection() {
