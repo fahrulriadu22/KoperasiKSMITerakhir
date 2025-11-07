@@ -93,17 +93,11 @@ void _debugServerDocumentStatus() {
   print('🐛 === DEBUG END ===');
 }
 
-// ✅ VALIDASI SEBELUM UPLOAD
+// ✅ PERBAIKAN: VALIDASI SEBELUM UPLOAD DENGAN SAFE CHECK
 bool _validateBeforeUpload() {
   // ✅ CEK FILE LOKAL
   if (!_storageService.isAllFilesComplete) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Harap lengkapi semua 3 dokumen terlebih dahulu'),
-        backgroundColor: Colors.orange,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    _showSafeSnackBar('Harap lengkapi semua 3 dokumen terlebih dahulu', isError: true);
     return false;
   }
 
@@ -113,13 +107,7 @@ bool _validateBeforeUpload() {
   final diriServer = _isDocumentUploadedToServer('diri');
   
   if (ktpServer && kkServer && diriServer) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Semua dokumen sudah terupload ke server'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    _showSafeSnackBar('Semua dokumen sudah terupload ke server');
     return false;
   }
 
@@ -129,13 +117,7 @@ bool _validateBeforeUpload() {
   final diriSize = _storageService.diriFile?.lengthSync() ?? 0;
 
   if (ktpSize > 5 * 1024 * 1024 || kkSize > 5 * 1024 * 1024 || diriSize > 5 * 1024 * 1024) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Ukuran file terlalu besar. Maksimal 5MB per file'),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    _showSafeSnackBar('Ukuran file terlalu besar. Maksimal 5MB per file', isError: true);
     return false;
   }
 
@@ -184,168 +166,149 @@ bool _isDocumentUploadedToServer(String type) {
   return isUploaded;
 }
 
-  // ✅ METHOD UNTUK UPLOAD DOKUMEN (HANYA KTP, KK, FOTO DIRI)
-  Future<void> _uploadDocument(String type, String documentName) async {
-    try {
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1200,
-        maxHeight: 800,
-        imageQuality: 85,
-      );
 
-      if (pickedFile != null) {
-        if (mounted && !_isNavigating) {
-          setState(() {
-            _uploadError = null;
-          });
-        }
+// ✅ PERBAIKAN: UPLOAD DOKUMEN DENGAN SAFE CHECK
+Future<void> _uploadDocument(String type, String documentName) async {
+  try {
+    final XFile? pickedFile = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1200,
+      maxHeight: 800,
+      imageQuality: 85,
+    );
 
-        final file = File(pickedFile.path);
-        print('📤 Uploading $documentName: ${file.path}');
-        
-        // ✅ VALIDASI FILE
-        if (!await file.exists()) {
-          throw Exception('File tidak ditemukan');
-        }
-
-        final fileSize = file.lengthSync();
-        if (fileSize > 5 * 1024 * 1024) {
-          throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
-        }
-
-        final fileExtension = pickedFile.path.toLowerCase().split('.').last;
-        if (!['jpg', 'jpeg', 'png', 'heic'].contains(fileExtension)) {
-          throw Exception('Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.');
-        }
-
-        // ✅ SIMPAN FILE KE TEMPORARY STORAGE
-        switch (type) {
-          case 'ktp':
-            await _storageService.setKtpFile(file);
-            break;
-          case 'kk':
-            await _storageService.setKkFile(file);
-            break;
-          case 'diri':
-            await _storageService.setDiriFile(file);
-            break;
-        }
-
-        if (mounted && !_isNavigating) {
-          setState(() {});
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$documentName berhasil disimpan ✅'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-
-        print('💾 $documentName saved to temporary storage');
-        
-        // ✅ CHECK AUTO UPLOAD SETELAH SIMPAN FILE
-        _checkAutoUpload();
-      }
-    } catch (e) {
-      if (mounted && !_isNavigating) {
+    if (pickedFile != null) {
+      if (mounted) {
         setState(() {
-          _uploadError = 'Error upload $documentName: $e';
+          _uploadError = null;
         });
       }
 
-      print('❌ Upload failed: $e');
+      final file = File(pickedFile.path);
+      print('📤 Uploading $documentName: ${file.path}');
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal upload $documentName: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
-  // ✅ METHOD UNTUK AMBIL FOTO DARI KAMERA
-  Future<void> _takePhoto(String type, String documentName) async {
-    try {
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1200,
-        maxHeight: 800,
-        imageQuality: 85,
-      );
-
-      if (pickedFile != null) {
-        if (mounted && !_isNavigating) {
-          setState(() {
-            _uploadError = null;
-          });
-        }
-
-        final file = File(pickedFile.path);
-        print('📸 Taking photo for $documentName: ${file.path}');
-        
-        // ✅ VALIDASI FILE
-        if (!await file.exists()) {
-          throw Exception('File tidak ditemukan');
-        }
-
-        final fileSize = file.lengthSync();
-        if (fileSize > 5 * 1024 * 1024) {
-          throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
-        }
-
-        // ✅ SIMPAN FILE KE TEMPORARY STORAGE
-        switch (type) {
-          case 'ktp':
-            await _storageService.setKtpFile(file);
-            break;
-          case 'kk':
-            await _storageService.setKkFile(file);
-            break;
-          case 'diri':
-            await _storageService.setDiriFile(file);
-            break;
-        }
-
-        if (mounted && !_isNavigating) {
-          setState(() {});
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$documentName berhasil diambil ✅'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-
-        print('💾 $documentName from camera saved to temporary storage');
-        
-        // ✅ CHECK AUTO UPLOAD SETELAH SIMPAN FILE
-        _checkAutoUpload();
+      // ✅ VALIDASI FILE - HANYA JPG/JPEG
+      if (!await file.exists()) {
+        throw Exception('File tidak ditemukan');
       }
-    } catch (e) {
+
+      final fileSize = file.lengthSync();
+      if (fileSize > 5 * 1024 * 1024) {
+        throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
+      }
+
+      final fileExtension = pickedFile.path.toLowerCase().split('.').last;
+      if (!['jpg', 'jpeg'].contains(fileExtension)) {
+        throw Exception('Format file tidak didukung. Gunakan JPG atau JPEG saja.');
+      }
+
+      // ✅ SIMPAN FILE KE TEMPORARY STORAGE
+      switch (type) {
+        case 'ktp':
+          await _storageService.setKtpFile(file);
+          break;
+        case 'kk':
+          await _storageService.setKkFile(file);
+          break;
+        case 'diri':
+          await _storageService.setDiriFile(file);
+          break;
+      }
+
+      if (mounted) {
+        setState(() {});
+      }
+
+      // ✅ PERBAIKAN: GUNAKAN SAFE SNACKBAR
+      _showSafeSnackBar('$documentName berhasil disimpan ✅');
+
+      print('💾 $documentName saved to temporary storage');
+      
+      // ✅ CHECK AUTO UPLOAD SETELAH SIMPAN FILE
+      _checkAutoUpload();
+    }
+  } catch (e) {
+    if (mounted) {
+      setState(() {
+        _uploadError = 'Error upload $documentName: $e';
+      });
+    }
+
+    print('❌ Upload failed: $e');
+    
+    // ✅ PERBAIKAN: GUNAKAN SAFE SNACKBAR
+    _showSafeSnackBar('Gagal upload $documentName: $e', isError: true);
+  }
+}
+
+// ✅ PERBAIKAN: TAKE PHOTO DENGAN SAFE CHECK
+Future<void> _takePhoto(String type, String documentName) async {
+  try {
+    final XFile? pickedFile = await _imagePicker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1200,
+      maxHeight: 800,
+      imageQuality: 85,
+    );
+
+    if (pickedFile != null) {
       if (mounted && !_isNavigating) {
         setState(() {
-          _uploadError = 'Error mengambil foto $documentName: $e';
+          _uploadError = null;
         });
       }
 
-      print('❌ Camera failed: $e');
+      final file = File(pickedFile.path);
+      print('📸 Taking photo for $documentName: ${file.path}');
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal mengambil foto $documentName: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      // ✅ VALIDASI FILE - HANYA JPG/JPEG
+      if (!await file.exists()) {
+        throw Exception('File tidak ditemukan');
+      }
+
+      final fileSize = file.lengthSync();
+      if (fileSize > 5 * 1024 * 1024) {
+        throw Exception('Ukuran file terlalu besar. Maksimal 5MB.');
+      }
+
+      // ✅ SIMPAN FILE KE TEMPORARY STORAGE
+      switch (type) {
+        case 'ktp':
+          await _storageService.setKtpFile(file);
+          break;
+        case 'kk':
+          await _storageService.setKkFile(file);
+          break;
+        case 'diri':
+          await _storageService.setDiriFile(file);
+          break;
+      }
+
+      if (mounted && !_isNavigating) {
+        setState(() {});
+      }
+
+      // ✅ PERBAIKAN: GUNAKAN SAFE SNACKBAR
+      _showSafeSnackBar('$documentName berhasil diambil ✅');
+
+      print('💾 $documentName from camera saved to temporary storage');
+      
+      // ✅ CHECK AUTO UPLOAD SETELAH SIMPAN FILE
+      _checkAutoUpload();
     }
+  } catch (e) {
+    if (mounted && !_isNavigating) {
+      setState(() {
+        _uploadError = 'Error mengambil foto $documentName: $e';
+      });
+    }
+
+    print('❌ Camera failed: $e');
+    
+    // ✅ PERBAIKAN: GUNAKAN SAFE SNACKBAR
+    _showSafeSnackBar('Gagal mengambil foto $documentName: $e', isError: true);
   }
+}
 
   // ✅ CHECK AUTO UPLOAD JIKA SEMUA FILE LENGKAP
   void _checkAutoUpload() {
@@ -406,23 +369,18 @@ bool _isDocumentUploadedToServer(String type) {
     await _takePhoto('diri', 'Foto Diri');
   }
 
-  // ✅ CLEAR SPECIFIC FILE
-  Future<void> _clearFile(String type, String documentName) async {
-    await _storageService.clearFile(type);
-    if (mounted && !_isNavigating) {
-      setState(() {});
-    }
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$documentName dihapus'),
-        backgroundColor: Colors.orange,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+// ✅ PERBAIKAN: CLEAR FILE DENGAN SAFE CHECK
+Future<void> _clearFile(String type, String documentName) async {
+  await _storageService.clearFile(type);
+  if (mounted) {
+    setState(() {});
   }
+  
+  // ✅ PERBAIKAN: GUNAKAN SAFE SNACKBAR
+  _showSafeSnackBar('$documentName dihapus');
+}
 
-// ✅ MANUAL UPLOAD ALL FILES
+// ✅ PERBAIKAN: MANUAL UPLOAD ALL FILES DENGAN SAFE CHECK
 Future<void> _uploadAllFiles() async {
   // ✅ VALIDASI SEBELUM UPLOAD
   if (!_validateBeforeUpload()) {
@@ -430,20 +388,14 @@ Future<void> _uploadAllFiles() async {
   }
 
   if (_storageService.isUploading) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Upload sedang berjalan, harap tunggu...'),
-        backgroundColor: Colors.blue,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    _showSafeSnackBar('Upload sedang berjalan, harap tunggu...', isError: false);
     return;
   }
 
   _showUploadConfirmationDialog();
 }
 
-// ✅ PERBAIKAN: DIALOG KONFIRMASI UPLOAD - GUNAKAN FOTO_DIRI UNTUK FOTO_BUKTI
+// ✅ PERBAIKAN: DIALOG KONFIRMASI UPLOAD DENGAN STATUS VERIFIKASI
 void _showUploadConfirmationDialog() {
   // ✅ HITUNG FILE YANG AKAN DIUPLOAD
   final filesToUpload = [
@@ -452,18 +404,52 @@ void _showUploadConfirmationDialog() {
     !_isDocumentUploadedToServer('diri') && _storageService.hasDiriFile,
   ].where((e) => e).length;
 
+  // ✅ PERBAIKAN: GUNAKAN SAFE DIALOG
+  if (!mounted || _isNavigating) return;
+  
   showDialog(
     context: context,
     barrierDismissible: false,
     builder: (context) => AlertDialog(
       title: const Text('Upload 4 File ke Server?'),
-      content: Text(
-        'Sistem akan mengupload $filesToUpload file asli + 1 file duplikat foto diri:\n\n'
-        '${!_isDocumentUploadedToServer('ktp') && _storageService.hasKtpFile ? '• KTP (ASLI)\n' : ''}'
-        '${!_isDocumentUploadedToServer('kk') && _storageService.hasKkFile ? '• Kartu Keluarga (ASLI)\n' : ''}'
-        '${!_isDocumentUploadedToServer('diri') && _storageService.hasDiriFile ? '• Foto Diri (ASLI)\n' : ''}'
-        '• Foto Bukti (DUPLIKAT DARI FOTO DIRI)\n\n'
-        'Total: ${filesToUpload + 1} file akan dikirim ke server.'
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Sistem akan mengupload $filesToUpload file asli + 1 file duplikat foto diri:\n\n'
+            '${!_isDocumentUploadedToServer('ktp') && _storageService.hasKtpFile ? '• KTP (ASLI)\n' : ''}'
+            '${!_isDocumentUploadedToServer('kk') && _storageService.hasKkFile ? '• Kartu Keluarga (ASLI)\n' : ''}'
+            '${!_isDocumentUploadedToServer('diri') && _storageService.hasDiriFile ? '• Foto Diri (ASLI)\n' : ''}'
+            '• Foto Bukti (DUPLIKAT DARI FOTO DIRI)\n\n'
+            'Total: ${filesToUpload + 1} file akan dikirim ke server.',
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.schedule, color: Colors.orange, size: 20),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Status: Menunggu Verifikasi Admin\nDokumen akan diverifikasi dalam 1x24 jam',
+                    style: TextStyle(
+                      color: Colors.orange,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
       actions: [
         TextButton(
@@ -485,9 +471,49 @@ void _showUploadConfirmationDialog() {
   );
 }
 
-// ✅ PERBAIKAN: PROSES UPLOAD - GUNAKAN 3 ASLI + FOTO_DIRI SEBAGAI BUKTI
+// ✅ PERBAIKAN: SAFE SNACKBAR DENGAN MOUNTED CHECK
+void _showSafeSnackBar(String message, {bool isError = false, int duration = 3}) {
+  if (!mounted) {
+    print('⚠️ Widget not mounted, skipping snackbar: $message');
+    return;
+  }
+  
+  try {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        duration: Duration(seconds: duration),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  } catch (e) {
+    print('❌ Error showing snackbar (safe): $e');
+  }
+}
+
+// ✅ PERBAIKAN: SAFE DIALOG DENGAN MOUNTED CHECK
+Future<void> _showSafeDialog(Widget dialog) async {
+  if (!mounted) {
+    print('⚠️ Widget not mounted, skipping dialog');
+    return;
+  }
+  
+  try {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => dialog,
+    );
+  } catch (e) {
+    print('❌ Error showing dialog (safe): $e');
+  }
+}
+
+// ✅ PERBAIKAN: PROSES UPLOAD DENGAN STATUS VERIFIKASI & SAFE CHECK
 Future<void> _startUploadProcess() async {
-  if (mounted && !_isNavigating) {
+  if (mounted) {
     setState(() {
       _isLoading = true;
     });
@@ -516,26 +542,24 @@ Future<void> _startUploadProcess() async {
     print('   - Foto Diri: $diriPath');
     print('   - Foto Bukti: $diriPath (SAMA DENGAN FOTO DIRI)');
 
-    // ✅ PERBAIKAN: GUNAKAN METHOD BARU YANG MENGGUNAKAN FOTO_DIRI UNTUK FOTO_BUKTI
+    // ✅ UPLOAD KE SERVER
     final result = await _apiService.uploadThreeRealPhotos(
       fotoKtpPath: ktpPath,
       fotoKkPath: kkPath,
       fotoDiriPath: diriPath,
     );
 
-    if (mounted && !_isNavigating) {
+    if (mounted) {
       setState(() {
         _isLoading = false;
       });
     }
 
     if (result['success'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message'] ?? 'Upload 4 file berhasil'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
-        ),
+      // ✅ PERBAIKAN: TAMPILKAN STATUS VERIFIKASI BUKAN AUTO VERIFIED
+      _showSafeSnackBar(
+        '✅ Upload berhasil! Status: Menunggu Verifikasi Admin\nDokumen akan diverifikasi dalam 1x24 jam',
+        duration: 5
       );
 
       // ✅ CLEAR TEMPORARY STORAGE SETELAH UPLOAD BERHASIL
@@ -545,33 +569,20 @@ Future<void> _startUploadProcess() async {
       print('🔄 Refreshing user data after successful upload...');
       await _refreshUserData();
 
-      // ✅ LANGSUNG KE DASHBOARD SETELAH UPLOAD BERHASIL
-      print('🎉 Upload success, proceeding to dashboard...');
-      _proceedToDashboard();
+      // ✅ TAMPILKAN DIALOG VERIFIKASI SEBELUM KE DASHBOARD
+      _showVerificationDialog();
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result['message'] ?? 'Upload gagal'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      _showSafeSnackBar(result['message'] ?? 'Upload gagal', isError: true);
     }
   } catch (e) {
     print('❌ Upload process error: $e');
-    if (mounted && !_isNavigating) {
+    if (mounted) {
       setState(() {
         _isLoading = false;
       });
     }
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Error upload: $e'),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 4),
-      ),
-    );
+    _showSafeSnackBar('Error upload: $e', isError: true);
   }
 }
 
@@ -665,7 +676,7 @@ Future<void> _refreshUserData() async {
     );
   }
 
-// ✅ FIX: NAVIGATION KE DASHBOARD
+// ✅ PERBAIKAN: NAVIGATION KE DASHBOARD DENGAN SAFE CHECK
 void _proceedToDashboard() {
   print('🚀 Starting proceed to dashboard...');
   
@@ -690,7 +701,6 @@ void _proceedToDashboard() {
     print('   - KK Server: ${_isDocumentUploadedToServer('kk')}');
     print('   - Foto Diri Server: ${_isDocumentUploadedToServer('diri')}');
 
-    // ✅ NAVIGASI LANGSUNG TANPA DELAY
     try {
       if (widget.onDocumentsComplete != null) {
         print('📞 Memanggil callback onDocumentsComplete...');
@@ -707,17 +717,95 @@ void _proceedToDashboard() {
     } catch (e) {
       print('❌ Navigation error: $e');
       // FALLBACK: Coba navigasi sederhana
-      try {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => DashboardMain(user: _currentUser)),
-          (route) => false,
-        );
-      } catch (e2) {
-        print('❌ Fallback navigation also failed: $e2');
+      if (mounted) {
+        try {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => DashboardMain(user: _currentUser)),
+            (route) => false,
+          );
+        } catch (e2) {
+          print('❌ Fallback navigation also failed: $e2');
+        }
       }
     }
   });
+}
+
+// ✅ PERBAIKAN: DIALOG VERIFIKASI DENGAN SAFE CHECK
+void _showVerificationDialog() {
+  if (!mounted) return;
+  
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.verified_user, color: Colors.green),
+          SizedBox(width: 8),
+          Text('Upload Berhasil'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Dokumen Anda telah berhasil diupload ke server.',
+            style: TextStyle(fontSize: 14),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.schedule, color: Colors.orange, size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Status Verifikasi',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8),
+                Text(
+                  '• Menunggu verifikasi admin\n'
+                  '• Proses verifikasi: 1x24 jam\n'
+                  '• Anda dapat menggunakan aplikasi\n'
+                  '• Status akan diperbarui otomatis',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        ElevatedButton(
+          onPressed: () {
+            Navigator.pop(context);
+            _proceedToDashboard();
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+          ),
+          child: const Text('Lanjut ke Dashboard'),
+        ),
+      ],
+    ),
+  );
 }
 
   // ✅ SHOW IMAGE SOURCE DIALOG dengan opsi kamera
@@ -999,7 +1087,7 @@ void _proceedToDashboard() {
     );
   }
 
-// ✅ BUILD UPLOAD MANUAL SECTION
+// ✅ PERBAIKAN: BUILD UPLOAD MANUAL SECTION DENGAN STATUS VERIFIKASI
 Widget _buildUploadManualSection() {
   final allFilesComplete = _storageService.isAllFilesComplete;
   final hasAnyFile = _storageService.hasAnyFile;
@@ -1042,6 +1130,35 @@ Widget _buildUploadManualSection() {
               : 'Upload dokumen yang sudah dipilih atau lengkapi semua dokumen terlebih dahulu.',
           style: TextStyle(fontSize: 12, color: Colors.blue[700]),
         ),
+        
+        // ✅ TAMBAHKAN INFO VERIFIKASI
+        if (allFilesComplete) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.orange[50],
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.orange[200]!),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.orange[700], size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Setelah upload, dokumen akan diverifikasi admin dalam 1x24 jam',
+                    style: TextStyle(
+                      color: Colors.orange[700],
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        
         const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,
@@ -1074,7 +1191,7 @@ Widget _buildUploadManualSection() {
                   ),
           ),
         ),
-      ], // TAMBAHKAN KURUNG TUTUP INI
+      ],
     ),
   );
 }

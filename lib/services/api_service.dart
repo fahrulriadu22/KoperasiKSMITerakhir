@@ -2684,6 +2684,151 @@ Future<Map<String, dynamic>> syncLocalDataToServer() async {
   }
 }
 
+// ✅ TAMBAHKAN DI ApiService - METHOD UNTUK UPLOAD PROFILE PHOTO
+Future<Map<String, dynamic>> setProfilePhoto(String filePath) async {
+  try {
+    print('🚀 UPLOAD PROFILE PHOTO START');
+    print('📁 File path: $filePath');
+
+    // ✅ VALIDASI FILE
+    final file = File(filePath);
+    if (!await file.exists()) {
+      return {
+        'success': false,
+        'message': 'File tidak ditemukan: $filePath'
+      };
+    }
+
+    final fileSize = await file.length();
+    if (fileSize == 0) {
+      return {
+        'success': false,
+        'message': 'File kosong (0 bytes)'
+      };
+    }
+
+    print('✅ File valid, size: $fileSize bytes');
+
+    // ✅ DAPATKAN HEADERS SESUAI SPESIFIKASI CURL
+    final prefs = await SharedPreferences.getInstance();
+    final userKey = prefs.getString('token'); // user_key dari login
+    final sessionCookie = prefs.getString('ci_session');
+
+    if (userKey == null || userKey.isEmpty) {
+      return {
+        'success': false,
+        'message': 'User tidak terautentikasi. Silakan login kembali.',
+        'token_expired': true
+      };
+    }
+
+    print('✅ User key found: ${userKey.substring(0, 10)}...');
+
+    // ✅ HEADERS SESUAI CURL: device-id, x-api-key, content-type, cookie
+    final headers = {
+      'device-id': '12341231313131',
+      'x-api-key': userKey,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    };
+
+    // ✅ TAMBAHKAN COOKIE SESSION JIKA ADA
+    if (sessionCookie != null && sessionCookie.isNotEmpty) {
+      headers['Cookie'] = 'ci_session=$sessionCookie';
+      print('✅ Cookie session ditambahkan: ${sessionCookie.substring(0, 20)}...');
+    } else {
+      print('⚠️ Cookie session tidak ditemukan!');
+    }
+
+    print('📤 Headers: ${headers.keys}');
+
+    // ✅ BUAT MULTIPART REQUEST
+    var request = http.MultipartRequest(
+      'POST', 
+      Uri.parse('http://demo.bsdeveloper.id/api/users/setProfilePhoto')
+    );
+    request.headers.addAll(headers);
+
+    // ✅ TAMBAHKAN FILE DENGAN FIELD NAME "foto_diri" SESUAI CURL
+    try {
+      request.files.add(await http.MultipartFile.fromPath(
+        'foto_diri', // ✅ SESUAI CURL: --form 'foto_diri=@"test.jpg"'
+        filePath,
+        filename: 'profile_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      print('✅ File berhasil ditambahkan dengan field: foto_diri');
+    } catch (e) {
+      print('❌ Gagal menambahkan file: $e');
+      return {
+        'success': false,
+        'message': 'Gagal menambahkan file: $e'
+      };
+    }
+
+    print('📤 Total files: ${request.files.length}');
+
+    // ✅ KIRIM REQUEST
+    print('🔄 Mengirim request ke: http://demo.bsdeveloper.id/api/users/setProfilePhoto');
+    final response = await request.send().timeout(const Duration(seconds: 60));
+    
+    // ✅ BACA RESPONSE
+    final responseBody = await response.stream.bytesToString();
+    print('📡 Response Status: ${response.statusCode}');
+    print('📡 Response Body: $responseBody');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(responseBody);
+      
+      if (data['status'] == true || data['success'] == true) {
+        print('✅ UPLOAD PROFILE PHOTO SUCCESS');
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Foto profil berhasil diupload',
+          'data': data
+        };
+      } else {
+        print('❌ Upload gagal: ${data['message']}');
+        
+        // ✅ CEK JIKA ADA ISSUE DENGAN AUTHENTIKASI
+        if (data['message']?.toString().toLowerCase().contains('session') == true ||
+            data['message']?.toString().toLowerCase().contains('login') == true ||
+            data['message']?.toString().toLowerCase().contains('auth') == true ||
+            data['message']?.toString().toLowerCase().contains('token') == true) {
+          return {
+            'success': false,
+            'message': 'Sesi telah berakhir. Silakan login kembali.',
+            'token_expired': true
+          };
+        }
+        
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Upload foto profil gagal',
+          'data': data
+        };
+      }
+    } else if (response.statusCode == 401) {
+      print('❌ Unauthorized - kemungkinan token expired');
+      return {
+        'success': false,
+        'message': 'Sesi telah berakhir. Silakan login kembali.',
+        'token_expired': true
+      };
+    } else {
+      print('❌ Server error: ${response.statusCode}');
+      return {
+        'success': false,
+        'message': 'Upload gagal: ${response.statusCode} - $responseBody'
+      };
+    }
+  } catch (e) {
+    print('❌ UPLOAD PROFILE PHOTO ERROR: $e');
+    return {
+      'success': false,
+      'message': 'Upload error: $e'
+    };
+  }
+}
+
   // ✅ METHOD UNTUK UPLOAD 3 FILE ASLI + FOTO DIRI SEBAGAI BUKTI (FILE KE-4)
 Future<Map<String, dynamic>> uploadThreeRealPhotos({
   required String fotoKtpPath,

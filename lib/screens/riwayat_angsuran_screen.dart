@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
-// ✅ CUSTOM SHAPE UNTUK APPBAR 
+// ✅ CUSTOM SHAPE UNTUK APPBAR - DIPERBAIKI
 class NotchedAppBarShape extends ContinuousRectangleBorder {
   @override
   Path getOuterPath(Rect rect, {TextDirection? textDirection}) {
@@ -134,85 +134,50 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
     }
   }
 
-  // ✅ GENERATE JENIS ANGSURAN DARI DATA YANG ADA
-  void _generateAngsuranTypes() {
-    final types = <Map<String, dynamic>>[];
+ // ✅ GENERATE JENIS ANGSURAN DARI DATA YANG ADA
+void _generateAngsuranTypes() {
+  final types = <Map<String, dynamic>>[];
+  
+  // ✅ TAMBAHKAN "SEMUA" SEBAGAI DEFAULT
+  types.add({
+    'id': 'semua', 
+    'name': 'Semua', 
+    'icon': Icons.all_inclusive, 
+    'color': Colors.green, 
+    'is_active': true,
+    'total': _getTotalAngsuran('semua')
+  });
+  
+  // ✅ EKSTRAK JENIS UNIK DARI DATA
+  final uniqueTypes = <String, Map<String, dynamic>>{};
+  
+  for (var angsuran in _riwayatAngsuran) {
+    final jenis = angsuran['jenis']?.toString() ?? 'taqsith';
+    final namaBarang = angsuran['nama_barang']?.toString() ?? 'Produk';
+    // ✅ HAPUS ID KREDIT DARI NAMA FILTER
+    // final idKredit = angsuran['id_kredit']?.toString() ?? '';
     
-    // ✅ TAMBAHKAN "SEMUA" SEBAGAI DEFAULT
-    types.add({
-      'id': 'semua', 
-      'name': 'Semua', 
-      'icon': Icons.all_inclusive, 
-      'color': Colors.green, 
-      'is_active': true,
-      'total': _getTotalAngsuran('semua')
-    });
-    
-    // ✅ EKSTRAK JENIS UNIK DARI DATA
-    final uniqueTypes = <String, Map<String, dynamic>>{};
-    
-    for (var angsuran in _riwayatAngsuran) {
-      final jenis = angsuran['jenis']?.toString() ?? 'taqsith';
-      final namaBarang = angsuran['nama_barang']?.toString() ?? 'Produk';
-      final idKredit = angsuran['id_kredit']?.toString() ?? '';
-      
-      if (!uniqueTypes.containsKey(jenis)) {
-        // ✅ TENTUKAN ICON DAN COLOR BERDASARKAN JENIS
-        final iconData = _getIconForType(jenis);
-        final color = _getColorForType(jenis);
-        
-        uniqueTypes[jenis] = {
-          'id': jenis,
-          'name': '$namaBarang (ID: $idKredit)',
-          'icon': iconData,
-          'color': color,
-          'is_active': true,
-          'total': _getTotalAngsuran(jenis)
-        };
-      }
-    }
-    
-    // ✅ TAMBAHKAN KE LIST
-    types.addAll(uniqueTypes.values.toList());
-    
-    setState(() {
-      _angsuranTypes = types;
-    });
-    
-    print('✅ Generated ${_angsuranTypes.length} angsuran types');
-  }
-
-  // ✅ GET ICON BERDASARKAN JENIS
-  IconData _getIconForType(String jenis) {
-    final jenisLower = jenis.toLowerCase();
-    if (jenisLower.contains('handphone') || jenisLower.contains('hp')) {
-      return Icons.phone_android;
-    } else if (jenisLower.contains('motor') || jenisLower.contains('vario')) {
-      return Icons.motorcycle;
-    } else if (jenisLower.contains('mobil')) {
-      return Icons.directions_car;
-    } else if (jenisLower.contains('rumah')) {
-      return Icons.house;
-    } else {
-      return Icons.payments;
+    if (!uniqueTypes.containsKey(jenis)) {
+      uniqueTypes[jenis] = {
+        'id': jenis,
+        'name': namaBarang, // ✅ HANYA NAMA BARANG, TANPA ID
+        'icon': Icons.payments, // ✅ ICON STANDAR
+        'color': Colors.green, // ✅ WARNA STANDAR HIJAU
+        'is_active': true,
+        'total': _getTotalAngsuran(jenis)
+      };
     }
   }
-
-  // ✅ GET COLOR BERDASARKAN JENIS
-  Color _getColorForType(String jenis) {
-    final jenisLower = jenis.toLowerCase();
-    if (jenisLower.contains('handphone') || jenisLower.contains('hp')) {
-      return Colors.blue;
-    } else if (jenisLower.contains('motor') || jenisLower.contains('vario')) {
-      return Colors.orange;
-    } else if (jenisLower.contains('mobil')) {
-      return Colors.red;
-    } else if (jenisLower.contains('rumah')) {
-      return Colors.green;
-    } else {
-      return Colors.purple;
-    }
-  }
+  
+  // ✅ TAMBAHKAN KE LIST
+  types.addAll(uniqueTypes.values.toList());
+  
+  setState(() {
+    _angsuranTypes = types;
+  });
+  
+  print('✅ Generated ${_angsuranTypes.length} angsuran types');
+}
 
   // ✅ PARSING DATA DARI API - SESUAI STRUCTURE POSTMAN
   List<Map<String, dynamic>> _parseTaqsithData(List<dynamic> apiData) {
@@ -526,55 +491,57 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 // HEADER
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: _getAngsuranColor(jenis).withOpacity(0.1),
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      topRight: Radius.circular(16),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: _getAngsuranColor(jenis),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          _getIconForType(jenis),
-                          color: Colors.white,
-                          size: 24,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              namaBarang,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: _getAngsuranColor(jenis),
-                              ),
-                            ),
-                            Text(
-                              'ID Kredit: $idKredit',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+// ✅ PERBAIKAN DI _showDetailAngsuran() - HEADER
+Container(
+  padding: const EdgeInsets.all(16),
+  decoration: BoxDecoration(
+    color: Colors.green.withOpacity(0.1), // ✅ WARNA STANDAR
+    borderRadius: const BorderRadius.only(
+      topLeft: Radius.circular(16),
+      topRight: Radius.circular(16),
+    ),
+  ),
+  child: Row(
+    children: [
+      Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.green, // ✅ WARNA STANDAR
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          Icons.payments, // ✅ ICON STANDAR
+          color: Colors.white,
+          size: 24,
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              namaBarang,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.green, // ✅ WARNA STANDAR
+              ),
+            ),
+            // ❌ HAPUS ID KREDIT DARI HEADER
+            // Text(
+            //   'ID Kredit: $idKredit',
+            //   style: const TextStyle(
+            //     fontSize: 14,
+            //     color: Colors.grey,
+            //   ),
+            // ),
+          ],
+        ),
+      ),
+    ],
+  ),
+),
 
                 // DETAIL ANGSURAN
                 Expanded(
@@ -861,54 +828,57 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final totalSemuaAngsuran = _getTotalAngsuran('semua');
-    final filteredCount = _filteredRiwayat.length;
+@override
+Widget build(BuildContext context) {
+  final totalSemuaAngsuran = _getTotalAngsuran('semua');
+  final filteredCount = _filteredRiwayat.length;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(70.0),
-        child: AppBar(
-          title: const Padding(
-            padding: EdgeInsets.only(bottom: 10.0),
-            child: Text(
-              'Riwayat Pembiayaan',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
+  return Scaffold(
+    backgroundColor: Colors.green[50], // ✅ BACKGROUND UTAMA SAMA DENGAN HEADER
+    appBar: PreferredSize(
+      preferredSize: const Size.fromHeight(70.0),
+      child: AppBar(
+        title: const Padding(
+          padding: EdgeInsets.only(bottom: 10.0),
+          child: Text(
+            'Riwayat Pembiayaan',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
             ),
           ),
-          backgroundColor: Colors.green[700],
-          foregroundColor: Colors.white,
-          elevation: 8,
-          shadowColor: Colors.green.withOpacity(0.5),
-          shape: NotchedAppBarShape(),
-          automaticallyImplyLeading: false,
-          centerTitle: true,
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
-              child: IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: _loadRiwayatAngsuran,
-                tooltip: 'Refresh Data',
-              ),
-            ),
-          ],
         ),
+        backgroundColor: Colors.green[700],
+        foregroundColor: Colors.white,
+        elevation: 8,
+        shadowColor: Colors.green.withOpacity(0.5),
+        shape: NotchedAppBarShape(),
+        automaticallyImplyLeading: false,
+        centerTitle: true,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
+            child: IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _loadRiwayatAngsuran,
+              tooltip: 'Refresh Data',
+            ),
+          ),
+        ],
       ),
-      body: Column(
+    ),
+    body: Container(
+      color: Colors.green[50], // ✅ BACKGROUND UTAMA
+      child: Column(
         children: [
-          // ✅ HEADER INFO - TOTAL SEMUA ANGSURAN
+          // ✅ HEADER INFO - FIXED NO GAP
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
+            margin: EdgeInsets.zero, // ✅ HILANGKAN MARGIN
             decoration: BoxDecoration(
               color: Colors.green[50],
-              border: Border(bottom: BorderSide(color: Colors.green[100]!)),
+              // ✅ HAPUS SEMUA BORDER & BOX SHADOW YANG MEMBUAT CELAH
             ),
             child: Column(
               children: [
@@ -938,14 +908,18 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
           if (_angsuranTypes.isNotEmpty)
             Container(
               height: 100,
+              margin: EdgeInsets.zero, // ✅ HILANGKAN MARGIN
               decoration: BoxDecoration(
                 color: Colors.white,
-                border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, -2),
                   ),
                 ],
               ),
@@ -1034,186 +1008,190 @@ class _RiwayatAngsuranScreenState extends State<RiwayatAngsuranScreen> {
               color: Colors.green,
             ),
 
-          // ✅ RIWAYAT LIST
+          // ✅ RIWAYAT LIST - BACKGROUND PUTIH
           Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(color: Colors.green),
-                        SizedBox(height: 16),
-                        Text(
-                          'Memuat data pembiayaan...',
-                          style: TextStyle(color: Colors.green),
-                        ),
-                      ],
-                    ),
-                  )
-                : _hasError
-                    ? _buildErrorWidget()
-                    : _filteredRiwayat.isEmpty
-                        ? _buildEmptyState()
-                        : RefreshIndicator(
-                            onRefresh: _loadRiwayatAngsuran,
-                            color: Colors.green,
-                            backgroundColor: Colors.white,
-                            child: ListView.separated(
-                              itemCount: _filteredRiwayat.length,
-                              separatorBuilder: (context, index) => const SizedBox(height: 4),
-                              itemBuilder: (context, index) {
-                                final angsuran = _filteredRiwayat[index];
-                                final jumlah = (angsuran['jumlah'] as num?)?.toDouble() ?? 0;
-                                final jenis = angsuran['jenis']?.toString() ?? '';
-                                final sisaAngsuran = (angsuran['sisa_angsuran'] as num?)?.toDouble() ?? 0;
-                                final status = angsuran['status']?.toString() ?? 'aktif';
-                                final keterangan = angsuran['keterangan']?.toString() ?? 'Angsuran ${_getAngsuranName(jenis)}';
-                                final tanggal = _formatTanggal(angsuran['tanggal']?.toString());
-                                final ke = angsuran['ke']?.toString() ?? '0';
-                                final tenor = angsuran['tenor']?.toString() ?? '18';
-                                final namaBarang = angsuran['nama_barang']?.toString() ?? 'Produk';
-                                final hargaBagiHasil = (angsuran['harga_bagi_hasil'] as num?)?.toDouble() ?? 0;
-                                final idKredit = angsuran['id_kredit']?.toString() ?? '';
-
-                                return Card(
-                                  margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                                  elevation: 2,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    side: BorderSide(color: Colors.green[100]!),
-                                  ),
-                                  child: ListTile(
-                                    leading: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: _getAngsuranColor(jenis).withOpacity(0.1),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Icon(
-                                        _getIconForType(jenis),
-                                        color: _getAngsuranColor(jenis),
-                                        size: 20,
-                                      ),
-                                    ),
-                                    title: Row(
-                                      children: [
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                namaBarang,
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 16,
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              Text(
-                                                'ID: $idKredit • $keterangan',
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.grey,
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    subtitle: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('$tanggal • ${angsuran['no_invoice']}'),
-                                        const SizedBox(height: 4),
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: _getStatusColor(status).withOpacity(0.1),
-                                                borderRadius: BorderRadius.circular(4),
-                                                border: Border.all(color: _getStatusColor(status)),
-                                              ),
-                                              child: Text(
-                                                status.toUpperCase(),
-                                                style: TextStyle(
-                                                  color: _getStatusColor(status),
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              'Ke: $ke/$tenor',
-                                              style: const TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.grey,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        if (hargaBagiHasil > 0)
-                                          Padding(
-                                            padding: const EdgeInsets.only(top: 4),
-                                            child: Text(
-                                              'Bagi Hasil: ${_formatCurrency(hargaBagiHasil)}',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.orange[700],
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                    trailing: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      children: [
-                                        Text(
-                                          _formatCurrency(jumlah),
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.green,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        if (sisaAngsuran > 0)
-                                          Text(
-                                            'Sisa: ${_formatCurrency(sisaAngsuran)}',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.red[600],
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        if (sisaAngsuran == 0 && status != 'belum mulai')
-                                          Text(
-                                            'LUNAS',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              color: Colors.green[600],
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                    onTap: () {
-                                      _showDetailAngsuran(angsuran);
-                                    },
-                                  ),
-                                );
-                              },
-                            ),
+            child: Container(
+              color: Colors.white, // ✅ BACKGROUND PUTIH UNTUK KONTEN UTAMA
+              child: _isLoading
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(color: Colors.green),
+                          SizedBox(height: 16),
+                          Text(
+                            'Memuat data pembiayaan...',
+                            style: TextStyle(color: Colors.green),
                           ),
+                        ],
+                      ),
+                    )
+                  : _hasError
+                      ? _buildErrorWidget()
+                      : _filteredRiwayat.isEmpty
+                          ? _buildEmptyState()
+                          : RefreshIndicator(
+                              onRefresh: _loadRiwayatAngsuran,
+                              color: Colors.green,
+                              backgroundColor: Colors.white,
+                              child: ListView.separated(
+                                padding: EdgeInsets.zero, // ✅ HILANGKAN PADDING
+                                itemCount: _filteredRiwayat.length,
+                                separatorBuilder: (context, index) => const SizedBox(height: 4),
+itemBuilder: (context, index) {
+  final angsuran = _filteredRiwayat[index];
+  final jumlah = (angsuran['jumlah'] as num?)?.toDouble() ?? 0;
+  final jenis = angsuran['jenis']?.toString() ?? '';
+  final sisaAngsuran = (angsuran['sisa_angsuran'] as num?)?.toDouble() ?? 0;
+  final status = angsuran['status']?.toString() ?? 'aktif';
+  final tanggal = _formatTanggal(angsuran['tanggal']?.toString());
+  final ke = angsuran['ke']?.toString() ?? '0';
+  final tenor = angsuran['tenor']?.toString() ?? '18';
+  final namaBarang = angsuran['nama_barang']?.toString() ?? 'Produk';
+  final hargaBagiHasil = (angsuran['harga_bagi_hasil'] as num?)?.toDouble() ?? 0;
+  
+  // ✅ HAPUS ID KREDIT DARI TAMPILAN
+  // final idKredit = angsuran['id_kredit']?.toString() ?? '';
+
+  return Container(
+    margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+    child: Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: Colors.green[100]!),
+      ),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.1), // ✅ LOGO BIASA - WARNA HIJAU
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.payments, // ✅ ICON STANDAR UNTUK SEMUA JENIS
+            color: Colors.green,
+            size: 20,
+          ),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ✅ JUDUL: "Ke" + nomor angsuran
+            Text(
+              'Ke $ke',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 2),
+            // ✅ SUBTITLE: "Angsuran" + nama barang
+            Text(
+              'Angsuran $namaBarang',
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.grey,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(tanggal),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(status).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: _getStatusColor(status)),
+                  ),
+                  child: Text(
+                    status.toUpperCase(),
+                    style: TextStyle(
+                      color: _getStatusColor(status),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '$ke/$tenor',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+            if (hargaBagiHasil > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Bagi Hasil: ${_formatCurrency(hargaBagiHasil)}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.orange[700],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              _formatCurrency(jumlah),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.green,
+                fontSize: 16,
+              ),
+            ),
+            if (sisaAngsuran > 0)
+              Text(
+                'Sisa: ${_formatCurrency(sisaAngsuran)}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.red[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            if (sisaAngsuran == 0 && status != 'belum mulai')
+              Text(
+                'LUNAS',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.green[600],
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+          ],
+        ),
+        onTap: () {
+          _showDetailAngsuran(angsuran);
+        },
+      ),
+    ),
+  );
+},
+                              ),
+                            ),
+            ),
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

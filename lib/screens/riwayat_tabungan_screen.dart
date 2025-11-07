@@ -7,7 +7,7 @@ import '../services/file_validator.dart';
 import '../services/transaction_service.dart';
 import '../services/bukti_storage_service.dart'; // ✅ TAMBAH INI
 
-// ✅ CUSTOM SHAPE UNTUK APPBAR 
+// ✅ CUSTOM SHAPE UNTUK APPBAR - DIPERBAIKI
 class NotchedAppBarShape extends ContinuousRectangleBorder {
   @override
   Path getOuterPath(Rect rect, {TextDirection? textDirection}) {
@@ -2344,60 +2344,63 @@ void _testUploadBukti() async {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // ✅ DEBUG: Check data sebelum build
-    print('🔄 BUILD - _saldoData: $_saldoData');
-    print('🔄 BUILD - _riwayatTabungan length: ${_riwayatTabungan.length}');
-    
-    final totalSemuaTabungan = _getCurrentSaldo('semua');
-    final filteredCount = _filteredRiwayat.length;
-    
-    print('🔄 BUILD - Total calculated: $totalSemuaTabungan');
+@override
+Widget build(BuildContext context) {
+  // ✅ DEBUG: Check data sebelum build
+  print('🔄 BUILD - _saldoData: $_saldoData');
+  print('🔄 BUILD - _riwayatTabungan length: ${_riwayatTabungan.length}');
+  
+  final totalSemuaTabungan = _getCurrentSaldo('semua');
+  final filteredCount = _filteredRiwayat.length;
+  
+  print('🔄 BUILD - Total calculated: $totalSemuaTabungan');
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(70.0),
-        child: AppBar(
-          title: const Padding(
-            padding: EdgeInsets.only(bottom: 10.0),
-            child: Text(
-              'Riwayat Tabungan',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
+  return Scaffold(
+    backgroundColor: Colors.green[50], // ✅ BACKGROUND UTAMA SAMA DENGAN HEADER
+    appBar: PreferredSize(
+      preferredSize: const Size.fromHeight(70.0),
+      child: AppBar(
+        title: const Padding(
+          padding: EdgeInsets.only(bottom: 10.0),
+          child: Text(
+            'Riwayat Tabungan',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
             ),
           ),
-          backgroundColor: Colors.green[700],
-          foregroundColor: Colors.white,
-          elevation: 8,
-          shadowColor: Colors.green.withOpacity(0.5),
-          shape: NotchedAppBarShape(),
-          automaticallyImplyLeading: false,
-          centerTitle: true,
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
-              child: IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: _loadRiwayatTabungan,
-                tooltip: 'Refresh Data',
-              ),
-            ),
-          ],
         ),
+        backgroundColor: Colors.green[700],
+        foregroundColor: Colors.white,
+        elevation: 8,
+        shadowColor: Colors.green.withOpacity(0.5),
+        shape: NotchedAppBarShape(),
+        automaticallyImplyLeading: false,
+        centerTitle: true,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
+            child: IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _loadRiwayatTabungan,
+              tooltip: 'Refresh Data',
+            ),
+          ),
+        ],
       ),
-      body: Column(
+    ),
+    body: Container(
+      color: Colors.green[50], // ✅ BACKGROUND UTAMA
+      child: Column(
         children: [
-          // ✅ HEADER INFO
+          // ✅ HEADER INFO - FIXED NO GAP
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
+            margin: EdgeInsets.zero, // ✅ HILANGKAN MARGIN
             decoration: BoxDecoration(
               color: Colors.green[50],
-              border: Border(bottom: BorderSide(color: Colors.green[100]!)),
+              // ✅ HAPUS SEMUA BORDER & BOX SHADOW YANG MEMBUAT CELAH
             ),
             child: Column(
               children: [
@@ -2428,6 +2431,7 @@ void _testUploadBukti() async {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
+              margin: EdgeInsets.zero, // ✅ HILANGKAN MARGIN
               decoration: BoxDecoration(
                 color: Colors.red[50],
                 border: Border(bottom: BorderSide(color: Colors.red[100]!)),
@@ -2454,17 +2458,21 @@ void _testUploadBukti() async {
             ),
           ],
 
-          // ✅ JENIS TABUNGAN FILTER
+          // ✅ JENIS TABUNGAN FILTER - BACKGROUND PUTIH
           Container(
             height: 100,
+            margin: EdgeInsets.zero, // ✅ HILANGKAN MARGIN
             decoration: BoxDecoration(
               color: Colors.white,
-              border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, -2),
                 ),
               ],
             ),
@@ -2541,178 +2549,178 @@ void _testUploadBukti() async {
             ),
           ),
 
-          // ✅ LOADING INDICATOR
-          if (_isLoading) 
-            const LinearProgressIndicator(
-              backgroundColor: Colors.green,
-              color: Colors.green,
-            ),
-
-          // ✅ MAIN CONTENT
+          // ✅ MAIN CONTENT AREA - BACKGROUND PUTIH
           Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(color: Colors.green),
-                        SizedBox(height: 16),
-                        Text(
-                          'Memuat data tabungan...',
-                          style: TextStyle(color: Colors.green),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Harap tunggu sebentar',
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  )
-                : _hasError
-                    ? _buildErrorWidget()
-                    : _filteredRiwayat.isEmpty
-                        ? _buildEmptyState()
-                        : RefreshIndicator(
-                            onRefresh: _loadRiwayatTabungan,
-                            color: Colors.green,
-                            backgroundColor: Colors.white,
-                            child: ListView.separated(
-                              itemCount: _filteredRiwayat.length,
-                              separatorBuilder: (context, index) => const SizedBox(height: 4),
-                              itemBuilder: (context, index) {
-                                final transaksi = _filteredRiwayat[index];
-                                final jumlah = (transaksi['jumlah'] as num?)?.toInt() ?? 0;
-                                final isSetoran = transaksi['is_setoran'] == true;
-                                final jenisTabungan = transaksi['jenis_tabungan']?.toString() ?? 'sukarela';
-                                final keterangan = transaksi['keterangan']?.toString() ?? 'Transaksi tabungan';
-                                final tanggal = _formatTanggal(transaksi['tanggal']?.toString());
-                                final jenisTransaksi = transaksi['jenis_transaksi']?.toString() ?? 'Transaksi';
-                                final isSaldo = transaksi['is_saldo'] == true;
-                                final canUploadBukti = transaksi['can_upload_bukti'] == true;
-
-                                return Card(
-                                  margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                                  elevation: 2,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    side: BorderSide(color: Colors.green[100]!),
-                                  ),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(12),
-                                    child: Row(
-                                      children: [
-                                        // ✅ LEADING ICON
-                                        Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            color: _getTabunganColor(jenisTabungan).withOpacity(0.1),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Icon(
-                                            isSaldo ? Icons.account_balance : 
-                                                     (isSetoran ? Icons.arrow_downward : Icons.arrow_upward),
-                                            color: _getTabunganColor(jenisTabungan),
-                                            size: 20,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        
-                                        // ✅ CONTENT
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: Text(
-                                                      jenisTransaksi,
-                                                      style: const TextStyle(
-                                                        fontWeight: FontWeight.w600,
-                                                        fontSize: 14,
-                                                      ),
-                                                      maxLines: 2,
-                                                      overflow: TextOverflow.ellipsis,
-                                                    ),
-                                                  ),
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: _getTabunganColor(jenisTabungan).withOpacity(0.1),
-                                                      borderRadius: BorderRadius.circular(4),
-                                                      border: Border.all(color: _getTabunganColor(jenisTabungan)),
-                                                    ),
-                                                    child: Text(
-                                                      _getTabunganName(jenisTabungan),
-                                                      style: TextStyle(
-                                                        color: _getTabunganColor(jenisTabungan),
-                                                        fontSize: 9,
-                                                        fontWeight: FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                tanggal,
-                                                style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                              ),
-                                              Text(
-                                                keterangan,
-                                                style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Row(
-                                                children: [
-                                                  _getStatusVerifikasi(transaksi),
-                                                  const SizedBox(width: 8),
-                                                  if (canUploadBukti) _buildUploadBuktiButton(transaksi),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        
-                                        // ✅ TRAILING - NOMINAL
-                                        SizedBox(
-                                          width: 100,
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.end,
-                                            children: [
-                                              Text(
-                                                _formatCurrency(jumlah),
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  color: _getAmountColor(jumlah),
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                isSetoran ? 'Setoran' : 'Penarikan',
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: isSetoran ? Colors.green : Colors.red,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
+            child: Container(
+              color: Colors.white, // ✅ BACKGROUND PUTIH UNTUK KONTEN UTAMA
+              child: _isLoading
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(color: Colors.green),
+                          SizedBox(height: 16),
+                          Text(
+                            'Memuat data tabungan...',
+                            style: TextStyle(color: Colors.green),
                           ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Harap tunggu sebentar',
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _hasError
+                      ? _buildErrorWidget()
+                      : _filteredRiwayat.isEmpty
+                          ? _buildEmptyState()
+                          : RefreshIndicator(
+                              onRefresh: _loadRiwayatTabungan,
+                              color: Colors.green,
+                              backgroundColor: Colors.white,
+                              child: ListView.separated(
+                                padding: EdgeInsets.zero, // ✅ HILANGKAN PADDING
+                                itemCount: _filteredRiwayat.length,
+                                separatorBuilder: (context, index) => const SizedBox(height: 4),
+                                itemBuilder: (context, index) {
+                                  final transaksi = _filteredRiwayat[index];
+                                  final jumlah = (transaksi['jumlah'] as num?)?.toInt() ?? 0;
+                                  final isSetoran = transaksi['is_setoran'] == true;
+                                  final jenisTabungan = transaksi['jenis_tabungan']?.toString() ?? 'sukarela';
+                                  final keterangan = transaksi['keterangan']?.toString() ?? 'Transaksi tabungan';
+                                  final tanggal = _formatTanggal(transaksi['tanggal']?.toString());
+                                  final jenisTransaksi = transaksi['jenis_transaksi']?.toString() ?? 'Transaksi';
+                                  final isSaldo = transaksi['is_saldo'] == true;
+                                  final canUploadBukti = transaksi['can_upload_bukti'] == true;
+
+                                  return Container(
+                                    margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                                    child: Card(
+                                      elevation: 2,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        side: BorderSide(color: Colors.green[100]!),
+                                      ),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(12),
+                                        child: Row(
+                                          children: [
+                                            // ✅ LEADING ICON
+                                            Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: _getTabunganColor(jenisTabungan).withOpacity(0.1),
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: Icon(
+                                                isSaldo ? Icons.account_balance : 
+                                                         (isSetoran ? Icons.arrow_downward : Icons.arrow_upward),
+                                                color: _getTabunganColor(jenisTabungan),
+                                                size: 20,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            
+                                            // ✅ CONTENT
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          jenisTransaksi,
+                                                          style: const TextStyle(
+                                                            fontWeight: FontWeight.w600,
+                                                            fontSize: 14,
+                                                          ),
+                                                          maxLines: 2,
+                                                          overflow: TextOverflow.ellipsis,
+                                                        ),
+                                                      ),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                        decoration: BoxDecoration(
+                                                          color: _getTabunganColor(jenisTabungan).withOpacity(0.1),
+                                                          borderRadius: BorderRadius.circular(4),
+                                                          border: Border.all(color: _getTabunganColor(jenisTabungan)),
+                                                        ),
+                                                        child: Text(
+                                                          _getTabunganName(jenisTabungan),
+                                                          style: TextStyle(
+                                                            color: _getTabunganColor(jenisTabungan),
+                                                            fontSize: 9,
+                                                            fontWeight: FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    tanggal,
+                                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                                  ),
+                                                  Text(
+                                                    keterangan,
+                                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Row(
+                                                    children: [
+                                                      _getStatusVerifikasi(transaksi),
+                                                      const SizedBox(width: 8),
+                                                      if (canUploadBukti) _buildUploadBuktiButton(transaksi),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            
+                                            // ✅ TRAILING - NOMINAL
+                                            SizedBox(
+                                              width: 100,
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.end,
+                                                children: [
+                                                  Text(
+                                                    _formatCurrency(jumlah),
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      color: _getAmountColor(jumlah),
+                                                      fontSize: 14,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    isSetoran ? 'Setoran' : 'Penarikan',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: isSetoran ? Colors.green : Colors.red,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+            ),
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

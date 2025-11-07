@@ -74,6 +74,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ✅ BUAT INSTANCE API SERVICE
   final ApiService _apiService = ApiService();
 
+  // ✅ STATE UNTUK NOTIFICATION POPUP
+OverlayEntry? _notificationOverlayEntry;
+bool _isNotificationPopupOpen = false;
+
   // ✅ STATE UNTUK DATA SALDO DAN ANGSURAN DARI API
   Map<String, dynamic> _saldoData = {};
   Map<String, dynamic> _angsuranData = {};
@@ -94,11 +98,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _setupNotificationListener();
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
+@override
+void dispose() {
+  _scrollController.dispose();
+  _closeNotificationPopup(); // ✅ TUTUP POPUP JIKA ADA
+  super.dispose();
+}
 
   // ✅ Load current user dari session management
   Future<void> _loadCurrentUser() async {
@@ -186,7 +191,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           switch (screen) {
             case 'inbox':
             case 'notifikasi':
-              _showNotifications();
+              _showNotificationPopup();
               break;
             case 'transaction':
             case 'transaksi':
@@ -685,57 +690,148 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // ✅ SHOW NOTIFICATIONS DIALOG
-  void _showNotifications() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.notifications),
-            SizedBox(width: 8),
-            Text('Notifikasi'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_unreadNotifications > 0)
-              Text(
-                'Anda memiliki $_unreadNotifications pesan belum dibaca',
-                style: TextStyle(
-                  color: Colors.orange[700],
-                  fontWeight: FontWeight.bold,
-                ),
-              )
-            else
-              const Text('Tidak ada pesan baru'),
-            const SizedBox(height: 16),
-            const Text(
-              'Fitur notifikasi lengkap akan segera hadir!',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Tutup'),
-          ),
-          if (_unreadNotifications > 0)
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                // Refresh notifications
-                _loadUnreadNotifications();
-              },
-              child: const Text('Refresh'),
-            ),
-        ],
-      ),
-    );
+// ✅ SHOW NOTIFICATION POPUP SEPERTI FACEBOOK
+void _showNotificationPopup() {
+  if (_isNotificationPopupOpen) {
+    _closeNotificationPopup();
+    return;
   }
+
+  _closeNotificationPopup(); // Close existing if any
+
+  final overlay = Overlay.of(context);
+  final renderBox = context.findRenderObject() as RenderBox;
+  final position = renderBox.localToGlobal(Offset.zero);
+
+  _notificationOverlayEntry = OverlayEntry(
+    builder: (context) => Stack(
+      children: [
+        // Background overlay
+        GestureDetector(
+          onTap: _closeNotificationPopup,
+          child: Container(
+            color: Colors.transparent,
+            width: MediaQuery.of(context).size.width,
+            height: MediaQuery.of(context).size.height,
+          ),
+        ),
+        // Notification popup
+        Positioned(
+          top: position.dy + kToolbarHeight - 10,
+          right: 16,
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              width: 320,
+              height: 400,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  // Header
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green[700],
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(12),
+                        topRight: Radius.circular(12),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.notifications, color: Colors.white, size: 20),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Notifikasi',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (_unreadNotifications > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              _unreadNotifications.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  // Content
+                  Expanded(
+                    child: _buildNotificationContent(),
+                  ),
+                  // Footer
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(color: Colors.grey[300]!),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            _markAllAsRead();
+                            _closeNotificationPopup();
+                          },
+                          child: const Text(
+                            'Tandai semua dibaca',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            _closeNotificationPopup();
+                            _showAllNotifications();
+                          },
+                          child: const Text(
+                            'Lihat semua',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  overlay.insert(_notificationOverlayEntry!);
+  setState(() {
+    _isNotificationPopupOpen = true;
+  });
+}
 
   // ✅ PERBAIKAN: LOGOUT FUNCTION YANG BENAR
   Future<void> _logout() async {
@@ -1031,6 +1127,314 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+// ✅ BUILD NOTIFICATION CONTENT WITH REAL DATA
+Widget _buildNotificationContent() {
+  return FutureBuilder<List<Map<String, dynamic>>>(
+    future: firebaseService.getRealInboxData(),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Center(
+          child: CircularProgressIndicator(),
+        );
+      }
+      
+      if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+        return const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.notifications_none, size: 48, color: Colors.grey),
+              SizedBox(height: 8),
+              Text(
+                'Tidak ada notifikasi',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+        );
+      }
+      
+      final inboxData = snapshot.data!;
+      
+      return ListView.builder(
+        padding: const EdgeInsets.all(0),
+        itemCount: inboxData.length,
+        itemBuilder: (context, index) {
+          final item = inboxData[index];
+          return _buildRealNotificationItem(item);
+        },
+      );
+    },
+  );
+}
+
+// ✅ BUILD REAL NOTIFICATION ITEM
+Widget _buildRealNotificationItem(Map<String, dynamic> item) {
+  final icon = _getNotificationIcon(item['subject']?.toString() ?? '');
+  final isUnread = item['isUnread'] == true;
+  
+  return Container(
+    decoration: BoxDecoration(
+      border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+      color: isUnread ? Colors.blue[50] : Colors.transparent,
+    ),
+    child: ListTile(
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.green[100],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: Colors.green[700], size: 20),
+      ),
+      title: Text(
+        item['subject']?.toString() ?? 'Notifikasi',
+        style: TextStyle(
+          fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
+          fontSize: 14,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            item['message']?.toString() ?? '',
+            style: const TextStyle(fontSize: 12),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            item['time']?.toString() ?? '',
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+      trailing: isUnread
+          ? Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+            )
+          : null,
+      onTap: () {
+        _markNotificationAsRead(item['id']?.toString() ?? '');
+        _closeNotificationPopup();
+      },
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    ),
+  );
+}
+
+// ✅ GET NOTIFICATION ICON BASED ON SUBJECT
+IconData _getNotificationIcon(String subject) {
+  final lowerSubject = subject.toLowerCase();
+  
+  if (lowerSubject.contains('pembayaran') || lowerSubject.contains('setoran')) {
+    return Icons.account_balance_wallet;
+  } else if (lowerSubject.contains('penarikan')) {
+    return Icons.money_off;
+  } else if (lowerSubject.contains('siquana') || lowerSubject.contains('taqsith')) {
+    return Icons.handshake;
+  } else if (lowerSubject.contains('test')) {
+    return Icons.notifications;
+  } else {
+    return Icons.notifications;
+  }
+}
+
+// ✅ MARK SPECIFIC NOTIFICATION AS READ
+void _markNotificationAsRead(String notificationId) async {
+  try {
+    if (notificationId.isNotEmpty) {
+      // Update local state
+      if (_unreadNotifications > 0) {
+        setState(() {
+          _unreadNotifications--;
+        });
+      }
+      
+      // Call API to mark as read
+      await _apiService.markNotificationAsRead(notificationId);
+      
+      // Refresh data
+      _loadUnreadNotifications();
+    }
+  } catch (e) {
+    print('❌ Error marking notification as read: $e');
+  }
+}
+
+// ✅ BUILD NOTIFICATION ITEM
+Widget _buildNotificationItem({
+  required IconData icon,
+  required String title,
+  required String message,
+  required String time,
+  required bool isUnread,
+}) {
+  return Container(
+    decoration: BoxDecoration(
+      border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
+      color: isUnread ? Colors.blue[50] : Colors.transparent,
+    ),
+    child: ListTile(
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: Colors.green[100],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: Colors.green[700], size: 20),
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
+          fontSize: 14,
+        ),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            message,
+            style: const TextStyle(fontSize: 12),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            time,
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+      trailing: isUnread
+          ? Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+            )
+          : null,
+      onTap: () {
+        _markAsRead();
+        _closeNotificationPopup();
+      },
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    ),
+  );
+}
+
+// ✅ CLOSE NOTIFICATION POPUP
+void _closeNotificationPopup() {
+  if (_notificationOverlayEntry != null) {
+    _notificationOverlayEntry!.remove();
+    _notificationOverlayEntry = null;
+  }
+  setState(() {
+    _isNotificationPopupOpen = false;
+  });
+}
+
+// ✅ MARK ALL AS READ (FIXED VERSION)
+void _markAllAsRead() async {
+  try {
+    // Update local state langsung
+    setState(() {
+      _unreadNotifications = 0;
+    });
+    
+    // Panggil FirebaseService untuk sync
+    await firebaseService.markAllNotificationsAsRead();
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Semua notifikasi ditandai sebagai dibaca'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  } catch (e) {
+    print('❌ Error marking all as read: $e');
+    // Fallback: update local state saja
+    setState(() {
+      _unreadNotifications = 0;
+    });
+  }
+}
+
+// ✅ MARK AS READ (FIXED VERSION)
+void _markAsRead() {
+  if (_unreadNotifications > 0) {
+    setState(() {
+      _unreadNotifications--;
+    });
+    
+    // Optional: Update di FirebaseService juga
+    try {
+      firebaseService.updateUnreadCount(_unreadNotifications);
+    } catch (e) {
+      print('⚠️ Error updating unread count in service: $e');
+    }
+  }
+}
+
+// ✅ SHOW ALL NOTIFICATIONS (FULL SCREEN)
+void _showAllNotifications() {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.notifications),
+          SizedBox(width: 8),
+          Text('Semua Notifikasi'),
+        ],
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Fitur notifikasi lengkap akan segera hadir!'),
+            const SizedBox(height: 16),
+            if (_unreadNotifications > 0)
+              Text(
+                'Anda memiliki $_unreadNotifications pesan belum dibaca',
+                style: TextStyle(
+                  color: Colors.orange[700],
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Tutup'),
+        ),
+      ],
+    ),
+  );
+}
+
   // ✅ ERROR WIDGET
   Widget _buildErrorWidget() {
     return Container(
@@ -1117,7 +1521,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.notifications),
-                    onPressed: _showNotifications,
+                    onPressed: _showNotificationPopup, // ✅ UBAH INI,
                     tooltip: 'Notifikasi',
                   ),
                   if (_unreadNotifications > 0)

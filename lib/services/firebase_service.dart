@@ -428,6 +428,7 @@ Future<List<String>> getSubscribedTopics() async {
   }
 }
 
+
   // ✅ LOAD INITIAL INBOX DATA
   Future<void> _loadInitialInboxData() async {
     try {
@@ -447,6 +448,143 @@ Future<List<String>> getSubscribedTopics() async {
       print('❌ Error loading initial inbox data: $e');
     }
   }
+
+    // ✅ MARK ALL NOTIFICATIONS AS READ
+  Future<void> markAllNotificationsAsRead() async {
+    try {
+      print('📝 Marking all notifications as read...');
+      
+      // Update di SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('unread_notifications', 0);
+      
+      // Update last unread count
+      _lastUnreadCount = 0;
+      
+      // Notify listeners
+      if (onUnreadCountUpdated != null) {
+        onUnreadCountUpdated!(0);
+      }
+      
+      print('✅ All notifications marked as read');
+    } catch (e) {
+      print('❌ Error marking notifications as read: $e');
+      throw e;
+    }
+  }
+
+  // ✅ MARK SINGLE NOTIFICATION AS READ
+  Future<void> markNotificationAsRead(String notificationId) async {
+    try {
+      print('📝 Marking notification $notificationId as read...');
+      
+      // Get current count
+      final currentCount = await getUnreadNotificationsCount();
+      if (currentCount > 0) {
+        final newCount = currentCount - 1;
+        
+        // Update di SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('unread_notifications', newCount);
+        
+        // Update last unread count
+        _lastUnreadCount = newCount;
+        
+        // Notify listeners
+        if (onUnreadCountUpdated != null) {
+          onUnreadCountUpdated!(newCount);
+        }
+        
+        print('✅ Notification marked as read. New count: $newCount');
+      }
+    } catch (e) {
+      print('❌ Error marking notification as read: $e');
+      throw e;
+    }
+  }
+
+  // ✅ UPDATE UNREAD COUNT MANUALLY
+  Future<void> updateUnreadCount(int newCount) async {
+    try {
+      print('🔄 Updating unread count to: $newCount');
+      
+      // Update di SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('unread_notifications', newCount);
+      
+      // Update last unread count
+      _lastUnreadCount = newCount;
+      
+      // Notify listeners
+      if (onUnreadCountUpdated != null) {
+        onUnreadCountUpdated!(newCount);
+      }
+      
+      print('✅ Unread count updated to: $newCount');
+    } catch (e) {
+      print('❌ Error updating unread count: $e');
+      throw e;
+    }
+  }
+
+  // ✅ GET REAL INBOX DATA FOR POPUP
+Future<List<Map<String, dynamic>>> getRealInboxData() async {
+  try {
+    print('📥 Getting real inbox data for popup...');
+    
+    final result = await getAllInbox();
+    
+    if (result['success'] == true) {
+      final inboxData = result['data'] ?? {};
+      final inboxList = inboxData['inbox'] ?? [];
+      
+      // Convert to List<Map<String, dynamic>>
+      List<Map<String, dynamic>> realInbox = [];
+      
+      for (var item in inboxList) {
+        if (item is Map<String, dynamic>) {
+          realInbox.add({
+            'id': item['id']?.toString() ?? '',
+            'subject': item['subject']?.toString() ?? '',
+            'message': item['keterangan']?.toString() ?? '',
+            'time': _formatTimeAgo(item['date_created']?.toString() ?? ''),
+            'isUnread': (item['read_status']?.toString() ?? '1') == '0',
+            'date_created': item['date_created']?.toString() ?? '',
+          });
+        }
+      }
+      
+      // Sort by date (newest first)
+      realInbox.sort((a, b) => b['date_created'].compareTo(a['date_created']));
+      
+      print('✅ Real inbox data loaded: ${realInbox.length} items');
+      return realInbox;
+    }
+    
+    return [];
+  } catch (e) {
+    print('❌ Error getting real inbox data: $e');
+    return [];
+  }
+}
+
+// ✅ FORMAT TIME AGO
+String _formatTimeAgo(String dateString) {
+  try {
+    final date = DateTime.parse(dateString);
+    final now = DateTime.now();
+    final difference = now.difference(date);
+    
+    if (difference.inMinutes < 1) return 'Baru saja';
+    if (difference.inMinutes < 60) return '${difference.inMinutes} menit lalu';
+    if (difference.inHours < 24) return '${difference.inHours} jam lalu';
+    if (difference.inDays < 7) return '${difference.inDays} hari lalu';
+    
+    return '${date.day}/${date.month}/${date.year}';
+  } catch (e) {
+    return dateString;
+  }
+}
 
   // ✅ REFRESH INBOX DATA
   Future<Map<String, dynamic>> refreshInboxData() async {
