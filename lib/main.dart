@@ -7,64 +7,62 @@ import 'screens/upload_dokumen_screen.dart';
 import 'services/api_service.dart';
 import 'services/firebase_service.dart';
 
-// ✅ PERBAIKAN: Firebase Configuration Class
-class FirebaseConfig {
-  static bool get shouldInitializeFirebase {
-    return true; // Sesuaikan dengan kebutuhan platform
-  }
-}
-
-// ✅ PERBAIKAN: Global keys dengan better documentation
+// Global keys
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = 
     GlobalKey<ScaffoldMessengerState>();
 
-// ✅ PERBAIKAN: Firebase Service Instance
+// Firebase Service Instance
 final FirebaseService firebaseService = FirebaseService();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // ✅ PERBAIKAN: Initialize SharedPreferences terlebih dahulu
-  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  print('🚀 STARTING KOPERASI KSMI APP...');
   
-  // ✅ PERBAIKAN: HANYA INIT FIREBASE UNTUK ANDROID & iOS
-  if (FirebaseConfig.shouldInitializeFirebase) {
-    try {
-      await Firebase.initializeApp();
-      print('✅ Firebase initialized successfully');
-    } catch (e) {
-      print('❌ Firebase initialization failed: $e');
-    }
-  } else {
-    print('⚠️ Firebase disabled for this platform');
+  // Initialize SharedPreferences
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  print('✅ SharedPreferences initialized');
+  
+  // Initialize Firebase Core
+  try {
+    print('🔥 Initializing Firebase Core...');
+    await Firebase.initializeApp();
+    print('✅ Firebase Core initialized successfully');
+  } catch (e) {
+    print('❌ Firebase Core initialization failed: $e');
   }
   
-  // ✅ PERBAIKAN: Initialize app services
-  await _initializeApp(prefs);
+  // Initialize App Services
+  await _initializeAppServices();
   
   runApp(const KoperasiKSMIApp());
 }
 
-// ✅ PERBAIKAN: App Initialization Function
-Future<void> _initializeApp(SharedPreferences prefs) async {
+// Initialize App Services
+Future<void> _initializeAppServices() async {
   try {
-    await _initializeFirebaseMessaging();
-    await _initializeOtherServices();
-    print('🚀 INITIALIZING FIREBASE SERVICES...');
+    print('🔄 Initializing app services...');
+    
+    // Initialize Firebase Services
+    await _initializeFirebaseServices();
+    
+    print('✅ All app services initialized successfully');
   } catch (e) {
-    print('❌ ERROR Initializing Firebase Services: $e');
+    print('❌ ERROR Initializing App Services: $e');
   }
 }
 
-// ✅ PERBAIKAN: Firebase Messaging Initialization
-Future<void> _initializeFirebaseMessaging() async {
+// Initialize Firebase Services
+Future<void> _initializeFirebaseServices() async {
   try {
+    print('🔄 Initializing Firebase Services...');
     await firebaseService.initialize();
     _setupNotificationCallbacks();
-    print('✅ Firebase Messaging initialized successfully');
+    print('✅ Firebase Services initialized successfully');
   } catch (e) {
-    print('❌ Firebase Messaging initialization failed: $e');
+    print('❌ Firebase Services initialization failed: $e');
+    print('⚠️ Continuing without Firebase Services...');
   }
 }
 
@@ -86,7 +84,7 @@ void _handleNotificationNavigation(Map<String, dynamic> data) {
     
     print('📱 Notification tapped - Type: $type, ID: $id, Screen: $screen');
     
-    // ✅ NAVIGASI BERDASARKAN NOTIFICATION TYPE
+    // Navigation berdasarkan notification type
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (navigatorKey.currentState?.context != null) {
         switch (screen) {
@@ -110,7 +108,6 @@ void _handleNotificationNavigation(Map<String, dynamic> data) {
             navigatorKey.currentState!.pushNamed('/profile');
             break;
           default:
-            // Default ke dashboard
             navigatorKey.currentState!.pushNamed('/dashboard');
             break;
         }
@@ -130,7 +127,7 @@ void _handleNotificationData(Map<String, dynamic> data) {
     
     print('📱 Notification received - Title: $title, Body: $body, Type: $type');
     
-    // ✅ TAMPILKAN SNACKBAR ATAU UPDATE BADGE
+    // Tampilkan snackbar
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (scaffoldMessengerKey.currentState?.context != null) {
         scaffoldMessengerKey.currentState!.showSnackBar(
@@ -146,15 +143,6 @@ void _handleNotificationData(Map<String, dynamic> data) {
     
   } catch (e) {
     print('❌ Error handling notification data: $e');
-  }
-}
-
-Future<void> _initializeOtherServices() async {
-  try {
-    await Future.delayed(const Duration(milliseconds: 100));
-    print('✅ Other services initialized');
-  } catch (e) {
-    print('❌ Error initializing other services: $e');
   }
 }
 
@@ -177,7 +165,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     _checkAuthStatus();
   }
 
-  // ✅ PERBAIKAN: Check auth status dengan better error handling
   Future<void> _checkAuthStatus() async {
     try {
       print('🔐 Checking authentication status...');
@@ -219,24 +206,27 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     }
   }
 
-  // ✅ PERBAIKAN: Subscribe to topics dengan better error handling
-  Future<void> _subscribeToUserTopics(Map<String, dynamic> userData) async {
-    try {
-      final userId = userData['user_id']?.toString() ?? userData['id']?.toString();
-      if (userId != null && userId.isNotEmpty) {
-        print('🔔 Subscribing to topics for user: $userId');
-        await firebaseService.subscribeToTopic('user_$userId');
-        await firebaseService.subscribeToTopic('koperasi_ksmi');
-        print('✅ Subscribed to topics successfully');
-      } else {
-        print('❌ User ID not found for topic subscription');
-      }
-    } catch (e) {
-      print('❌ ERROR subscribing to topic user: $e');
+Future<void> _subscribeToUserTopics(Map<String, dynamic> userData) async {
+  try {
+    final userId = userData['user_id']?.toString() ?? userData['id']?.toString();
+    if (userId != null && userId.isNotEmpty) {
+      print('🔔 Subscribing to topics for user: $userId');
+      
+      // Subscribe ke topic user spesifik dan topic umum
+      await firebaseService.subscribeToTopic('user_$userId');
+      await firebaseService.subscribeToTopic('koperasi_ksmi');
+      await firebaseService.subscribeToTopic('all_users');
+      
+      print('✅ Subscribed to topics successfully for user: $userId');
+    } else {
+      print('⚠️ User ID not found, skipping topic subscription');
     }
+  } catch (e) {
+    print('❌ ERROR subscribing to topics: $e');
+    // Jangan throw error di sini agar tidak mengganggu flow aplikasi
   }
+}
 
-  // ✅ PERBAIKAN: Handle login success dengan better navigation
   void _handleLoginSuccess(Map<String, dynamic> userData) {
     print('🎉 Login success callback triggered');
     
@@ -249,7 +239,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     _checkDokumenStatusAndNavigate(userData);
   }
 
-  // ✅ PERBAIKAN: Check dokumen status dengan better logic
   void _checkDokumenStatusAndNavigate(Map<String, dynamic> userData) {
     try {
       print('📄 Checking document status for navigation...');
@@ -265,12 +254,12 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
       final bool allDokumenUploaded = hasKTP && hasKK && hasFotoDiri;
       
       print('''
-    📄 Document Status Check:
-      - KTP: $hasKTP ($fotoKtp)
-      - KK: $hasKK ($fotoKk)  
-      - Foto Diri: $hasFotoDiri ($fotoDiri)
-      - All Complete: $allDokumenUploaded
-    ''');
+📄 Document Status Check:
+  - KTP: $hasKTP ($fotoKtp)
+  - KK: $hasKK ($fotoKk)  
+  - Foto Diri: $hasFotoDiri ($fotoDiri)
+  - All Complete: $allDokumenUploaded
+''');
       
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && navigatorKey.currentState?.context != null) {
@@ -278,9 +267,7 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
             print('📱 Navigating to UploadDokumenScreen');
             navigatorKey.currentState!.pushAndRemoveUntil(
               MaterialPageRoute(
-                builder: (context) => UploadDokumenScreen(
-                  user: userData,
-                ),
+                builder: (context) => UploadDokumenScreen(user: userData),
               ),
               (route) => false,
             );
@@ -288,18 +275,14 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
             print('📱 Navigating directly to Dashboard');
             _navigateToDashboard(userData);
           }
-        } else {
-          print('❌ Navigator not ready for navigation');
         }
       });
     } catch (e) {
       print('❌ Error checking document status: $e');
-      // Fallback: langsung ke dashboard jika ada error
       _navigateToDashboard(userData);
     }
   }
 
-  // ✅ PERBAIKAN: Navigate to dashboard dengan safety check
   void _navigateToDashboard(Map<String, dynamic> userData) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && navigatorKey.currentState?.context != null) {
@@ -313,12 +296,10 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     });
   }
 
-  // ✅ PERBAIKAN: Handle logout dengan better cleanup
   Future<void> _handleLogout() async {
     try {
       print('🚪 Handling logout...');
       
-      // ✅ TAMPILKAN LOADING DULU
       setState(() => _isLoading = true);
       
       final userId = _userData['user_id']?.toString() ?? _userData['id']?.toString();
@@ -331,17 +312,14 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
         }
       }
       
-      // ✅ LOGOUT DARI API
       final logoutResult = await _apiService.logout();
       print('🔐 Logout API result: ${logoutResult['success']}');
       
-      // ✅ CLEAR STATE
       setState(() {
         _isLoggedIn = false;
         _userData = {};
       });
       
-      // ✅ NAVIGASI KE LOGIN DENGAN DELAY
       Future.delayed(const Duration(milliseconds: 1000), () {
         if (mounted) {
           _navigateToLogin();
@@ -351,7 +329,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     } catch (e) {
       print('❌ Error during logout: $e');
       
-      // ✅ FALLBACK: CLEAR STATE MESKIPUN ERROR
       setState(() {
         _isLoading = false;
         _isLoggedIn = false;
@@ -362,7 +339,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     }
   }
 
-  // ✅ PERBAIKAN: Navigate to login dengan safety check
   void _navigateToLogin() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && navigatorKey.currentState?.context != null) {
@@ -387,28 +363,15 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
       navigatorKey: navigatorKey,
       scaffoldMessengerKey: scaffoldMessengerKey,
       
-      // ✅ PERBAIKAN BESAR: TAMBAHKAN ROUTES DAN ON GENERATE ROUTE
       routes: {
         '/login': (context) => LoginScreen(onLoginSuccess: _handleLoginSuccess),
         '/dashboard': (context) => DashboardMain(user: _userData),
         '/upload_dokumen': (context) => UploadDokumenScreen(user: _userData),
       },
       
-      // ✅ PERBAIKAN: HANDLE UNKNOWN ROUTES
       onGenerateRoute: (settings) {
         print('🔄 Generating route for: ${settings.name}');
         
-        // Fallback untuk route yang tidak terdaftar
-        return MaterialPageRoute(
-          builder: (context) => _isLoggedIn 
-              ? DashboardMain(user: _userData)
-              : LoginScreen(onLoginSuccess: _handleLoginSuccess),
-        );
-      },
-      
-      // ✅ PERBAIKAN: HANDLE UNKNOWN ROUTES (FALLBACK)
-      onUnknownRoute: (settings) {
-        print('❌ Unknown route: ${settings.name}');
         return MaterialPageRoute(
           builder: (context) => _isLoggedIn 
               ? DashboardMain(user: _userData)
@@ -424,7 +387,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     );
   }
 
-  // ✅ PERBAIKAN: Loading screen yang lebih informatif
   Widget _buildLoadingScreen() {
     return Scaffold(
       backgroundColor: Colors.green[50],
@@ -432,7 +394,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Logo/Icon
             Container(
               width: 100,
               height: 100,
@@ -454,8 +415,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
               ),
             ),
             const SizedBox(height: 24),
-            
-            // Title
             const Text(
               'Koperasi KSMI',
               style: TextStyle(
@@ -465,8 +424,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
               ),
             ),
             const SizedBox(height: 8),
-            
-            // Subtitle
             Text(
               'Menghubungkan ke server...',
               style: TextStyle(
@@ -475,15 +432,11 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
               ),
             ),
             const SizedBox(height: 24),
-            
-            // Loading indicator
             CircularProgressIndicator(
               color: Colors.green[700],
               strokeWidth: 3,
             ),
             const SizedBox(height: 16),
-            
-            // Loading text
             Text(
               'Memeriksa status login...',
               style: TextStyle(
@@ -497,7 +450,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
     );
   }
 
-  // ✅ PERBAIKAN: Theme Data yang Fixed
   ThemeData _buildAppTheme() {
     return ThemeData(
       primaryColor: Colors.green[800],
@@ -556,12 +508,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
         labelStyle: TextStyle(color: Colors.grey[700]),
         hintStyle: TextStyle(color: Colors.grey[500]),
       ),
-      buttonTheme: ButtonThemeData(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
-        buttonColor: Colors.green[700],
-      ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.green[700],
@@ -574,35 +520,6 @@ class _KoperasiKSMIAppState extends State<KoperasiKSMIApp> {
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
-        ),
-      ),
-      textTheme: const TextTheme(
-        displayLarge: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
-          color: Colors.black87,
-        ),
-        displayMedium: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          color: Colors.black87,
-        ),
-        displaySmall: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: Colors.black87,
-        ),
-        bodyLarge: TextStyle(
-          fontSize: 16,
-          color: Colors.black87,
-        ),
-        bodyMedium: TextStyle(
-          fontSize: 14,
-          color: Colors.black54,
-        ),
-        bodySmall: TextStyle(
-          fontSize: 12,
-          color: Colors.black45,
         ),
       ),
       useMaterial3: true,

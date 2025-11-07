@@ -3809,44 +3809,65 @@ Future<Map<String, dynamic>> register(Map<String, dynamic> userData) async {
   }
 
   // ✅ GET ALL INBOX
-  Future<Map<String, dynamic>> getAllInbox() async {
-    try {
-      final headers = await getProtectedHeaders();
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/transaction/getAllinbox'),
-        headers: headers,
-        body: '',
-      ).timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        
-        if (data['status'] == true) {
-          return {
-            'success': true,
-            'data': data['data'] ?? {},
-            'message': data['message'] ?? 'Success get inbox'
-          };
-        } else {
-          return {
-            'success': false,
-            'message': data['message'] ?? 'Gagal mengambil data inbox'
-          };
-        }
+Future<Map<String, dynamic>> getAllInbox() async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    print('📥 DEBUG: Headers for getAllInbox');
+    headers.forEach((key, value) {
+      if (key.contains('key') || key.contains('token')) {
+        print('   - $key: ***${value.substring(value.length - 4)}');
       } else {
+        print('   - $key: $value');
+      }
+    });
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/transaction/getAllinbox'),
+      headers: headers,
+      body: '',
+    ).timeout(const Duration(seconds: 30));
+
+    print('📡 DEBUG: Inbox Response Status: ${response.statusCode}');
+    print('📡 DEBUG: Inbox Response Body: ${response.body}');
+    print('📡 DEBUG: Response Headers: ${response.headers}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      print('📡 DEBUG: Parsed JSON: $data');
+      
+      if (data['status'] == true) {
+        print('✅ DEBUG: API status true');
+        print('✅ DEBUG: Data keys: ${data['data']?.keys}');
+        print('✅ DEBUG: Unread count: ${data['data']?['belum_terbaca']}');
+        
+        return {
+          'success': true,
+          'data': data['data'] ?? {},
+          'message': data['message'] ?? 'Success get inbox'
+        };
+      } else {
+        print('❌ DEBUG: API status false: ${data['message']}');
         return {
           'success': false,
-          'message': 'Gagal mengambil data inbox: ${response.statusCode}'
+          'message': data['message'] ?? 'Gagal mengambil data inbox'
         };
       }
-    } catch (e) {
+    } else {
+      print('❌ DEBUG: HTTP error: ${response.statusCode}');
       return {
         'success': false,
-        'message': 'Error: $e'
+        'message': 'Gagal mengambil data inbox: ${response.statusCode}'
       };
     }
+  } catch (e) {
+    print('❌ DEBUG: Inbox API Exception: $e');
+    return {
+      'success': false,
+      'message': 'Error: $e'
+    };
   }
+}
 
   // ✅ GET INBOX READ
   Future<Map<String, dynamic>> getInboxRead(String idInbox) async {

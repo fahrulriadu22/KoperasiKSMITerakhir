@@ -3,6 +3,7 @@ import 'riwayat_tabungan_screen.dart';
 import 'riwayat_angsuran_screen.dart';
 import '../services/api_service.dart';
 import '../services/firebase_service.dart';
+import '../services/system_notifier.dart';
 
 // ✅ CUSTOM SHAPE UNTUK APPBAR
 class NotchedAppBarShape extends ContinuousRectangleBorder {
@@ -81,21 +82,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _errorMessage = '';
   int _unreadNotifications = 0;
 
-@override
-void initState() {
-  super.initState();
-  _activeMenuItems = List.from(_allMenuItems);
-  _loadCurrentUser();
-  _loadDataFromApi();
-  _loadUnreadNotifications();
-  
-  // ✅ SETUP NOTIFICATION LISTENER
-  _setupNotificationListener();
-  
-  // ✅ PANGGIL DEBUG INBOX - INI YANG DITAMBAHIN!
-  _testInboxDebug(); // 🚀 PANGGIL DISINI
-}
-
+  @override
+  void initState() {
+    super.initState();
+    _activeMenuItems = List.from(_allMenuItems);
+    _loadCurrentUser();
+    _loadDataFromApi();
+    _loadUnreadNotifications();
+    
+    // ✅ SETUP NOTIFICATION LISTENER
+    _setupNotificationListener();
+  }
 
   @override
   void dispose() {
@@ -122,74 +119,280 @@ void initState() {
     }
   }
 
-
-// ✅ PERBAIKAN: LOAD UNREAD NOTIFICATIONS
-Future<void> _loadUnreadNotifications() async {
-  try {
-    print('📥 Loading unread notifications...');
-    
-    // Gunakan FirebaseService untuk get unread count
-    final unreadCount = await firebaseService.getUnreadNotificationsCount();
-    print('📊 Unread count from FirebaseService: $unreadCount');
-    
-    if (mounted) {
-      setState(() {
-        _unreadNotifications = unreadCount;
-      });
-    }
-    
-    // Juga refresh dari API untuk data terbaru
-    final refreshResult = await firebaseService.refreshInboxData();
-    if (refreshResult['success'] == true && mounted) {
-      final newUnreadCount = refreshResult['unread_count'] ?? 0;
-      print('🔄 Refreshed unread count: $newUnreadCount');
+  // ✅ PERBAIKAN: LOAD UNREAD NOTIFICATIONS
+  Future<void> _loadUnreadNotifications() async {
+    try {
+      print('📥 Loading unread notifications...');
       
-      setState(() {
-        _unreadNotifications = newUnreadCount;
-      });
-    }
-  } catch (e) {
-    print('❌ Error loading notifications: $e');
-  }
-}
-
-// ✅ TAMBAHKAN METHOD TEST INBOX DI DASHBOARD
-void _testInboxDebug() async {
-  try {
-    print('🐛 === INBOX DEBUG ===');
-    
-    final result = await _apiService.getAllInbox();
-    print('📨 Inbox API Success: ${result['success']}');
-    
-    if (result['success'] == true) {
-      final inboxData = result['data'] ?? {};
-      final inboxList = inboxData['inbox'] ?? [];
-      final total = inboxData['total'] ?? 0;
-      final belumTerbaca = inboxData['belum_terbaca'] ?? 0;
+      // Gunakan FirebaseService untuk get unread count
+      final unreadCount = await firebaseService.getUnreadNotificationsCount();
+      print('📊 Unread count from FirebaseService: $unreadCount');
       
-      print('📬 Total Messages: $total');
-      print('🔴 Unread from API: $belumTerbaca');
-      print('📋 Messages Count: ${inboxList.length}');
-      
-      // Debug each message
-      for (var i = 0; i < inboxList.length; i++) {
-        final msg = inboxList[i];
-        print('   ${i+1}. ID: ${msg['id']}, Read: ${msg['read_status']}, Subject: ${msg['subject']}');
+      if (mounted) {
+        setState(() {
+          _unreadNotifications = unreadCount;
+        });
       }
       
-      // Update UI
-      setState(() {
-        _unreadNotifications = belumTerbaca;
-      });
-    } else {
-      print('❌ Inbox API failed: ${result['message']}');
+      // Juga refresh dari API untuk data terbaru
+      final refreshResult = await firebaseService.refreshInboxData();
+      if (refreshResult['success'] == true && mounted) {
+        final newUnreadCount = refreshResult['unread_count'] ?? 0;
+        print('🔄 Refreshed unread count: $newUnreadCount');
+        
+        setState(() {
+          _unreadNotifications = newUnreadCount;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading notifications: $e');
     }
-    
-    print('🐛 === DEBUG END ===');
-  } catch (e) {
-    print('❌ Inbox Debug Error: $e');
   }
-}
+
+  // ✅ SETUP NOTIFICATION LISTENER YANG LEBIH BAIK
+  void _setupNotificationListener() {
+    // Listen for unread count updates
+    FirebaseService.onUnreadCountUpdated = (int unreadCount) {
+      print('📱 Unread count updated: $unreadCount');
+      if (mounted) {
+        setState(() {
+          _unreadNotifications = unreadCount;
+        });
+      }
+    };
+
+    // Listen for notification taps
+    FirebaseService.onNotificationTap = (Map<String, dynamic> data) {
+      _handleNotificationNavigation(data);
+    };
+
+    // Listen for incoming notifications
+    FirebaseService.onNotificationReceived = (Map<String, dynamic> data) {
+      _handleIncomingNotification(data);
+    };
+  }
+
+  // ✅ HANDLE NOTIFICATION NAVIGATION
+  void _handleNotificationNavigation(Map<String, dynamic> data) {
+    try {
+      final type = data['type']?.toString() ?? '';
+      final id = data['id']?.toString() ?? '';
+      final screen = data['screen']?.toString() ?? '';
+      
+      print('📱 Notification tapped - Type: $type, ID: $id, Screen: $screen');
+      
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          switch (screen) {
+            case 'inbox':
+            case 'notifikasi':
+              _showNotifications();
+              break;
+            case 'transaction':
+            case 'transaksi':
+              // Navigate to transaction detail
+              break;
+            case 'tabungan':
+              _navigateToRiwayatTabungan(context, _allMenuItems[0], _currentUser ?? widget.user);
+              break;
+            case 'angsuran':
+            case 'taqsith':
+              _navigateToRiwayatAngsuran(context, _currentUser ?? widget.user);
+              break;
+            case 'profile':
+            case 'profil':
+              // Navigate to profile
+              break;
+            default:
+              // Refresh data untuk dashboard
+              _refreshData();
+              break;
+          }
+        }
+      });
+      
+    } catch (e) {
+      print('❌ Error handling notification navigation: $e');
+    }
+  }
+
+  // ✅ HANDLE INCOMING NOTIFICATION
+  void _handleIncomingNotification(Map<String, dynamic> data) {
+    try {
+      final title = data['title']?.toString() ?? 'KSMI Koperasi';
+      final body = data['body']?.toString() ?? 'Pesan baru';
+      final type = data['type']?.toString() ?? '';
+      
+      print('📱 Notification received - Title: $title, Body: $body, Type: $type');
+      
+      // Auto refresh unread count
+      _loadUnreadNotifications();
+      
+    } catch (e) {
+      print('❌ Error handling incoming notification: $e');
+    }
+  }
+
+  // ✅ TEST ANDROID SYSTEM NOTIFICATIONS YANG LEBIH BAIK
+  void _testAndroidSystemNotifications() async {
+    try {
+      print('🧪 Testing ANDROID SYSTEM Notifications...');
+      
+      // ✅ TAMPILKAN LOADING
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Testing SYSTEM Android...'),
+            ],
+          ),
+          content: const Text('Mengirim notifikasi SYSTEM ke Android Notification Panel...'),
+        ),
+      );
+
+      // ✅ GUNAKAN SYSTEMNOTIFIER
+      print('🔄 Using SystemNotifier...');
+      final systemNotifier = SystemNotifier();
+      
+      // ✅ INIT DULU SEBELUM TEST
+      print('🔄 Initializing SystemNotifier...');
+      await systemNotifier.initialize();
+      await Future.delayed(const Duration(seconds: 1));
+
+      // Test 1: BASIC SYSTEM NOTIFICATION
+      print('1. Testing basic SYSTEM notification...');
+      await systemNotifier.testBasicNotification();
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Test 2: INBOX SYSTEM NOTIFICATION
+      print('2. Testing inbox SYSTEM notification...');
+      await systemNotifier.testInboxNotification();
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Test 3: MULTIPLE SYSTEM NOTIFICATIONS
+      print('3. Testing multiple SYSTEM notifications...');
+      await systemNotifier.testMultipleNotifications();
+      await Future.delayed(const Duration(seconds: 2));
+
+      // ✅ TUTUP LOADING
+      if (mounted) Navigator.of(context).pop();
+      
+      // ✅ TAMPILKAN INSTRUKSI
+      _showAndroidNotificationInstructions();
+      
+      print('🎉 ANDROID SYSTEM NOTIFICATION Test Completed!');
+      
+    } catch (e) {
+      print('❌ SYSTEM notification test failed: $e');
+      
+      // ✅ TUTUP LOADING JIKA ERROR
+      if (mounted) Navigator.of(context).pop();
+      
+      // ✅ TAMPILKAN ERROR DETAIL
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('SYSTEM Test gagal: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  // ✅ TAMPILKAN INSTRUKSI ANDROID
+  void _showAndroidNotificationInstructions() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.android, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Cek Sistem Android'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '✅ 3 Notifikasi telah dikirim ke sistem Android!',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Langkah cek:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            _buildInstructionStep('1. MINIMALKAN aplikasi ini (tekan tombol home)'),
+            _buildInstructionStep('2. Buka panel notifikasi Android'),
+            _buildInstructionStep('3. Scroll ke bawah cari notifikasi "KSMI"'),
+            _buildInstructionStep('4. Tap notifikasi untuk kembali ke app'),
+            _buildInstructionStep('5. Clear notifikasi jika sudah dicek'),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '💡 PENTING:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Notifikasi akan muncul di SYSTEM Android (panel notifikasi), bukan di dalam app!',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Tutup'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Test lagi
+              _testAndroidSystemNotifications();
+            },
+            child: const Text('Test Lagi'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInstructionStep(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.arrow_right, size: 16, color: Colors.green),
+          const SizedBox(width: 4),
+          Expanded(child: Text(text)),
+        ],
+      ),
+    );
+  }
 
   // ✅ PERBAIKAN: LOAD DATA DENGAN STRUCTURE YANG SESUAI RIWAYAT_ANGSURAN_SCREEN
   Future<void> _loadDataFromApi() async {
@@ -250,14 +453,13 @@ void _testInboxDebug() async {
     }
   }
 
-  // ✅ PERBAIKAN: PROCESS DATA TAQSITH UNTUK DASHBOARD (SESUAI STRUCTURE RIWAYAT_ANGSURAN)
+  // ✅ PROSES DATA TAQSITH UNTUK DASHBOARD
   Map<String, dynamic> _processTaqsithDataForDashboard(Map<String, dynamic> taqsithResult) {
     final data = taqsithResult['data'] ?? [];
     final dataMaster = taqsithResult['data_master'] ?? [];
     
     print('🔧 Processing taqsith data for dashboard...');
     
-    // ✅ HITUNG TOTAL ANGSURAN DARI DATA MASTER (seperti di riwayat_angsuran_screen)
     double totalAngsuran = 0;
     int jumlahProdukAktif = 0;
     List<Map<String, dynamic>> produkList = [];
@@ -274,12 +476,10 @@ void _testInboxDebug() async {
         
         totalAngsuran += angsuran;
         
-        // ✅ HITUNG PRODUK AKTIF (yang punya angsuran > 0)
         if (angsuran > 0) {
           jumlahProdukAktif++;
         }
         
-        // ✅ CARI DATA ANGSURAN UNTUK PRODUK INI
         final angsuranList = _findAngsuranForKredit(data, idKredit);
         final jumlahAngsuran = angsuranList.length;
         final angsuranTerbayar = angsuranList.where((a) => a['status'] == 'lunas').length;
@@ -329,12 +529,11 @@ void _testInboxDebug() async {
     return [];
   }
 
-  // ✅ PERBAIKAN: GET ANGSURAN VALUE DARI STRUCTURE YANG BENAR
+  // ✅ GET ANGSURAN VALUE DARI STRUCTURE YANG BENAR
   int _getAngsuranValue() {
     try {
       print('🔍 Getting angsuran value from structure...');
       
-      // ✅ AMBIL LANGSUNG DARI total_angsuran YANG SUDAH DIHITUNG
       if (_angsuranData.containsKey('total_angsuran')) {
         final value = _angsuranData['total_angsuran'];
         print('✅ Found angsuran as total_angsuran: $value');
@@ -350,26 +549,23 @@ void _testInboxDebug() async {
     }
   }
 
-  // ✅ PERBAIKAN: FUNGSI UNTUK MENDAPATKAN NILAI DARI API DATA YANG BARU
+  // ✅ FUNGSI UNTUK MENDAPATKAN NILAI DARI API DATA YANG BARU
   int _getApiValue(String key, Map<String, dynamic> data) {
     try {
       if (data.isEmpty) return 0;
       
       print('🔍 Searching for key: $key in data structure');
       
-      // ✅ PRIORITAS: CEK DI ROOT LEVEL
       if (data.containsKey(key)) {
         final value = data[key];
         print('✅ Found $key in root: $value');
         return _parseValue(value);
       }
       
-      // ✅ KHUSUS UNTUK ANGSURAN - CEK DI STRUCTURE YANG BARU
       if (key == 'angsuran') {
         return _getAngsuranValue();
       }
       
-      // ✅ CEK BERBAGAI KEMUNGKINAN KEY NAMING
       final possibleKeys = _getPossibleKeys(key);
       for (final possibleKey in possibleKeys) {
         if (data.containsKey(possibleKey)) {
@@ -419,7 +615,6 @@ void _testInboxDebug() async {
     if (value is int) return value;
     if (value is double) return value.toInt();
     if (value is String) {
-      // Remove any non-numeric characters except decimal point
       final cleaned = value.replaceAll(RegExp(r'[^\d.]'), '');
       return double.tryParse(cleaned)?.toInt() ?? 0;
     }
@@ -430,7 +625,6 @@ void _testInboxDebug() async {
   // ✅ PERBAIKAN: CALCULATE TOTAL TABUNGAN DARI DATA YANG SUDAH DINORMALISASI
   int _calculateTotalTabungan() {
     try {
-      // ✅ GUNAKAN KEY YANG SESUAI DENGAN RESPONSE API
       final pokok = _getApiValue('pokok', _saldoData);
       final wajib = _getApiValue('wajib', _saldoData);
       final sukarela = _getApiValue('sukarela', _saldoData);
@@ -461,21 +655,18 @@ void _testInboxDebug() async {
   // ✅ PERBAIKAN: GET SALDO VALUE DENGAN LOGIC YANG LEBIH ROBUST
   int _getSaldoValue() {
     try {
-      // ✅ PRIORITAS 1: Ambil langsung dari saldoData
       final directSaldo = _getApiValue('saldo', _saldoData);
       if (directSaldo > 0) {
         print('✅ Using direct saldo value: $directSaldo');
         return directSaldo;
       }
       
-      // ✅ PRIORITAS 2: Hitung dari total tabungan
       final calculatedTotal = _calculateTotalTabungan();
       if (calculatedTotal > 0) {
         print('✅ Using calculated total: $calculatedTotal');
         return calculatedTotal;
       }
       
-      // ✅ PRIORITAS 3: Cek berbagai kemungkinan key
       final possibleKeys = ['total_saldo', 'balance', 'total', 'jumlah_saldo'];
       for (final key in possibleKeys) {
         final value = _getApiValue(key, _saldoData);
@@ -493,18 +684,6 @@ void _testInboxDebug() async {
       return 0;
     }
   }
-
-  // ✅ SETUP NOTIFICATION LISTENER
-void _setupNotificationListener() {
-  // Listen for unread count updates
-  FirebaseService.onUnreadCountUpdated = (int unreadCount) {
-    if (mounted) {
-      setState(() {
-        _unreadNotifications = unreadCount;
-      });
-    }
-  };
-}
 
   // ✅ SHOW NOTIFICATIONS DIALOG
   void _showNotifications() {
@@ -548,14 +727,10 @@ void _setupNotificationListener() {
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Membuka halaman notifikasi...'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
+                // Refresh notifications
+                _loadUnreadNotifications();
               },
-              child: const Text('Lihat Semua'),
+              child: const Text('Refresh'),
             ),
         ],
       ),
@@ -898,105 +1073,104 @@ void _setupNotificationListener() {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ DATA DARI API (bukan dari user data)
     final saldo = _getSaldoValue();
     final angsuran = _getAngsuranValue();
     final totalTabungan = _calculateTotalTabungan();
     final userData = _currentUser ?? widget.user;
 
-return Scaffold(
-  appBar: PreferredSize(
-    preferredSize: const Size.fromHeight(70.0),
-    child: AppBar(
-      title: const Padding(
-        padding: EdgeInsets.only(bottom: 10.0),
-        child: Text(
-          'Beranda KSMI',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
+    return Scaffold(
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(70.0),
+        child: AppBar(
+          title: const Padding(
+            padding: EdgeInsets.only(bottom: 10.0),
+            child: Text(
+              'Beranda KSMI',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
           ),
+          backgroundColor: Colors.green[700],
+          foregroundColor: Colors.white,
+          elevation: 8,
+          shadowColor: Colors.green.withOpacity(0.5),
+          shape: NotchedAppBarShape(),
+          automaticallyImplyLeading: false,
+          centerTitle: true,
+            actions: [
+              // ✅ TOMBOL TEST NOTIFIKASI SYSTEM - TARUH SEBELUM NOTIFIKASI
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
+                child: IconButton(
+                  icon: Icon(Icons.notification_add), // Ikon test
+                  onPressed: _showAndroidSystemTestDialog, // Panggil dialog test
+                  tooltip: 'Test System Notifications',
+                ),
+              ),
+
+            // ✅ NOTIFICATION BUTTON WITH BADGE
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
+              child: Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications),
+                    onPressed: _showNotifications,
+                    tooltip: 'Notifikasi',
+                  ),
+                  if (_unreadNotifications > 0)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 16,
+                        ),
+                        child: Text(
+                          _unreadNotifications > 9 ? '9+' : _unreadNotifications.toString(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            // ✅ REFRESH BUTTON
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
+              child: IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: _refreshData,
+                tooltip: 'Refresh Data',
+              ),
+            ),
+            
+            // ✅ LOGOUT BUTTON
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
+              child: IconButton(
+                icon: const Icon(Icons.logout),
+                onPressed: _logout,
+                tooltip: 'Logout',
+              ),
+            ),
+          ],
         ),
       ),
-      backgroundColor: Colors.green[700],
-      foregroundColor: Colors.white,
-      elevation: 8,
-      shadowColor: Colors.green.withOpacity(0.5),
-      shape: NotchedAppBarShape(),
-      automaticallyImplyLeading: false,
-      centerTitle: true,
-      actions: [
-        // ✅ TRIGGER NOTIFICATION BUTTON (BARU)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
-          child: IconButton(
-            icon: const Icon(Icons.send), // atau Icons.notification_add
-            onPressed: _triggerTestNotification,
-            tooltip: 'Test Notifikasi',
-          ),
-        ),
-
-        // ✅ NOTIFICATION BUTTON WITH BADGE
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
-          child: Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.notifications),
-                onPressed: _showNotifications,
-                tooltip: 'Notifikasi',
-              ),
-              if (_unreadNotifications > 0)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 16,
-                      minHeight: 16,
-                    ),
-                    child: Text(
-                      _unreadNotifications > 9 ? '9+' : _unreadNotifications.toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-
-        // ✅ REFRESH BUTTON
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
-          child: IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _refreshData,
-            tooltip: 'Refresh Data',
-          ),
-        ),
-        
-        // ✅ LOGOUT BUTTON
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
-          child: IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-            tooltip: 'Logout',
-          ),
-        ),
-      ],
-    ),
-  ),
       backgroundColor: Colors.green[50],
       body: SafeArea(
         child: RefreshIndicator(
@@ -1348,76 +1522,6 @@ return Scaffold(
     );
   }
 
-  // ✅ METHOD UNTUK TRIGGER TEST NOTIFIKASI
-void _triggerTestNotification() async {
-  try {
-    final userData = _currentUser ?? widget.user;
-    final userId = userData['user_id']?.toString();
-    
-    if (userId == null || userId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User ID tidak ditemukan')),
-      );
-      return;
-    }
-
-    // ✅ TAMPILKAN LOADING
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
-
-    // ✅ PANGGIL API UNTUK KIRIM NOTIFIKASI TEST
-    final result = await _apiService.insertInbox(
-      subject: '🔔 Test Notifikasi dari Dashboard',
-      keterangan: 'Ini adalah notifikasi test yang dikirim dari dashboard app KSMI. '
-                 'Waktu: ${DateTime.now().toString().substring(11, 16)}',
-      userId: userId,
-    );
-
-    // ✅ TUTUP LOADING
-    if (mounted) Navigator.of(context).pop();
-
-    if (result['success'] == true) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Notifikasi test berhasil dikirim!'),
-            backgroundColor: Colors.green[700],
-            duration: const Duration(seconds: 3),
-          ),
-        );
-        
-        // ✅ REFRESH UNREAD COUNT
-        await _loadUnreadNotifications();
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gagal mengirim notifikasi: ${result['message']}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    }
-  } catch (e) {
-    if (mounted) {
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-}
-
   // ✅ FUNGSI EDIT MENU
   void _showEditMenuDialog(BuildContext context) {
     List<MenuIcon> tempMenuItems = List.from(_activeMenuItems);
@@ -1513,6 +1617,258 @@ void _triggerTestNotification() async {
       },
     );
   }
+
+  // === 🧪 ANDROID SYSTEM NOTIFICATION TEST METHODS ===
+
+// ✅ TEST 1: Basic System Notification
+void _testAndroidSystemBasic() async {
+  try {
+    print('🧪 TEST 1: Basic System Notification');
+    
+    final systemNotifier = SystemNotifier();
+    await systemNotifier.initialize();
+    
+    await systemNotifier.showSystemNotification(
+      id: 1001,
+      title: '🔔 TEST BASIC - KSMI',
+      body: 'Ini test notifikasi SYSTEM dasar - harus muncul di panel Android!',
+    );
+    
+    // Tampilkan snackbar konfirmasi
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ TEST 1 BERHASIL - Buka panel notifikasi Android!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+    
+  } catch (e) {
+    print('❌ TEST 1 GAGAL: $e');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ TEST 1 GAGAL: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+
+// ✅ TEST 2: Multiple Notifications  
+void _testAndroidSystemMultiple() async {
+  try {
+    print('🧪 TEST 2: Multiple System Notifications');
+    
+    final systemNotifier = SystemNotifier();
+    await systemNotifier.initialize();
+    
+    // Notification 1
+    await systemNotifier.showSystemNotification(
+      id: 2001,
+      title: '💰 SETORAN BERHASIL',
+      body: 'Setoran Pokok Rp 50.000 berhasil - KSMI',
+    );
+    
+    await Future.delayed(Duration(seconds: 2));
+    
+    // Notification 2
+    await systemNotifier.showSystemNotification(
+      id: 2002,
+      title: '📨 PESAN BARU',
+      body: 'Anda memiliki 3 pesan belum dibaca - KSMI',
+    );
+    
+    await Future.delayed(Duration(seconds: 2));
+    
+    // Notification 3
+    await systemNotifier.showSystemNotification(
+      id: 2003,
+      title: '📊 LAPORAN BULANAN',
+      body: 'Laporan keuangan Januari 2024 sudah tersedia - KSMI',
+    );
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ 3 Notifikasi dikirim! Buka panel Android!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 5),
+        ),
+      );
+    }
+    
+  } catch (e) {
+    print('❌ TEST 2 GAGAL: $e');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ TEST 2 GAGAL: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+
+// ✅ TEST 3: Real Scenario Notifications
+void _testAndroidSystemRealScenarios() async {
+  try {
+    print('🧪 TEST 3: Real Scenario Notifications');
+    
+    final systemNotifier = SystemNotifier();
+    await systemNotifier.initialize();
+    
+    // Simulasi notifikasi transaksi
+    await systemNotifier.showSystemNotification(
+      id: 3001,
+      title: '💳 TRANSAKSI BERHASIL',
+      body: 'Penarikan SiTabung Rp 100.000 berhasil - No. TRX: TRX001',
+    );
+    
+    await Future.delayed(Duration(seconds: 3));
+    
+    // Simulasi notifikasi angsuran
+    await systemNotifier.showSystemNotification(
+      id: 3002,
+      title: '📅 JATUH TEMPO',
+      body: 'Angsuran Taqsith akan jatuh tempo 3 hari lagi - Rp 250.000',
+    );
+    
+    await Future.delayed(Duration(seconds: 3));
+    
+    // Simulasi notifikasi system
+    await systemNotifier.showSystemNotification(
+      id: 3003,
+      title: '🎉 SELAMAT!',
+      body: 'Saldo Anda bertambah Rp 75.000 dari bagi hasil - KSMI',
+    );
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ Notifikasi real scenario dikirim!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 5),
+        ),
+      );
+    }
+    
+  } catch (e) {
+    print('❌ TEST 3 GAGAL: $e');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ TEST 3 GAGAL: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+
+// ✅ TEST 4: Clear All Notifications
+void _testAndroidSystemClearAll() async {
+  try {
+    print('🧪 TEST 4: Clear All Notifications');
+    
+    final systemNotifier = SystemNotifier();
+    await systemNotifier.initialize();
+    
+    await systemNotifier.clearAllNotifications();
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🧹 Semua notifikasi dihapus dari system!'),
+          backgroundColor: Colors.blue,
+        ),
+      );
+    }
+    
+  } catch (e) {
+    print('❌ TEST 4 GAGAL: $e');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ TEST 4 GAGAL: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+
+// ✅ DIALOG UNTUK PILIH TEST
+void _showAndroidSystemTestDialog() {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.android, color: Colors.green),
+          SizedBox(width: 8),
+          Text('🧪 Test System Android'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Pilih jenis test notifikasi SYSTEM Android:'),
+          SizedBox(height: 16),
+          Text(
+            '📱 BUKA PANEL NOTIFIKASI ANDROID SETELAH TEST!',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.orange,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        // Test Basic
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+            _testAndroidSystemBasic();
+          },
+          child: Text('Test Basic'),
+        ),
+        
+        // Test Multiple
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+            _testAndroidSystemMultiple();
+          },
+          child: Text('Test Multiple'),
+        ),
+        
+        // Test Real Scenario
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+            _testAndroidSystemRealScenarios();
+          },
+          child: Text('Test Real'),
+        ),
+        
+        // Clear All
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+            _testAndroidSystemClearAll();
+          },
+          child: Text('Clear All'),
+        ),
+      ],
+    ),
+  );
+}
 }
 
 // ✅ MODEL UNTUK MENU ICON DENGAN TYPE
