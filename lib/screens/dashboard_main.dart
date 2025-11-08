@@ -560,68 +560,67 @@ Future<void> _loadUnreadNotifications() async {
     );
   }
 
-  Widget _buildMainScreen() {
-    final List<Widget> pages = [
-      PageStorage(
-        bucket: _storageBucket,
-        key: const ValueKey('beranda'),
-        child: RefreshIndicator(
-          onRefresh: _refreshUserData,
-          color: Colors.green,
-          backgroundColor: Colors.white,
-          child: DashboardScreen(
-            user: userData,
-            onRefresh: _refreshUserData,
-          ),
-        ),
+Widget _buildMainScreen() {
+  final List<Widget> pages = [
+    RefreshIndicator(
+      onRefresh: _refreshUserData,
+      color: Colors.green,
+      backgroundColor: Colors.white,
+      child: DashboardScreen(
+        user: userData,
+        onRefresh: _refreshUserData,
       ),
-      PageStorage(
-        bucket: _storageBucket,
-        key: const ValueKey('tabungan'),
-        child: RiwayatTabunganScreen(user: userData),
-      ),
-      PageStorage(
-        bucket: _storageBucket,
-        key: const ValueKey('taqsith'),
-        child: RiwayatAngsuranScreen(user: userData),
-      ),
-      PageStorage(
-        bucket: _storageBucket,
-        key: const ValueKey('profil'),
-        child: ProfileScreen(
-          user: userData,
-          onProfileUpdated: _refreshUserData,
-          onLogout: _performLogout,
-        ),
-      ),
-    ];
+    ),
+    RiwayatTabunganScreen(user: userData),
+    RiwayatAngsuranScreen(user: userData),
+    ProfileScreen(
+      user: userData,
+      onProfileUpdated: _refreshUserData,
+      onLogout: _performLogout,
+    ),
+  ];
 
-    return PageStorage(
-      bucket: _storageBucket,
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        // ✅ APP BAR DIHILANGKAN - HANYA INI YANG DIUBAH
-        appBar: null,
-        body: IndexedStack(
-          index: _selectedIndex,
-          children: pages,
-        ),
-        bottomNavigationBar: _buildUniversalBottomNav(),
-      ),
-    );
-  }
+  return Scaffold(
+    backgroundColor: Colors.white,
+    body: IndexedStack(
+      index: _selectedIndex,
+      children: pages,
+    ),
+    bottomNavigationBar: _buildUniversalBottomNav(),
+  );
+}
 
-  Widget _buildUniversalBottomNav() {
-    if (_isWeb || _isLinux) {
-      return _buildWebAndLinuxBottomNav();
-    } else if (_isAndroid) {
-      return _buildAndroidBottomNav();
-    } else if (_isIOS) {
-      return _buildIOSBottomNav();
-    } else {
-      return _buildDefaultBottomNav();
-    }
-  }
+Widget _buildUniversalBottomNav() {
+  // ✅ PASTIKAN SELALU RETURN BOTTOM NAVIGATION
+  return BottomNavigationBar(
+    currentIndex: _selectedIndex,
+    onTap: _onItemTapped,
+    type: BottomNavigationBarType.fixed,
+    backgroundColor: Colors.green[700],
+    selectedItemColor: Colors.white,
+    unselectedItemColor: Colors.white.withOpacity(0.6),
+    selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
+    unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal),
+    items: const [
+      BottomNavigationBarItem(
+        icon: Icon(Icons.home_rounded),
+        label: 'Beranda',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.savings_rounded),
+        label: 'Tabungan',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.payments_rounded),
+        label: 'Taqsith',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.person_rounded),
+        label: 'Profil',
+      ),
+    ],
+  );
+}
 
   Widget _buildWebAndLinuxBottomNav() {
     return Container(

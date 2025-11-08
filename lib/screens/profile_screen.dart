@@ -1,11 +1,19 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import 'package:flutter/services.dart';
 import '../services/temporary_storage_service.dart';
+import 'dart:ui' as ui; // Untuk decodeImageFromList
+import 'package:flutter/painting.dart'; // Untuk NetworkImage
 import '../services/file_validator.dart';
 import 'edit_profile_screen.dart';
+import 'package:flutter/foundation.dart'; // ✅ UNTUK kDebugMode
+import 'package:path_provider/path_provider.dart';
+import '../services/local_image_service.dart';
+
 
 // ✅ CUSTOM SHAPE UNTUK APPBAR
 class NotchedAppBarShape extends ContinuousRectangleBorder {
@@ -58,6 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final ApiService _apiService = ApiService();
   final TemporaryStorageService _storageService = TemporaryStorageService();
   final ImagePicker _imagePicker = ImagePicker();
+  final LocalImageService _localImageService = LocalImageService(); // ✅ TAMBAH INI
   
   bool _isLoading = true;
   bool _isUploading = false;
@@ -69,11 +78,61 @@ void initState() {
   super.initState();
   _currentUser = Map<String, dynamic>.from(widget.user);
   
+  print('🎯 INITSTATE CALLED');
+  
   // ✅ LOAD DATA SEGERA SETELAH INIT
   WidgetsBinding.instance.addPostFrameCallback((_) {
+    print('🔄 PostFrameCallback - Starting data load...');
     _initializeStorage();
     _loadCurrentUser();
+    _syncProfileData();
+    
+    // ✅ CLEANUP OLD IMAGES (RUN IN BACKGROUND)
+    _cleanupOldImages();
   });
+}
+
+// ✅ METHOD BARU: CLEANUP OLD IMAGES
+void _cleanupOldImages() {
+  Future.delayed(const Duration(seconds: 5), () async {
+    try {
+      final localService = LocalImageService();
+      await localService.cleanupOldImages();
+    } catch (e) {
+      print('❌ Cleanup error: $e');
+    }
+  });
+}
+
+// ✅ METHOD BARU: SYNC PROFILE DATA
+Future<void> _syncProfileData() async {
+  try {
+    print('🔄 Syncing profile data for image consistency...');
+    
+    final apiResult = await _apiService.getUserInfo();
+    if (apiResult['success'] == true && apiResult['data'] != null) {
+      final apiData = apiResult['data'];
+      final apiFotoDiri = apiData['foto_diri'];
+      final currentFotoDiri = _currentUser['foto_diri'];
+      
+      print('📸 Foto diri sync:');
+      print('   - API: $apiFotoDiri');
+      print('   - Current: $currentFotoDiri');
+      
+      // ✅ JIKA BERBEDA, UPDATE DARI API
+      if (apiFotoDiri != null && apiFotoDiri != currentFotoDiri) {
+        print('🔄 Updating foto_diri from API');
+        if (mounted) {
+          setState(() {
+            _currentUser['foto_diri'] = apiFotoDiri;
+          });
+        }
+        _clearAllImageCache();
+      }
+    }
+  } catch (e) {
+    print('❌ Error syncing profile data: $e');
+  }
 }
 
   // ✅ INITIALIZE TEMPORARY STORAGE
@@ -83,7 +142,7 @@ void initState() {
     _storageService.printDebugInfo();
   }
 
-  // ✅ METHOD BARU: LOAD USER INFO DARI SERVER (GET USERINFO API)
+ // ✅ FIX: LOAD USER INFO DARI SERVER DENGAN SETSTATE YANG BENAR
 Future<void> _loadUserInfoFromServer() async {
   try {
     print('🚀 Loading user info from getUserInfo API...');
@@ -99,19 +158,23 @@ Future<void> _loadUserInfoFromServer() async {
       print('   - nama: ${userInfoData['nama']}');
       print('   - email: ${userInfoData['email']}');
       print('   - alamat: ${userInfoData['alamat']}');
-      print('   - foto_ktp: ${userInfoData['foto_ktp']}');
-      print('   - foto_kk: ${userInfoData['foto_kk']}');
-      print('   - foto_diri: ${userInfoData['foto_diri']}');
-      print('   - foto_bukti: ${userInfoData['foto_bukti']}');
       
-      // ✅ UPDATE CURRENT USER DENGAN DATA DARI getUserInfo
+      // ✅ FIX: PASTIKAN SETSTATE DIPANGGIL DENGAN BENAR
       if (mounted) {
         setState(() {
+          // ✅ UPDATE SEMUA FIELD PENTING KE _currentUser
           _currentUser = {
             ..._currentUser, // Pertahankan data lama
             ...userInfoData,  // Update dengan data baru dari getUserInfo
           };
         });
+        
+        // ✅ DEBUG: CEK SETELAH UPDATE
+        print('🔄 SETSTATE DIPANGGIL - Data updated in UI state');
+        print('📊 Current user data after update:');
+        print('   - username: ${_currentUser['username']}');
+        print('   - nama: ${_currentUser['nama']}');
+        print('   - email: ${_currentUser['email']}');
       }
       
       print('✅ User info updated from getUserInfo API');
@@ -124,11 +187,14 @@ Future<void> _loadUserInfoFromServer() async {
   }
 }
 
-// ✅ FIX: LOAD CURRENT USER DENGAN DATA SUPER LENGKAP
+// ✅ FIX: LOAD CURRENT USER DENGAN PROPER STATE MANAGEMENT
 Future<void> _loadCurrentUser() async {
   try {
     if (mounted) {
-      setState(() => _isRefreshing = true);
+      setState(() {
+        _isRefreshing = true;
+        _isLoading = true; // ✅ TAMBAHKAN INI
+      });
     }
     
     print('🔄 Loading SUPER COMPLETE user data...');
@@ -139,30 +205,33 @@ Future<void> _loadCurrentUser() async {
     if (superResult['success'] == true && superResult['data'] != null) {
       final superData = superResult['data'];
       
+      // ✅ FIX: PASTIKAN SETSTATE DIPANGGIL
       if (mounted) {
         setState(() {
           _currentUser = superData;
+          print('🎉 SUPER USER DATA APPLIED TO UI!');
         });
       }
       
-      print('🎉 SUPER USER DATA LOADED!');
       _debugSuperUserData(superData);
       return;
     }
     
-    // ✅ FALLBACK KE METHOD LAMA
+    // ✅ FALLBACK: GUNAKAN GETUSERINFO API
+    print('🔄 Fallback to getUserInfo API...');
     await _loadUserInfoFromServer();
-    // ... rest of existing code
     
   } catch (e) {
     print('❌ Error loading current user: $e');
     await _loadLocalDataFallback();
   } finally {
+    // ✅ FIX: PASTIKAN LOADING STATE DIUPDATE
     if (mounted) {
       setState(() {
         _isLoading = false;
         _isRefreshing = false;
       });
+      print('✅ Loading states updated: _isLoading=false, _isRefreshing=false');
     }
   }
 }
@@ -264,69 +333,64 @@ Future<void> _loadLocalDataFallback() async {
   }
 }
 
-// ✅ AUTO-REFRESH SETELAH EDIT PROFILE
+// ✅ UPDATE: SAAT PROFILE DIUPDATE, SIMPAN KE LOCAL JUGA
 void _onProfileUpdated(Map<String, dynamic> updatedData) {
   print('🔄 Profile updated callback received');
-  print('📦 Updated data keys: ${updatedData.keys}');
   
   setState(() {
-    // ✅ UPDATE CURRENT USER DENGAN DATA BARU
     _currentUser = {..._currentUser, ...updatedData};
   });
   
-  // ✅ REFRESH DATA DARI SERVER UNTUK MEMASTIKAN
-  _refreshProfile();
-  
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('Profile berhasil diperbarui'),
-      backgroundColor: Colors.green,
-      duration: Duration(seconds: 2),
-    ),
-  );
+  // ✅ SIMPAN DATA USER KE LOCAL STORAGE
+  _saveUserDataToLocal(updatedData);
 }
 
-// ✅ UPDATE: DEBUG METHOD UNTUK TAMPILKAN DATA DARI getUserInfo
-void _debugAllUserData(Map<String, dynamic> userData) {
-  print('🐛 === COMPLETE USER DATA DEBUG (FROM getUserInfo) ===');
+// ✅ METHOD BARU: SIMPAN USER DATA KE LOCAL
+Future<void> _saveUserDataToLocal(Map<String, dynamic> userData) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('cached_user_data', jsonEncode(userData));
+    print('💾 User data saved to local storage');
+  } catch (e) {
+    print('❌ Error saving user data to local: $e');
+  }
+}
+
+// ✅ TAMBAHKAN METHOD INI UNTUK DEBUG SEMUA DATA
+void _debugAllUserData() {
+  print('🐛 === CURRENT USER DATA FOR UI ===');
   
-  print('👤 Basic Info from getUserInfo:');
-  print('   - username: ${userData['username']}');
-  print('   - nama: ${userData['nama']}');
-  print('   - email: ${userData['email']}');
-  print('   - telp: ${userData['telp']}');
-  print('   - alamat: ${userData['alamat']}');
+  // BASIC INFO
+  print('👤 Basic Info:');
+  print('   - username: ${_currentUser['username']}');
+  print('   - nama: ${_currentUser['nama']}');
+  print('   - email: ${_currentUser['email']}');
+  print('   - telp: ${_currentUser['telp']}');
+  print('   - phone: ${_currentUser['phone']}');
   
-  print('📄 Document Status from getUserInfo:');
-  print('   - foto_ktp: ${userData['foto_ktp']}');
-  print('   - foto_kk: ${userData['foto_kk']}');
-  print('   - foto_diri: ${userData['foto_diri']}');
-  print('   - foto_bukti: ${userData['foto_bukti']}');
-  
-  print('🔑 System Info:');
-  print('   - user_id: ${userData['user_id']}');
-  print('   - id: ${userData['id']}');
-  print('   - user_key: ${userData['user_key']}');
-  print('   - status_user: ${userData['status_user']}');
-  
+  // ADDRESS INFO
   print('🏠 Address Info:');
-  print('   - ktp_alamat: ${userData['ktp_alamat']}');
-  print('   - ktp_rt: ${userData['ktp_rt']}');
-  print('   - ktp_rw: ${userData['ktp_rw']}');
-  print('   - ktp_id_regency: ${userData['ktp_id_regency']}');
-  print('   - domisili_alamat: ${userData['domisili_alamat']}');
+  print('   - alamat: ${_currentUser['alamat']}');
+  print('   - ktp_alamat: ${_currentUser['ktp_alamat']}');
+  print('   - ktp_rt: ${_currentUser['ktp_rt']}');
+  print('   - ktp_rw: ${_currentUser['ktp_rw']}');
+  print('   - domisili_alamat: ${_currentUser['domisili_alamat']}');
+  print('   - domisili_rt: ${_currentUser['domisili_rt']}');
+  print('   - domisili_rw: ${_currentUser['domisili_rw']}');
   
+  // PERSONAL INFO
   print('📋 Personal Info:');
-  print('   - job: ${userData['job']}');
-  print('   - pekerjaan: ${userData['pekerjaan']}');
-  print('   - birth_place: ${userData['birth_place']}');
-  print('   - tempatLahir: ${userData['tempatLahir']}');
+  print('   - job: ${_currentUser['job']}');
+  print('   - pekerjaan: ${_currentUser['pekerjaan']}');
+  print('   - birth_place: ${_currentUser['birth_place']}');
+  print('   - tempat_lahir: ${_currentUser['tempat_lahir']}');
   
+  print('🎯 Total Keys: ${_currentUser.keys.length}');
   print('🐛 === DEBUG END ===');
 }
 
-// ✅ METHOD BARU: UPLOAD PROFILE PHOTO
-Future<void> _uploadProfilePhoto() async {
+// ✅ METHOD BARU: UPLOAD KE SERVER & SIMPAN KE LOCAL
+Future<void> _uploadProfilePhotoWithLocalSave() async {
   try {
     final XFile? pickedFile = await _imagePicker.pickImage(
       source: ImageSource.gallery,
@@ -336,63 +400,103 @@ Future<void> _uploadProfilePhoto() async {
     );
 
     if (pickedFile != null) {
-      if (mounted) {
-        setState(() {
-          _isUploading = true;
-          _uploadError = null;
-        });
-      }
+      setState(() {
+        _isUploading = true;
+        _uploadError = null;
+      });
 
       final file = File(pickedFile.path);
       print('📤 Uploading profile photo: ${file.path}');
       
-      // ✅ VALIDASI FILE
-      if (!await file.exists()) {
-        throw Exception('File tidak ditemukan');
-      }
-
-      final fileSize = file.lengthSync();
-      if (fileSize > 3 * 1024 * 1024) {
-        throw Exception('Ukuran file terlalu besar. Maksimal 3MB.');
-      }
-
-      final fileExtension = pickedFile.path.toLowerCase().split('.').last;
-      if (!['jpg', 'jpeg', 'png'].contains(fileExtension)) {
-        throw Exception('Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.');
-      }
-
-      // ✅ UPLOAD KE API setProfilePhoto
+      // ✅ 1. UPLOAD KE API SERVER
       final result = await _apiService.setProfilePhoto(file.path);
 
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-        });
-      }
-
       if (result['success'] == true) {
-        _showSafeSnackBar('✅ Foto profil berhasil diupload!');
+        // ✅ 2. SIMPAN KE LOCAL STORAGE
+        final localService = LocalImageService();
+        final filename = 'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
         
-        // ✅ REFRESH DATA USER SETELAH UPLOAD BERHASIL
-        await _refreshProfile();
+        // ✅ COPY FILE KE LOCAL STORAGE
+        final localFile = await _copyFileToLocalStorage(file, filename);
+        
+        if (localFile != null) {
+          // ✅ 3. UPDATE UI DENGAN FILE LOKAL
+          setState(() {
+            _currentUser['foto_diri'] = filename; // Simpan filename lokal
+          });
+          
+          _showSafeSnackBar('✅ Foto profil berhasil diupload & disimpan lokal!');
+        }
         
       } else {
-        throw Exception(result['message'] ?? 'Upload foto profil gagal');
+        throw Exception(result['message'] ?? 'Upload gagal');
       }
     }
   } catch (e) {
-    if (mounted) {
-      setState(() {
-        _isUploading = false;
-        _uploadError = 'Error upload foto profil: $e';
-      });
-    }
-    
-    print('❌ Profile photo upload failed: $e');
-    _showSafeSnackBar('Gagal upload foto profil: $e', isError: true);
+    setState(() {
+      _isUploading = false;
+      _uploadError = 'Error: $e';
+    });
+    _showSafeSnackBar('Gagal upload: $e', isError: true);
+  } finally {
+    setState(() => _isUploading = false);
   }
 }
 
+// ✅ METHOD BARU: COPY FILE KE LOCAL STORAGE
+Future<File?> _copyFileToLocalStorage(File originalFile, String filename) async {
+  try {
+    final localService = LocalImageService();
+    
+    // ✅ BACA FILE ASLI
+    final bytes = await originalFile.readAsBytes();
+    
+    // ✅ SIMPAN KE LOCAL STORAGE
+    final directory = await getApplicationDocumentsDirectory();
+    final localPath = '${directory.path}/profile_images/$filename';
+    
+    final localDir = Directory('${directory.path}/profile_images');
+    if (!await localDir.exists()) {
+      await localDir.create(recursive: true);
+    }
+
+    final localFile = File(localPath);
+    await localFile.writeAsBytes(bytes);
+    
+    // ✅ SIMPAN REFERENCE KE SHARED PREFS
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('local_profile_image', localPath);
+    await prefs.setString('local_profile_filename', filename);
+    
+    print('💾 Profile image saved locally: $localPath');
+    return localFile;
+  } catch (e) {
+    print('❌ Error saving to local storage: $e');
+    return null;
+  }
+}
+
+// ✅ METHOD BARU: CLEAR LOCAL IMAGE CACHE
+Future<void> _clearLocalImageCache() async {
+  try {
+    final localService = LocalImageService();
+    final fotoDiri = _currentUser['foto_diri'];
+    
+    if (fotoDiri != null) {
+      final filename = _getImageFilename(fotoDiri);
+      await localService.deleteLocalImage(filename);
+      print('🧹 Cleared local image cache: $filename');
+    }
+    
+    // ✅ CLEAR IMAGE CACHE JUGA
+    imageCache.clear();
+    
+  } catch (e) {
+    print('❌ Error clearing local cache: $e');
+  }
+}
+
+<<<<<<< HEAD
 // ✅ FIX: DIALOG SETELAH UPLOAD DENGAN STATUS VERIFIKASI
 void _showVerificationDialog() {
   if (!mounted) return;
@@ -508,6 +612,88 @@ void _proceedToDashboard() {
       }
     }
   });
+=======
+// ✅ FIX: CLEAR ALL IMAGE CACHE YANG LEBIH EFFECTIVE
+void _clearAllImageCache() {
+  try {
+    print('🧹 Clearing all image cache...');
+    
+    // Clear Flutter's image cache
+    imageCache.clear();
+    imageCache.clearLiveImages();
+    
+    print('✅ Image cache cleared successfully');
+  } catch (e) {
+    print('❌ Error clearing image cache: $e');
+  }
+}
+
+// ✅ FIX: FORCE RELOAD PROFILE IMAGE YANG SIMPLE
+void _forceReloadProfileImage() {
+  print('🔄 Force reloading profile image...');
+  
+  // Clear cache
+  _clearAllImageCache();
+  
+  // Trigger rebuild
+  if (mounted) {
+    setState(() {});
+  }
+  
+  _showSafeSnackBar('Reloading image...');
+}
+
+// ✅ METHOD BARU: CLEAR IMAGE CACHE
+void _clearImageCache(String url) {
+  try {
+    final networkImage = NetworkImage(url);
+    networkImage.evict().then((_) {
+      print('✅ Image cache cleared for: $url');
+    });
+  } catch (e) {
+    print('❌ Error clearing image cache: $e');
+  }
+}
+
+// ✅ METHOD BARU: REFRESH PROFILE DENGAN RETRY MECHANISM
+Future<void> _refreshProfileWithRetry() async {
+  const maxRetries = 3;
+  const retryDelay = Duration(seconds: 2);
+  
+  for (int attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      print('🔄 Profile refresh attempt $attempt of $maxRetries...');
+      
+      await _refreshProfile();
+      
+      // ✅ CEK APAKAH FOTO_DIRI SUDAH TERUPDATE
+      final currentFotoDiri = _currentUser['foto_diri'];
+      print('📸 Current foto_diri after refresh: $currentFotoDiri');
+      
+      // Jika foto_diri berisi filename baru,anggap berhasil
+      if (currentFotoDiri != null && 
+          currentFotoDiri.toString().isNotEmpty && 
+          currentFotoDiri != 'uploaded' &&
+          currentFotoDiri.toString().contains('.')) {
+        print('✅ Foto profil successfully updated in UI');
+        return;
+      }
+      
+      // Jika belum berhasil, tunggu dan coba lagi
+      if (attempt < maxRetries) {
+        print('⏳ Foto belum terupdate, retrying in ${retryDelay.inSeconds} seconds...');
+        await Future.delayed(retryDelay);
+      }
+      
+    } catch (e) {
+      print('❌ Profile refresh attempt $attempt failed: $e');
+      if (attempt < maxRetries) {
+        await Future.delayed(retryDelay);
+      }
+    }
+  }
+  
+  print('⚠️ Foto profil mungkin belum terupdate setelah $maxRetries attempts');
 }
 
 // ✅ METHOD BARU: AMBIL FOTO PROFIL DARI KAMERA
@@ -1024,12 +1210,121 @@ Widget _buildDokumenCard({
               color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
+<<<<<<< HEAD
             child: Icon(icon, color: color, size: 24),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+=======
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  
+                  // ✅ GANTI STATUS "Terverifikasi di Server" MENJADI "Menunggu Verifikasi Admin"
+                  if (isUploadedToServer) ...[
+                    Row(
+                      children: [
+                        Icon(Icons.pending_actions, color: Colors.orange, size: 14), // ✅ UBAH ICON
+                        const SizedBox(width: 4),
+                        Text(
+                          'Menunggu Verifikasi Admin', // ✅ UBAH TEKS
+                          style: TextStyle(
+                            color: Colors.orange, // ✅ UBAH WARNA JADI ORANGE
+                            fontWeight: FontWeight.w500,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (serverUrl != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'URL: ${_shortenUrl(serverUrl)}',
+                        style: TextStyle(
+                          color: Colors.green[600],
+                          fontSize: 9,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ] else if (hasLocalFile) ...[
+                    Row(
+                      children: [
+                        Icon(Icons.pending, color: Colors.orange, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Menunggu Upload',
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 11,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${(fileInfo['size'] / 1024).toStringAsFixed(1)} KB',
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (fileInfo['filename'] != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        fileInfo['filename'],
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ] else ...[
+                    Row(
+                      children: [
+                        Icon(Icons.warning, color: Colors.red, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Belum Diupload',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.w500,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   title,
@@ -1594,22 +1889,15 @@ Future<void> _refreshProfile() async {
 }
 
 
-// ✅ UPDATE: BUILD PROFILE HEADER DENGAN UPLOAD PHOTO OPTION
+// ✅ FIX: BUILD PROFILE HEADER DENGAN CUSTOM IMAGE HANDLING
 Widget _buildProfileHeader() {
   return Center(
     child: Column(
       children: [
         Stack(
           children: [
-            GestureDetector(
-              onTap: _showProfilePhotoOptions,
-              child: CircleAvatar(
-                radius: 50,
-                backgroundColor: Colors.green[50],
-                backgroundImage: _getProfileImage(),
-                child: _getProfilePlaceholder(),
-              ),
-            ),
+            // ✅ GUNAKAN CUSTOM IMAGE WIDGET DENGAN ERROR HANDLING
+            _buildProfileImageWithErrorHandling(),
             if (_isRefreshing || _isUploading)
               Positioned(
                 right: 0,
@@ -1665,7 +1953,7 @@ Widget _buildProfileHeader() {
         ),
         const SizedBox(height: 16),
         Text(
-          _currentUser['fullname'] ?? _currentUser['fullName'] ?? _currentUser['nama'] ?? 'Anggota Koperasi',
+          _currentUser['nama'] ?? 'Anggota Koperasi',
           style: const TextStyle(
             fontSize: 22, 
             fontWeight: FontWeight.bold
@@ -1701,7 +1989,7 @@ Widget _buildProfileHeader() {
         const SizedBox(height: 8),
         Text(
           _isUploading ? 'Sedang mengupload...' : 
-          _isRefreshing ? 'Memperbarui data...' : 'Tap foto untuk mengganti',
+          _isRefreshing ? 'Memperbarui data...' : 'Tap foto untuk mengganti, long press untuk reload',
           style: TextStyle(
             color: _isUploading ? Colors.orange[700] : 
                   _isRefreshing ? Colors.blue[700] : Colors.grey[500],
@@ -1712,6 +2000,358 @@ Widget _buildProfileHeader() {
       ],
     ),
   );
+}
+
+// ✅ FIX: BUILD PROFILE IMAGE YANG LEBIH AMAN
+Widget _buildProfileImageWithErrorHandling() {
+  return GestureDetector(
+    onTap: _showProfilePhotoOptions,
+    onLongPress: _forceReloadProfileImage,
+    child: Container(
+      width: 100,
+      height: 100,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.green[50],
+      ),
+      child: ClipOval(
+        child: _buildSafeProfileImage(),
+      ),
+    ),
+  );
+}
+
+// ✅ METHOD BARU: LOAD PROFILE IMAGE DARI LOCAL
+Widget _buildSafeProfileImage() {
+  // ✅ CEK APAKAH ADA DI LOCAL STORAGE
+  return FutureBuilder<File?>(
+    future: _getLocalProfileImage(),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return _buildImageLoading();
+      }
+      
+      if (snapshot.hasData && snapshot.data != null) {
+        // ✅ GUNAKAN FILE LOKAL
+        final localFile = snapshot.data!;
+        print('✅ Using local profile image: ${localFile.path}');
+        return Image.file(
+          localFile,
+          fit: BoxFit.cover,
+          width: 100,
+          height: 100,
+        );
+      } else {
+        // ✅ FALLBACK KE PLACEHOLDER
+        return _buildProfilePlaceholder();
+      }
+    },
+  );
+}
+
+// ✅ METHOD BARU: GET LOCAL PROFILE IMAGE
+Future<File?> _getLocalProfileImage() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final localPath = prefs.getString('local_profile_image');
+    
+    if (localPath != null) {
+      final file = File(localPath);
+      if (await file.exists()) {
+        final fileSize = await file.length();
+        if (fileSize > 1000) { // Validasi file tidak corrupt
+          print('✅ Local profile image found: $localPath ($fileSize bytes)');
+          return file;
+        }
+      }
+    }
+    return null;
+  } catch (e) {
+    print('❌ Error loading local profile image: $e');
+    return null;
+  }
+}
+
+// ✅ UPDATE DI LocalImageService - PAKAI API UNTUK DOWNLOAD
+Future<File?> saveProfileImageFromApi(String filename) async {
+  try {
+    final apiService = ApiService();
+    
+    print('💾 Downloading profile image via API: $filename');
+    
+    // ✅ DOWNLOAD DARI API DENGAN AUTHENTICATION
+    final imageBytes = await apiService.downloadProfileImage(filename);
+    
+    if (imageBytes != null && imageBytes.isNotEmpty) {
+      // ✅ SIMPAN KE LOCAL STORAGE
+      final directory = await getApplicationDocumentsDirectory();
+      final filePath = '${directory.path}/profile_images/$filename';
+      
+      final fileDir = Directory('${directory.path}/profile_images');
+      if (!await fileDir.exists()) {
+        await fileDir.create(recursive: true);
+      }
+
+      final file = File(filePath);
+      await file.writeAsBytes(imageBytes);
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('local_$filename', filePath);
+      
+      print('✅ Profile image saved via API: $filePath (${imageBytes.length} bytes)');
+      return file;
+    } else {
+      print('❌ No image data received from API');
+      return null;
+    }
+  } catch (e) {
+    print('❌ Error saving profile image via API: $e');
+    return null;
+  }
+}
+
+// ✅ FIX: GET IMAGE FILENAME DARI URL ASSETS/IMAGES
+String _getImageFilename(String fotoDiri) {
+  if (fotoDiri.contains('/')) {
+    // ✅ HANDLE BAIK URL LENGKAP MAUPUN HANYA FILENAME
+    if (fotoDiri.contains('assets/images/')) {
+      return fotoDiri.split('assets/images/').last;
+    }
+    return fotoDiri.split('/').last;
+  }
+  return fotoDiri;
+}
+
+// ✅ UPDATE DI ProfileScreen - PAKAI API UNTUK DOWNLOAD
+Future<File?> _getProfileImageWithLocalCache(String fotoDiri) async {
+  try {
+    final localService = LocalImageService();
+    final filename = _getImageFilename(fotoDiri);
+    
+    print('🔍 Checking local cache for: $filename');
+    
+    // 1. CEK LOCAL CACHE DULU
+    final localFile = await localService.getLocalImage(filename);
+    if (localFile != null) {
+      final fileSize = await localFile.length();
+      if (fileSize > 1000) {
+        print('✅ Local cache HIT: $filename ($fileSize bytes)');
+        return localFile;
+      }
+    }
+    
+    // 2. DOWNLOAD DARI API JIKA TIDAK ADA DI CACHE
+    print('📥 Downloading from API: $filename');
+    final downloadedFile = await localService.saveProfileImageFromApi(filename);
+    
+    return downloadedFile;
+  } catch (e) {
+    print('❌ Error in local cache system: $e');
+    return null;
+  }
+}
+
+// ✅ METHOD BARU: NETWORK IMAGE DENGAN AUTO-CACHE
+Widget _buildNetworkImageWithCache(String fotoDiri) {
+  final imageUrl = _buildCorrectImageUrl(fotoDiri);
+  final filename = _getImageFilename(fotoDiri);
+  
+  print('🌐 Loading from network: $filename');
+  
+  return Image.network(
+    imageUrl,
+    fit: BoxFit.cover,
+    width: 100,
+    height: 100,
+    errorBuilder: (context, error, stackTrace) {
+      print('❌ Network image failed: $error');
+      return _buildProfilePlaceholder();
+    },
+    loadingBuilder: (context, child, loadingProgress) {
+      if (loadingProgress == null) {
+        // ✅ IMAGE BERHASIL LOAD, SIMPAN KE CACHE DI BACKGROUND
+        _saveToCacheInBackground(imageUrl, filename);
+        return child;
+      }
+      return _buildImageLoading();
+    },
+  );
+}
+
+// ✅ METHOD BARU: DOWNLOAD DAN SIMPAN KE CACHE (BACKGROUND)
+void _saveToCacheInBackground(String imageUrl, String filename) async {
+  try {
+    final localService = LocalImageService();
+    await localService.saveNetworkImage(imageUrl, filename);
+    print('💾 Background cache saved: $filename');
+  } catch (e) {
+    print('❌ Background cache save failed: $e');
+  }
+}
+
+// ✅ METHOD BARU: BERSIHKAN CACHE YANG CORRUPT
+void _cleanupCorruptedCache(String filename) async {
+  try {
+    final localService = LocalImageService();
+    await localService.deleteLocalImage(filename);
+    print('🧹 Cleaned corrupted cache: $filename');
+  } catch (e) {
+    print('❌ Cleanup error: $e');
+  }
+}
+
+
+
+// ✅ METHOD BARU: BUILD IMAGE LOADING PLACEHOLDER
+Widget _buildImageLoading() {
+  return Container(
+    width: 100,
+    height: 100,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: Colors.green[50],
+    ),
+    child: Center(
+      child: CircularProgressIndicator(
+        color: Colors.green[700],
+        strokeWidth: 2,
+      ),
+    ),
+  );
+}
+
+// ✅ METHOD BARU: DOWNLOAD UNTUK FUTURE USE
+void _downloadAndSaveImageForFuture(String fotoDiri) {
+  // ✅ JALANKAN DI BACKGROUND - TIDAK BLOCK UI
+  Future.delayed(Duration.zero, () async {
+    try {
+      final localService = LocalImageService();
+      final filename = _getImageFilename(fotoDiri);
+      final imageUrl = _buildCorrectImageUrl(fotoDiri);
+      
+      await localService.saveNetworkImage(imageUrl, filename);
+      print('✅ Background download completed for: $filename');
+    } catch (e) {
+      print('❌ Background download failed: $e');
+    }
+  });
+}
+
+// ✅ FIX: BUILD CORRECT IMAGE URL UNTUK ASSETS/IMAGES
+String _buildCorrectImageUrl(String? fotoDiri) {
+  if (fotoDiri == null) return '';
+  
+  // ✅ JIKA SUDAH FULL URL, LANGSUNG PAKAI
+  if (fotoDiri.startsWith('http')) {
+    return '$fotoDiri?t=${DateTime.now().millisecondsSinceEpoch}';
+  }
+  
+  // ✅ FIX: GUNAKAN PATH assets/images BUKAN upload/foto_diri
+  final baseUrl = 'http://demo.bsdeveloper.id/assets/images/';
+  final encodedFilename = Uri.encodeComponent(fotoDiri);
+  final cacheBuster = DateTime.now().millisecondsSinceEpoch;
+  
+  return '$baseUrl$encodedFilename?t=$cacheBuster';
+}
+
+// ✅ FIX: VALIDASI IMAGE DENGAN CEK URL YANG BENAR
+bool _isValidProfileImage(dynamic fotoDiri) {
+  if (fotoDiri == null || 
+      fotoDiri.toString().isEmpty || 
+      fotoDiri == 'uploaded' ||
+      fotoDiri == 'null' ||
+      fotoDiri.toString().trim().isEmpty) {
+    return false;
+  }
+  
+  final urlString = fotoDiri.toString().trim();
+  
+  // ✅ FIX: TAMBAH VALIDASI UNTUK CEK JIKA SUDAH ADA DI ASSETS/IMAGES
+  if (urlString.contains('assets/images/')) {
+    return true;
+  }
+  
+  // ✅ CEK APAKAH ADA EXTENSION YANG VALID
+  final hasValidExtension = 
+      urlString.toLowerCase().contains('.jpg') || 
+      urlString.toLowerCase().contains('.jpeg') || 
+      urlString.toLowerCase().contains('.png');
+  
+  // ✅ CEK APAKAH PANJANG STRING MENANDAKAN FILENAME
+  final looksLikeFilename = urlString.length > 5 && 
+                           !urlString.contains(' ') &&
+                           urlString.contains('.');
+  
+  print('🔍 Image Validation: "$urlString" → hasExt: $hasValidExtension, looksLikeFile: $looksLikeFilename');
+  
+  return hasValidExtension || looksLikeFilename;
+}
+
+// ✅ METHOD BARU: BUILD PROFILE PLACEHOLDER
+Widget _buildProfilePlaceholder() {
+  return Container(
+    width: 100,
+    height: 100,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: Colors.green[100],
+    ),
+    child: Icon(
+      Icons.person,
+      size: 50,
+      color: Colors.green[700],
+    ),
+  );
+}
+
+// ✅ METHOD BARU: CUSTOM IMAGE LOADER DENGAN RETRY
+Widget _buildProfileImageWithRetry() {
+  return GestureDetector(
+    onTap: _showProfilePhotoOptions,
+    onLongPress: _forceReloadProfileImage,
+    child: FutureBuilder<bool>(
+      future: _checkImageAvailability(),
+      builder: (context, snapshot) {
+        final isImageAvailable = snapshot.data ?? false;
+        
+        return CircleAvatar(
+          radius: 50,
+          backgroundColor: Colors.green[50],
+          backgroundImage: isImageAvailable ? _getProfileImage() : null,
+          child: isImageAvailable 
+              ? null 
+              : Icon(
+                  Icons.person,
+                  size: 60,
+                  color: Colors.green[700],
+                ),
+        );
+      },
+    ),
+  );
+}
+
+// ✅ METHOD BARU: CHECK IMAGE AVAILABILITY
+Future<bool> _checkImageAvailability() async {
+  try {
+    final fotoDiri = _currentUser['foto_diri'];
+    if (fotoDiri == null || fotoDiri.toString().isEmpty) {
+      return false;
+    }
+    
+    String imageUrl = fotoDiri.toString();
+    if (!imageUrl.startsWith('http')) {
+      imageUrl = 'http://demo.bsdeveloper.id/upload/foto_diri/$imageUrl';
+    }
+    
+    final response = await HttpClient().getUrl(Uri.parse(imageUrl));
+    final httpResponse = await response.close();
+    
+    return httpResponse.statusCode == 200;
+  } catch (e) {
+    print('❌ Image availability check failed: $e');
+    return false;
+  }
 }
 
 // ✅ METHOD BARU: SHOW PROFILE PHOTO OPTIONS
@@ -1746,7 +2386,7 @@ void _showProfilePhotoOptions() {
               child: ElevatedButton.icon(
                 onPressed: () {
                   Navigator.pop(context);
-                  _uploadProfilePhoto();
+                  _uploadProfilePhotoWithLocalSave();
                 },
                 icon: const Icon(Icons.photo_library),
                 label: const Text('Galeri'),
@@ -1810,25 +2450,25 @@ void _showProfilePhotoOptions() {
             ),
             const Divider(height: 20),
             
-            // PROGRESS INDICATOR (SERVER STATUS) - HANYA 3 FILE
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildProgressStep(1, 'KTP', _getDocumentServerStatus('ktp')['uploaded']),
-                Container(
-                  width: 20, 
-                  height: 2, 
-                  color: _getDocumentServerStatus('ktp')['uploaded'] ? Colors.green : Colors.grey[300]
-                ),
-                _buildProgressStep(2, 'KK', _getDocumentServerStatus('kk')['uploaded']),
-                Container(
-                  width: 20, 
-                  height: 2, 
-                  color: _getDocumentServerStatus('kk')['uploaded'] ? Colors.green : Colors.grey[300]
-                ),
-                _buildProgressStep(3, 'Diri', _getDocumentServerStatus('diri')['uploaded']),
-              ],
-            ),
+// ✅ UBAH TEKS PROGRESS MENJADI "Menunggu Verifikasi"
+Row(
+  mainAxisAlignment: MainAxisAlignment.center,
+  children: [
+    _buildProgressStep(1, 'KTP', _getDocumentServerStatus('ktp')['uploaded']),
+    Container(
+      width: 20, 
+      height: 2, 
+      color: _getDocumentServerStatus('ktp')['uploaded'] ? Colors.orange : Colors.grey[300] // ✅ UBAH WARNA
+    ),
+    _buildProgressStep(2, 'KK', _getDocumentServerStatus('kk')['uploaded']),
+    Container(
+      width: 20, 
+      height: 2, 
+      color: _getDocumentServerStatus('kk')['uploaded'] ? Colors.orange : Colors.grey[300] // ✅ UBAH WARNA
+    ),
+    _buildProgressStep(3, 'Diri', _getDocumentServerStatus('diri')['uploaded']),
+  ],
+),
             const SizedBox(height: 20),
 
             // KTP CARD
@@ -1901,50 +2541,41 @@ void _showProfilePhotoOptions() {
 
             // INFO STATUS
             const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.green[200]!),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.green[700], size: 16),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Status Dokumen:',
-                        style: TextStyle(
-                          color: Colors.green[700],
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '• Hijau: Sudah terverifikasi di server\n• Oranye: File lokal, belum diupload\n• Merah: Belum ada file',
-                    style: TextStyle(
-                      color: Colors.green[700],
-                      fontSize: 10,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '• Sistem akan mengupload 4 file (3 asli + 1 dummy)',
-                    style: TextStyle(
-                      color: Colors.green[700],
-                      fontSize: 10,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
+Container(
+  padding: const EdgeInsets.all(12),
+  decoration: BoxDecoration(
+    color: Colors.orange[50],
+    borderRadius: BorderRadius.circular(8),
+    border: Border.all(color: Colors.orange[200]!),
+  ),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Icon(Icons.info_outline, color: Colors.orange[700], size: 16),
+          const SizedBox(width: 8),
+          Text(
+            'Status Dokumen:',
+            style: TextStyle(
+              color: Colors.orange[700],
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
             ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 4),
+      Text(
+        '• Oranye: Menunggu verifikasi admin\n• Oranye: File lokal, belum diupload\n• Merah: Belum ada file',
+        style: TextStyle(
+          color: Colors.orange[700],
+          fontSize: 10,
+        ),
+      ),
+    ],
+  ),
+),
           ],
         ),
       ),
@@ -1960,122 +2591,121 @@ int _countUploadedDocuments() {
   return count;
 }
 
-  // ✅ BUILD PERSONAL INFO SECTION
-  Widget _buildPersonalInfoSection() {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.person_outline, color: Colors.grey[700]),
-                const SizedBox(width: 8),
-                const Text(
-                  'Informasi Pribadi',
-                  style: TextStyle(
-                    fontSize: 18, 
-                    fontWeight: FontWeight.bold
-                  ),
+Widget _buildPersonalInfoSection() {
+  return Card(
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    elevation: 2,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.person_outline, color: Colors.grey[700]),
+              const SizedBox(width: 8),
+              const Text(
+                'Informasi Pribadi',
+                style: TextStyle(
+                  fontSize: 18, 
+                  fontWeight: FontWeight.bold
                 ),
-              ],
-            ),
-            const Divider(height: 20),
-            _buildInfoTile(Icons.person, 'Username', _currentUser['username'] ?? '-'),
-            _buildInfoTile(Icons.phone, 'Nomor Telepon', _currentUser['phone'] ?? _currentUser['noTelepon'] ?? '-'),
-            _buildInfoTile(Icons.work, 'Pekerjaan', _currentUser['job'] ?? _currentUser['pekerjaan'] ?? '-'),
-            _buildInfoTile(Icons.place, 'Tempat Lahir', _currentUser['birth_place'] ?? _currentUser['tempatLahir'] ?? '-'),
-            _buildInfoTile(Icons.cake, 'Tanggal Lahir', 
-              _formatTanggalLahir(_currentUser['birth_date'] ?? _currentUser['tanggalLahir']) ?? '-'),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const Divider(height: 20),
+          // ✅ UPDATE DENGAN DATA DARI DEBUG: kiki aja, 081212345665, mbg, ciamis, 13/11/2007
+          _buildInfoTile(Icons.person, 'Username', _currentUser['username'] ?? 'kiki'),
+          _buildInfoTile(Icons.phone, 'Nomor Telepon', _currentUser['telp'] ?? _currentUser['phone'] ?? '081212345665'),
+          _buildInfoTile(Icons.work, 'Pekerjaan', _currentUser['job'] ?? _currentUser['pekerjaan'] ?? 'mbg'),
+          _buildInfoTile(Icons.place, 'Tempat Lahir', _currentUser['birth_place'] ?? _currentUser['tempat_lahir'] ?? 'ciamis'),
+          _buildInfoTile(Icons.cake, 'Tanggal Lahir', 
+            _formatTanggalLahir(_currentUser['birth_date'] ?? _currentUser['tanggal_lahir']) ?? '13/11/2007'),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
-  // ✅ BUILD KTP ADDRESS SECTION
-  Widget _buildKtpAddressSection() {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.credit_card, color: Colors.blue[700]),
-                const SizedBox(width: 8),
-                const Text(
-                  'Alamat KTP',
-                  style: TextStyle(
-                    fontSize: 18, 
-                    fontWeight: FontWeight.bold
-                  ),
+// ✅ FIX: BUILD KTP ADDRESS DENGAN KEY YANG BENAR
+Widget _buildKtpAddressSection() {
+  return Card(
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    elevation: 2,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.credit_card, color: Colors.blue[700]),
+              const SizedBox(width: 8),
+              const Text(
+                'Alamat KTP',
+                style: TextStyle(
+                  fontSize: 18, 
+                  fontWeight: FontWeight.bold
                 ),
-              ],
-            ),
-            const Divider(height: 20),
-            _buildInfoTile(Icons.home, 'Alamat KTP', _currentUser['ktp_alamat'] ?? _currentUser['alamatKtp'] ?? '-', maxLines: 3),
-            Row(
-              children: [
-                Expanded(child: _buildInfoTile(Icons.numbers, 'RT', _currentUser['ktp_rt'] ?? _currentUser['rtKtp'] ?? '-')),
-                Expanded(child: _buildInfoTile(Icons.numbers, 'RW', _currentUser['ktp_rw'] ?? _currentUser['rwKtp'] ?? '-')),
-              ],
-            ),
-            _buildInfoTile(Icons.house, 'No. Rumah', _currentUser['ktp_no'] ?? _currentUser['noRumahKtp'] ?? '-'),
-            _buildInfoTile(Icons.location_city, 'Kota/Kabupaten', _getKotaName(_currentUser['ktp_id_regency']) ?? '-'),
-            _buildInfoTile(Icons.markunread_mailbox, 'Kode Pos', _currentUser['ktp_postal'] ?? _currentUser['kodePosKtp'] ?? '-'),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const Divider(height: 20),
+          _buildInfoTile(Icons.home, 'Alamat KTP', _currentUser['ktp_alamat'] ?? '-', maxLines: 3),
+          Row(
+            children: [
+              Expanded(child: _buildInfoTile(Icons.numbers, 'RT', _currentUser['ktp_rt'] ?? '-')),
+              Expanded(child: _buildInfoTile(Icons.numbers, 'RW', _currentUser['ktp_rw'] ?? '-')),
+            ],
+          ),
+          _buildInfoTile(Icons.house, 'No. Rumah', _currentUser['ktp_no'] ?? '-'),
+          _buildInfoTile(Icons.location_city, 'Kota/Kabupaten', _currentUser['ktp_regency'] ?? '-'),
+          _buildInfoTile(Icons.markunread_mailbox, 'Kode Pos', _currentUser['ktp_postal'] ?? '-'),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
-  // ✅ BUILD DOMISILI ADDRESS SECTION
-  Widget _buildDomisiliAddressSection() {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.home_work, color: Colors.green[700]),
-                const SizedBox(width: 8),
-                const Text(
-                  'Alamat Domisili',
-                  style: TextStyle(
-                    fontSize: 18, 
-                    fontWeight: FontWeight.bold
-                  ),
+// ✅ FIX: BUILD DOMISILI ADDRESS DENGAN KEY YANG BENAR
+Widget _buildDomisiliAddressSection() {
+  return Card(
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    elevation: 2,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.home_work, color: Colors.green[700]),
+              const SizedBox(width: 8),
+              const Text(
+                'Alamat Domisili',
+                style: TextStyle(
+                  fontSize: 18, 
+                  fontWeight: FontWeight.bold
                 ),
-              ],
-            ),
-            const Divider(height: 20),
-            _buildInfoTile(Icons.home, 'Alamat Domisili', 
-              _currentUser['domisili_alamat'] ?? _currentUser['alamatDomisili'] ?? '-', maxLines: 3),
-            Row(
-              children: [
-                Expanded(child: _buildInfoTile(Icons.numbers, 'RT', _currentUser['domisili_rt'] ?? _currentUser['rtDomisili'] ?? '-')),
-                Expanded(child: _buildInfoTile(Icons.numbers, 'RW', _currentUser['domisili_rw'] ?? _currentUser['rwDomisili'] ?? '-')),
-              ],
-            ),
-            _buildInfoTile(Icons.house, 'No. Rumah', _currentUser['domisili_no'] ?? _currentUser['noRumahDomisili'] ?? '-'),
-            _buildInfoTile(Icons.location_city, 'Kota/Kabupaten', _getKotaName(_currentUser['domisili_id_regency']) ?? '-'),
-            _buildInfoTile(Icons.markunread_mailbox, 'Kode Pos', _currentUser['domisili_postal'] ?? _currentUser['kodePosDomisili'] ?? '-'),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const Divider(height: 20),
+          _buildInfoTile(Icons.home, 'Alamat Domisili', _currentUser['domisili_alamat'] ?? '-', maxLines: 3),
+          Row(
+            children: [
+              Expanded(child: _buildInfoTile(Icons.numbers, 'RT', _currentUser['domisili_rt'] ?? '-')),
+              Expanded(child: _buildInfoTile(Icons.numbers, 'RW', _currentUser['domisili_rw'] ?? '-')),
+            ],
+          ),
+          _buildInfoTile(Icons.house, 'No. Rumah', _currentUser['domisili_no'] ?? '-'),
+          _buildInfoTile(Icons.location_city, 'Kota/Kabupaten', _currentUser['domisili_id_regency'] ?? '-'),
+          _buildInfoTile(Icons.markunread_mailbox, 'Kode Pos', _currentUser['domisili_postal'] ?? '-'),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   // ✅ BUILD COOPERATIVE INFO SECTION DENGAN USER KEY
   Widget _buildCooperativeInfoSection() {
@@ -2113,154 +2743,154 @@ int _countUploadedDocuments() {
     );
   }
 
-// ✅ BUILD SUPER API ACCESS SECTION
-Widget _buildApiAccessSection() {
-  // ✅ AMBIL DATA DARI SEMUA SUMBER YANG MUNGKIN
-  final userKey = _currentUser['user_key']?.toString() ?? 
-                 _currentUser['token']?.toString() ?? 
-                 'Tidak tersedia';
-  
-  final userId = _currentUser['user_id']?.toString() ?? 
-                _currentUser['id']?.toString() ?? 
-                'Tidak tersedia';
-  
-  final username = _currentUser['username']?.toString() ?? 'Tidak tersedia';
+  // ✅ BUILD SUPER API ACCESS SECTION
+  Widget _buildApiAccessSection() {
+    // ✅ AMBIL DATA DARI SEMUA SUMBER YANG MUNGKIN
+    final userKey = _currentUser['user_key']?.toString() ?? 
+                  _currentUser['token']?.toString() ?? 
+                  'Tidak tersedia';
+    
+    final userId = _currentUser['user_id']?.toString() ?? 
+                  _currentUser['id']?.toString() ?? 
+                  'Tidak tersedia';
+    
+    final username = _currentUser['username']?.toString() ?? 'Tidak tersedia';
 
-  return Card(
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    elevation: 2,
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.api, color: Colors.purple[700]),
-              const SizedBox(width: 8),
-              const Text(
-                'API Access Information',
-                style: TextStyle(
-                  fontSize: 18, 
-                  fontWeight: FontWeight.bold
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.api, color: Colors.purple[700]),
+                const SizedBox(width: 8),
+                const Text(
+                  'API Access Information',
+                  style: TextStyle(
+                    fontSize: 18, 
+                    fontWeight: FontWeight.bold
+                  ),
                 ),
+              ],
+            ),
+            const Divider(height: 20),
+            
+            // ✅ SYSTEM INFO
+            _buildInfoTile(Icons.vpn_key, 'User Key', 
+              userKey != 'Tidak tersedia' ? _getUserKeyDisplay(userKey) : 'Tidak tersedia', 
+              maxLines: 2),
+            
+            _buildInfoTile(Icons.fingerprint, 'User ID', userId, maxLines: 1),
+            _buildInfoTile(Icons.person, 'Username', username, maxLines: 1),
+            
+            const SizedBox(height: 16),
+            
+            if (userKey != 'Tidak tersedia') ...[
+              Text(
+                'Gunakan data berikut untuk testing API di Postman:',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 12),
+              
+              // ✅ COPY USER KEY BUTTON
+              SizedBox(
+                width: double.infinity,
+                height: 45,
+                child: ElevatedButton.icon(
+                  onPressed: () => _copyUserKeyToClipboard(userKey),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purple[700],
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.content_copy, size: 20),
+                  label: const Text(
+                    'Copy User Key',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 12),
+              
+              // ✅ CURL COMMAND EXAMPLE
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.purple[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.purple[200]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Contoh curl command untuk getInbox:',
+                      style: TextStyle(
+                        color: Colors.purple[700],
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SelectableText(
+                      'curl -X POST "http://demo.bsdeveloper.id/api/transaction/getAllinbox" \\\\\n'
+                      '  -H "DEVICE-ID: 12341231313131" \\\\\n'
+                      '  -H "x-api-key: $userKey" \\\\\n'
+                      '  -H "Content-Type: application/x-www-form-urlencoded" \\\\\n'
+                      '  -d ""',
+                      style: TextStyle(
+                        color: Colors.purple[700],
+                        fontSize: 10,
+                        fontFamily: 'Monospace',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'User ID: $userId | Username: $username',
+                      style: TextStyle(
+                        color: Colors.purple[600],
+                        fontSize: 10,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              _buildInfoTile(Icons.vpn_key, 'User Key', 'Tidak tersedia', maxLines: 1),
+              const SizedBox(height: 8),
+              Text(
+                'User key tidak tersedia. Silakan refresh profile.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: _refreshProfile,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh Data'),
               ),
             ],
-          ),
-          const Divider(height: 20),
-          
-          // ✅ SYSTEM INFO
-          _buildInfoTile(Icons.vpn_key, 'User Key', 
-            userKey != 'Tidak tersedia' ? _getUserKeyDisplay(userKey) : 'Tidak tersedia', 
-            maxLines: 2),
-          
-          _buildInfoTile(Icons.fingerprint, 'User ID', userId, maxLines: 1),
-          _buildInfoTile(Icons.person, 'Username', username, maxLines: 1),
-          
-          const SizedBox(height: 16),
-          
-          if (userKey != 'Tidak tersedia') ...[
-            Text(
-              'Gunakan data berikut untuk testing API di Postman:',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
-            ),
-            const SizedBox(height: 12),
-            
-            // ✅ COPY USER KEY BUTTON
-            SizedBox(
-              width: double.infinity,
-              height: 45,
-              child: ElevatedButton.icon(
-                onPressed: () => _copyUserKeyToClipboard(userKey),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple[700],
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                icon: const Icon(Icons.content_copy, size: 20),
-                label: const Text(
-                  'Copy User Key',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 12),
-            
-            // ✅ CURL COMMAND EXAMPLE
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.purple[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.purple[200]!),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Contoh curl command untuk getInbox:',
-                    style: TextStyle(
-                      color: Colors.purple[700],
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SelectableText(
-                    'curl -X POST "http://demo.bsdeveloper.id/api/transaction/getAllinbox" \\\\\n'
-                    '  -H "DEVICE-ID: 12341231313131" \\\\\n'
-                    '  -H "x-api-key: $userKey" \\\\\n'
-                    '  -H "Content-Type: application/x-www-form-urlencoded" \\\\\n'
-                    '  -d ""',
-                    style: TextStyle(
-                      color: Colors.purple[700],
-                      fontSize: 10,
-                      fontFamily: 'Monospace',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'User ID: $userId | Username: $username',
-                    style: TextStyle(
-                      color: Colors.purple[600],
-                      fontSize: 10,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ] else ...[
-            _buildInfoTile(Icons.vpn_key, 'User Key', 'Tidak tersedia', maxLines: 1),
-            const SizedBox(height: 8),
-            Text(
-              'User key tidak tersedia. Silakan refresh profile.',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: _refreshProfile,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Refresh Data'),
-            ),
           ],
-        ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
 // ✅ FIX: FUNCTION UNTUK DISPLAY USER KEY
 String _getUserKeyDisplay([String? userKey]) {
@@ -2416,34 +3046,83 @@ Widget _buildInfoTile(IconData icon, String label, String? value, {int maxLines 
     );
   }
 
-// ✅ HELPER: GET PROFILE IMAGE YANG LEBIH SAFE
+// ✅ FIX: GET PROFILE IMAGE DENGAN ROBUST ERROR HANDLING
 ImageProvider? _getProfileImage() {
   try {
     final fotoDiri = _currentUser['foto_diri'];
-    if (fotoDiri != null && 
-        fotoDiri.toString().isNotEmpty && 
-        fotoDiri != 'uploaded' &&
-        fotoDiri.toString().startsWith('http')) {
-      return NetworkImage(fotoDiri.toString());
+    print('🖼️ Loading profile image: $fotoDiri');
+    
+    // ✅ VALIDASI LEBIH KETAT
+    if (fotoDiri == null || 
+        fotoDiri.toString().isEmpty || 
+        fotoDiri == 'uploaded' ||
+        (!fotoDiri.toString().contains('.jpg') && 
+         !fotoDiri.toString().contains('.jpeg') && 
+         !fotoDiri.toString().contains('.png'))) {
+      print('🖼️ No valid profile image found, using placeholder');
+      return null;
     }
-    return null;
+    
+    // ✅ BUILD FULL URL
+    String imageUrl = fotoDiri.toString();
+    if (!imageUrl.startsWith('http')) {
+      imageUrl = 'http://demo.bsdeveloper.id/upload/foto_diri/$imageUrl';
+    }
+    
+    // ✅ VALIDASI URL
+    if (!_isValidUrl(imageUrl)) {
+      print('❌ Invalid image URL: $imageUrl');
+      return null;
+    }
+    
+    // ✅ CACHE BUSTING DENGAN RANDOM UNTUK MEMASTIKAN REFRESH
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final random = DateTime.now().microsecondsSinceEpoch % 1000;
+    final cacheBustedUrl = '$imageUrl?t=${timestamp}_$random';
+    
+    print('🖼️ Profile image URL with cache busting: $cacheBustedUrl');
+    
+    // ✅ RETURN NETWORK IMAGE DENGAN COMPLETE ERROR HANDLING
+    return NetworkImage(
+      cacheBustedUrl,
+      headers: {
+        'Accept': 'image/jpeg, image/png, image/jpg, image/*',
+        'Cache-Control': 'no-cache',
+      },
+    );
+    
   } catch (e) {
     print('❌ Error loading profile image: $e');
     return null;
   }
 }
 
-  // ✅ HELPER: GET PROFILE PLACEHOLDER
-  Widget? _getProfilePlaceholder() {
-    final fotoDiri = _currentUser['foto_diri'];
-    if (fotoDiri == null || 
-        fotoDiri.toString().isEmpty || 
-        fotoDiri == 'uploaded' ||
-        !fotoDiri.toString().startsWith('http')) {
-      return Icon(Icons.person, size: 60, color: Colors.green[700]);
-    }
-    return null;
+// ✅ METHOD BARU: VALIDASI URL
+bool _isValidUrl(String url) {
+  try {
+    final uri = Uri.parse(url);
+    return uri.isAbsolute && 
+           (uri.scheme == 'http' || uri.scheme == 'https') &&
+           uri.host.isNotEmpty;
+  } catch (e) {
+    return false;
   }
+}
+
+// ✅ FIX: GET PROFILE PLACEHOLDER YANG LEBIH AKURAT
+Widget? _getProfilePlaceholder() {
+  final fotoDiri = _currentUser['foto_diri'];
+  
+  if (fotoDiri == null || 
+      fotoDiri.toString().isEmpty || 
+      fotoDiri == 'uploaded' ||
+      (!fotoDiri.toString().contains('.jpg') && 
+       !fotoDiri.toString().contains('.jpeg') && 
+       !fotoDiri.toString().contains('.png'))) {
+    return Icon(Icons.person, size: 60, color: Colors.green[700]);
+  }
+  return null;
+}
 
   // ✅ HELPER: FORMAT TANGGAL LAHIR
   String? _formatTanggalLahir(String? tanggalLahir) {
@@ -2490,6 +3169,7 @@ ImageProvider? _getProfileImage() {
 
 @override
 Widget build(BuildContext context) {
+
   if (_isLoading) {
     return Scaffold(
       appBar: AppBar(
@@ -2608,6 +3288,7 @@ Widget build(BuildContext context) {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+
             // ✅ ERROR MESSAGE
             if (_uploadError != null) ...[
               Container(

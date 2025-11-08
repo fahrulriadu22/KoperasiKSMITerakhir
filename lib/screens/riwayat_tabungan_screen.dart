@@ -2360,6 +2360,10 @@ Widget build(BuildContext context) {
     appBar: PreferredSize(
       preferredSize: const Size.fromHeight(70.0),
       child: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         title: const Padding(
           padding: EdgeInsets.only(bottom: 10.0),
           child: Text(
@@ -2375,7 +2379,6 @@ Widget build(BuildContext context) {
         elevation: 8,
         shadowColor: Colors.green.withOpacity(0.5),
         shape: NotchedAppBarShape(),
-        automaticallyImplyLeading: false,
         centerTitle: true,
         actions: [
           Padding(

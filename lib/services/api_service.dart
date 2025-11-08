@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+// ✅ TAMBAH IMPORT INI DI ATAS FILE api_service.dart
+import 'dart:typed_data'; // ✅ UNTUK Uint8List
 
 class ApiService {
   static const String baseUrl = 'http://demo.bsdeveloper.id/api';
@@ -87,6 +89,31 @@ class ApiService {
       };
     }
   }
+  // ✅ TAMBAH DI ApiService - METHOD UNTUK DOWNLOAD GAMBAR
+Future<Uint8List?> downloadProfileImage(String filename) async {
+  try {
+    final headers = await getProtectedHeaders();
+    
+    print('📥 Downloading profile image: $filename');
+    
+    final response = await http.post(
+      Uri.parse('$baseUrl/users/downloadImage'),
+      headers: headers,
+      body: 'filename=$filename',
+    );
+
+    if (response.statusCode == 200) {
+      print('✅ Image downloaded successfully: ${response.bodyBytes.length} bytes');
+      return response.bodyBytes;
+    } else {
+      print('❌ Failed to download image: ${response.statusCode}');
+      return null;
+    }
+  } catch (e) {
+    print('❌ Error downloading image: $e');
+    return null;
+  }
+}
 
 // ✅ HEADERS KHUSUS UNTUK UPLOAD BUKTI TABUNGAN DENGAN USER_KEY
 Future<Map<String, String>> _getBuktiTabunganHeaders() async {

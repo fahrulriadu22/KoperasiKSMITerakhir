@@ -124,7 +124,7 @@ bool _validateBeforeUpload() {
   return true;
 }
 
-// ✅ FIX: CEK STATUS DOKUMEN YANG LEBIH AKURAT
+// ✅ FIX: CEK STATUS DOKUMEN YANG LEBIH KETAT
 bool _isDocumentUploadedToServer(String type) {
   String? documentUrl;
   
@@ -140,32 +140,29 @@ bool _isDocumentUploadedToServer(String type) {
       break;
   }
   
-  print('🔍 Document $type check: $documentUrl');
-  
-  // ✅ FIX: CEK LEBIH DETAIL
-  if (documentUrl == null || documentUrl.toString().isEmpty) {
+  // ✅ FIX: VALIDASI YANG LEBIH KETAT
+  if (documentUrl == null || 
+      documentUrl.toString().isEmpty || 
+      documentUrl == 'null' ||
+      documentUrl == 'uploaded' ||
+      documentUrl.trim().isEmpty) {
     return false;
   }
   
-  final urlString = documentUrl.toString();
+  final urlString = documentUrl.toString().trim();
   
-  // ✅ CEK BERBAGAI KONDISI YANG MENANDAKAN SUDAH UPLOAD
+  // ✅ HANYA RETURN TRUE JIKA BENAR-BENAR ADA FILENAME DENGAN EXTENSION
   final isUploaded = 
-      // Ada filename dengan extension image
       (urlString.contains('.jpg') || 
        urlString.contains('.jpeg') || 
-       urlString.contains('.png')) ||
-      // Atau status uploaded
-      urlString == 'uploaded' ||
-      // Atau mengandung string tertentu
-      urlString.contains('upload') ||
-      // Atau panjang string menandakan filename
-      (urlString.length > 10 && !urlString.contains('null'));
+       urlString.contains('.png')) &&
+      urlString.length > 5 && // Pastikan bukan string pendek
+      !urlString.contains('null') &&
+      !urlString.contains('uploaded'); // Pastikan bukan status string
   
-  print('   → Uploaded: $isUploaded');
+  print('🔍 Document $type: "$urlString" → Uploaded: $isUploaded');
   return isUploaded;
 }
-
 
 // ✅ PERBAIKAN: UPLOAD DOKUMEN DENGAN SAFE CHECK
 Future<void> _uploadDocument(String type, String documentName) async {

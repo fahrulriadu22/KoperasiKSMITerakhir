@@ -838,6 +838,10 @@ Widget build(BuildContext context) {
     appBar: PreferredSize(
       preferredSize: const Size.fromHeight(70.0),
       child: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         title: const Padding(
           padding: EdgeInsets.only(bottom: 10.0),
           child: Text(
@@ -853,7 +857,6 @@ Widget build(BuildContext context) {
         elevation: 8,
         shadowColor: Colors.green.withOpacity(0.5),
         shape: NotchedAppBarShape(),
-        automaticallyImplyLeading: false,
         centerTitle: true,
         actions: [
           Padding(
@@ -1038,153 +1041,148 @@ Widget build(BuildContext context) {
                                 padding: EdgeInsets.zero, // ✅ HILANGKAN PADDING
                                 itemCount: _filteredRiwayat.length,
                                 separatorBuilder: (context, index) => const SizedBox(height: 4),
-itemBuilder: (context, index) {
-  final angsuran = _filteredRiwayat[index];
-  final jumlah = (angsuran['jumlah'] as num?)?.toDouble() ?? 0;
-  final jenis = angsuran['jenis']?.toString() ?? '';
-  final sisaAngsuran = (angsuran['sisa_angsuran'] as num?)?.toDouble() ?? 0;
-  final status = angsuran['status']?.toString() ?? 'aktif';
-  final tanggal = _formatTanggal(angsuran['tanggal']?.toString());
-  final ke = angsuran['ke']?.toString() ?? '0';
-  final tenor = angsuran['tenor']?.toString() ?? '18';
-  final namaBarang = angsuran['nama_barang']?.toString() ?? 'Produk';
-  final hargaBagiHasil = (angsuran['harga_bagi_hasil'] as num?)?.toDouble() ?? 0;
-  
-  // ✅ HAPUS ID KREDIT DARI TAMPILAN
-  // final idKredit = angsuran['id_kredit']?.toString() ?? '';
-
-  return Container(
-    margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-    child: Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: Colors.green[100]!),
-      ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.1), // ✅ LOGO BIASA - WARNA HIJAU
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            Icons.payments, // ✅ ICON STANDAR UNTUK SEMUA JENIS
-            color: Colors.green,
-            size: 20,
-          ),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ✅ JUDUL: "Ke" + nomor angsuran
-            Text(
-              'Ke $ke',
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 2),
-            // ✅ SUBTITLE: "Angsuran" + nama barang
-            Text(
-              'Angsuran $namaBarang',
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.grey,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(tanggal),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(status).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: _getStatusColor(status)),
-                  ),
-                  child: Text(
-                    status.toUpperCase(),
-                    style: TextStyle(
-                      color: _getStatusColor(status),
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '$ke/$tenor',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey,
-                  ),
-                ),
-              ],
-            ),
-            if (hargaBagiHasil > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  'Bagi Hasil: ${_formatCurrency(hargaBagiHasil)}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.orange[700],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              _formatCurrency(jumlah),
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
-                fontSize: 16,
-              ),
-            ),
-            if (sisaAngsuran > 0)
-              Text(
-                'Sisa: ${_formatCurrency(sisaAngsuran)}',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.red[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            if (sisaAngsuran == 0 && status != 'belum mulai')
-              Text(
-                'LUNAS',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.green[600],
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-          ],
-        ),
-        onTap: () {
-          _showDetailAngsuran(angsuran);
-        },
-      ),
-    ),
-  );
-},
+                                itemBuilder: (context, index) {
+                                  final angsuran = _filteredRiwayat[index];
+                                  final jumlah = (angsuran['jumlah'] as num?)?.toDouble() ?? 0;
+                                  final jenis = angsuran['jenis']?.toString() ?? '';
+                                  final sisaAngsuran = (angsuran['sisa_angsuran'] as num?)?.toDouble() ?? 0;
+                                  final status = angsuran['status']?.toString() ?? 'aktif';
+                                  final tanggal = _formatTanggal(angsuran['tanggal']?.toString());
+                                  final ke = angsuran['ke']?.toString() ?? '0';
+                                  final tenor = angsuran['tenor']?.toString() ?? '18';
+                                  final namaBarang = angsuran['nama_barang']?.toString() ?? 'Produk';
+                                  final hargaBagiHasil = (angsuran['harga_bagi_hasil'] as num?)?.toDouble() ?? 0;
+                                  
+                                  return Container(
+                                    margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                                    child: Card(
+                                      elevation: 2,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        side: BorderSide(color: Colors.green[100]!),
+                                      ),
+                                      child: ListTile(
+                                        leading: Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.withOpacity(0.1),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(
+                                            Icons.payments,
+                                            color: Colors.green,
+                                            size: 20,
+                                          ),
+                                        ),
+                                        title: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Ke Angsuran',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                                color: Colors.black87,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '$namaBarang',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                        subtitle: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(tanggal),
+                                            const SizedBox(height: 4),
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: _getStatusColor(status).withOpacity(0.1),
+                                                    borderRadius: BorderRadius.circular(4),
+                                                    border: Border.all(color: _getStatusColor(status)),
+                                                  ),
+                                                  child: Text(
+                                                    status.toUpperCase(),
+                                                    style: TextStyle(
+                                                      color: _getStatusColor(status),
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  '$ke/$tenor',
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.grey,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            if (hargaBagiHasil > 0)
+                                              Padding(
+                                                padding: const EdgeInsets.only(top: 4),
+                                                child: Text(
+                                                  'Bagi Hasil: ${_formatCurrency(hargaBagiHasil)}',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.orange[700],
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        trailing: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          crossAxisAlignment: CrossAxisAlignment.end,
+                                          children: [
+                                            Text(
+                                              _formatCurrency(jumlah),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.green,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                            if (sisaAngsuran > 0)
+                                              Text(
+                                                'Sisa: ${_formatCurrency(sisaAngsuran)}',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.red[600],
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            if (sisaAngsuran == 0 && status != 'belum mulai')
+                                              Text(
+                                                'LUNAS',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: Colors.green[600],
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        onTap: () {
+                                          _showDetailAngsuran(angsuran);
+                                        },
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                             ),
             ),

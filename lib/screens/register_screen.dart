@@ -36,11 +36,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   DateTime? _selectedBirthDate;
 
   // Identitas
-  final TextEditingController agamaIdController = TextEditingController();
-  final TextEditingController cabangIdController = TextEditingController();
-  final TextEditingController jenisIdentitasController = TextEditingController(text: "KTP");
+  String? _selectedAgamaId;
+  String? _selectedCabangId;
+  String? _selectedJenisIdentitas;
   final TextEditingController nomorIdentitasController = TextEditingController();
-  final TextEditingController sumberInformasiController = TextEditingController();
+  String? _selectedSumberInformasi;
   DateTime? _selectedTanggalBerlaku;
 
   // Data KTP
@@ -65,22 +65,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // Data Ahli Waris
   final TextEditingController namaAhliWarisController = TextEditingController();
   final TextEditingController tempatLahirAhliWarisController = TextEditingController();
-  final TextEditingController hubunganController = TextEditingController(text: "Orang Tua");
+  String? _selectedHubungan;
   DateTime? _selectedTanggalLahirAhliWaris;
 
-  // ✅ DATA MASTER
+  // ✅ DATA MASTER DARI API
   List<dynamic> _provinsiList = [];
   List<dynamic> _kotaListKtp = [];
   List<dynamic> _kotaListDomisili = [];
   List<dynamic> _agamaList = [];
   List<dynamic> _cabangList = [];
-  List<dynamic> _sumberInfoList = [
-    {'id': '1', 'nama': 'Teman/Keluarga'},
-    {'id': '2', 'nama': 'Media Sosial'},
-    {'id': '3', 'nama': 'Iklan'},
-    {'id': '4', 'nama': 'Event'},
-    {'id': '5', 'nama': 'Lainnya'},
-  ];
+  List<dynamic> _jenisIdentitasList = [];
+  Map<String, String> _sumberInfoMap = {};
+  Map<String, String> _hubunganMap = {};
 
   bool _isLoading = false;
   bool _isLoadingMasterData = false;
@@ -92,20 +88,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMasterData();
+    _loadAllMasterData();
   }
 
-  // ✅ LOAD MASTER DATA DENGAN ERROR HANDLING
-  Future<void> _loadMasterData() async {
+  // ✅ LOAD SEMUA MASTER DATA DARI API
+  Future<void> _loadAllMasterData() async {
     try {
       setState(() {
         _isLoadingMasterData = true;
         _errorMessage = null;
       });
-      
-      print('🔄 Loading master data...');
 
-      // Load provinsi
+      print('🔄 Loading semua master data...');
+
+      // 1. Load provinsi
       final provinsiResult = await _apiService.getProvince();
       if (provinsiResult['success'] == true) {
         final data = provinsiResult['data'];
@@ -115,26 +111,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
           });
           print('📍 Provinsi loaded: ${_provinsiList.length} items');
         } else {
-          _setupFallbackData();
+          _setupFallbackProvinsi();
         }
       } else {
-        _setupFallbackData();
+        _setupFallbackProvinsi();
       }
 
-      // Load master data untuk agama dan cabang
+      // 2. Load master data utama
       final masterResult = await _apiService.getMasterData();
-      if (masterResult['success'] == true && masterResult['data'] != null) {
-        final data = masterResult['data']!;
+      if (masterResult['status'] == true) {
+        final data = masterResult;
         
         // Handle agama
         if (data['agama'] is List) {
           setState(() {
             _agamaList = data['agama'];
           });
-        } else {
-          setState(() {
-            _agamaList = [];
-          });
+          print('🕌 Agama loaded: ${_agamaList.length} items');
         }
         
         // Handle cabang
@@ -142,30 +135,53 @@ class _RegisterScreenState extends State<RegisterScreen> {
           setState(() {
             _cabangList = data['cabang'];
           });
-        } else {
-          setState(() {
-            _cabangList = [];
-          });
+          print('🏢 Cabang loaded: ${_cabangList.length} items');
         }
+        
+        // Handle jenis identitas
+        if (data['jenis_identitas'] is List) {
+          setState(() {
+            _jenisIdentitasList = data['jenis_identitas'];
+          });
+          print('🆔 Jenis identitas loaded: ${_jenisIdentitasList.length} items');
+        }
+        
+        // Handle sumber informasi (dari Map)
+        if (data['sumber_informasi'] is Map) {
+          final sumberInfoData = data['sumber_informasi'] as Map;
+          setState(() {
+            _sumberInfoMap = Map<String, String>.from(sumberInfoData);
+          });
+          print('📢 Sumber informasi loaded: ${_sumberInfoMap.length} items');
+        }
+        
+        // Handle hubungan keluarga (dari Map)
+        if (data['hubungan_keluarga'] is Map) {
+          final hubunganData = data['hubungan_keluarga'] as Map;
+          setState(() {
+            _hubunganMap = Map<String, String>.from(hubunganData);
+          });
+          print('👨‍👩‍👧‍👦 Hubungan keluarga loaded: ${_hubunganMap.length} items');
+        }
+        
       } else {
-        _setupFallbackData();
+        _setupFallbackMasterData();
       }
       
     } catch (e) {
       print('❌ Error loading master data: $e');
-      _setupFallbackData();
+      _setupFallbackMasterData();
       setState(() {
-        _errorMessage = 'Gagal memuat data provinsi dan agama: $e';
+        _errorMessage = 'Gagal memuat data master: $e';
       });
     } finally {
       setState(() => _isLoadingMasterData = false);
     }
   }
 
-  // ✅ FALLBACK DATA
-  void _setupFallbackData() {
-    print('🔄 Setting up fallback data...');
-    
+  // ✅ FALLBACK DATA JIKA API ERROR
+  void _setupFallbackProvinsi() {
+    print('🔄 Setting up fallback provinsi...');
     setState(() {
       _provinsiList = [
         {'id': '35', 'nama': 'JAWA TIMUR'},
@@ -173,7 +189,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
         {'id': '12', 'nama': 'SUMATERA UTARA'},
         {'id': '31', 'nama': 'DKI JAKARTA'},
       ];
-      
+    });
+  }
+
+  void _setupFallbackMasterData() {
+    print('🔄 Setting up fallback master data...');
+    
+    setState(() {
       _agamaList = [
         {'id': '1', 'nama': 'Islam'},
         {'id': '2', 'nama': 'Kristen'},
@@ -182,13 +204,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ];
       
       _cabangList = [
-        {'id': '1', 'nama': 'Cabang Pusat'},
-        {'id': '2', 'nama': 'Cabang Utama'},
+        {'id': '1', 'nama': 'TULUNGAGUNG'},
+        {'id': '2', 'nama': 'KEDIRI'},
       ];
+      
+      _jenisIdentitasList = [
+        {'id': '1', 'nama': 'KTP'},
+        {'id': '2', 'nama': 'SIM'},
+        {'id': '3', 'nama': 'Passport'},
+        {'id': '4', 'nama': 'Lainnya'},
+      ];
+      
+      _sumberInfoMap = {
+        'MARKETING': 'MARKETING',
+        'BROSUR': 'BROSUR', 
+        'TEMAN': 'TEMAN',
+        'WEBSITE': 'WEBSITE',
+        'LAINNYA': 'LAINNYA',
+      };
+      
+      _hubunganMap = {
+        'SUAMI': 'SUAMI',
+        'ISTRI': 'ISTRI', 
+        'ANAK': 'ANAK',
+        'AYAH': 'AYAH',
+        'IBU': 'IBU',
+      };
     });
   }
 
-  // ✅ LOAD KOTA
+  // ✅ LOAD KOTA BERDASARKAN PROVINSI
   Future<void> _loadKota(String idProvinsi, bool forKtp) async {
     try {
       print('🏙️ Loading kota for provinsi: $idProvinsi');
@@ -244,184 +289,144 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
-// ✅ FIX: HANDLE REGISTER - TANPA AUTO LOGIN
-void _handleRegister() async {
-  if (!_validateAllForms()) return;
+  // ✅ HANDLE REGISTER DENGAN DATA MASTER YANG BENAR
+  void _handleRegister() async {
+    if (!_validateAllForms()) return;
 
-  setState(() => _isLoading = true);
+    setState(() => _isLoading = true);
 
-  try {
-    // Check user exist
-    final checkResult = await _apiService.checkUserExist(
-      usernameController.text.trim(),
-      emailController.text.trim(),
-    );
-
-    if (checkResult['exists'] == true) {
-      setState(() => _isLoading = false);
-      _showErrorDialog(checkResult['message'] ?? 'Username atau email sudah terdaftar.');
-      return;
-    }
-
-    // Prepare register data
-    final userData = {
-      // Data Umum
-      'username': usernameController.text.trim(),
-      'password': passwordController.text.trim(),
-      'email': emailController.text.trim(),
-      'fullname': fullnameController.text.trim(),
-      'fax': faxController.text.trim().isEmpty ? "-" : faxController.text.trim(),
-      'phone': phoneController.text.trim(),
-      'job': jobController.text.trim().isEmpty ? "Karyawan Swasta" : jobController.text.trim(),
-      'birth_place': birthPlaceController.text.trim(),
-      'birth_date': _selectedBirthDate != null 
-          ? '${_selectedBirthDate!.year}-${_selectedBirthDate!.month.toString().padLeft(2, '0')}-${_selectedBirthDate!.day.toString().padLeft(2, '0')}' 
-          : '2000-01-01',
-
-      // Identitas
-      'agama_id': agamaIdController.text.trim(),
-      'cabang_id': cabangIdController.text.trim(),
-      'jenis_identitas': jenisIdentitasController.text.trim(),
-      'tanggal_berlaku': _selectedTanggalBerlaku != null
-          ? '${_selectedTanggalBerlaku!.year}-${_selectedTanggalBerlaku!.month.toString().padLeft(2, '0')}-${_selectedTanggalBerlaku!.day.toString().padLeft(2, '0')}'
-          : '2025-12-31',
-      'nomor_identitas': nomorIdentitasController.text.trim(),
-      'sumber_informasi': sumberInformasiController.text.trim(),
-
-      // Data KTP
-      'ktp_alamat': ktpAlamatController.text.trim(),
-      'ktp_rt': ktpRtController.text.trim().isEmpty ? "001" : ktpRtController.text.trim(),
-      'ktp_rw': ktpRwController.text.trim().isEmpty ? "001" : ktpRwController.text.trim(),
-      'ktp_id_province': _selectedProvinsiKtp ?? "35",
-      'ktp_id_regency': _selectedKotaKtp ?? "3578",
-      'ktp_postal': ktpPostalController.text.trim().isEmpty ? "60111" : ktpPostalController.text.trim(),
-      'ktp_no': ktpNoController.text.trim().isEmpty ? "01" : ktpNoController.text.trim(),
-
-      // Data Domisili
-      'domisili_alamat': _sameAsKtp ? ktpAlamatController.text.trim() : domisiliAlamatController.text.trim(),
-      'domisili_rt': _sameAsKtp ? ktpRtController.text.trim() : domisiliRtController.text.trim(),
-      'domisili_rw': _sameAsKtp ? ktpRwController.text.trim() : domisiliRwController.text.trim(),
-      'domisili_id_regency': _sameAsKtp ? (_selectedKotaKtp ?? "3578") : (_selectedKotaDomisili ?? "3578"),
-      'domisili_postal': _sameAsKtp ? ktpPostalController.text.trim() : domisiliPostalController.text.trim(),
-      'domisili_no': _sameAsKtp ? ktpNoController.text.trim() : domisiliNoController.text.trim(),
-
-      // Data Ahli Waris
-      'nama_ahli_waris': namaAhliWarisController.text.trim().isEmpty ? fullnameController.text.trim() : namaAhliWarisController.text.trim(),
-      'tempat_lahir_ahli_waris': tempatLahirAhliWarisController.text.trim().isEmpty ? birthPlaceController.text.trim() : tempatLahirAhliWarisController.text.trim(),
-      'tanggal_lahir_ahli_waris': _selectedTanggalLahirAhliWaris != null
-          ? '${_selectedTanggalLahirAhliWaris!.year}-${_selectedTanggalLahirAhliWaris!.month.toString().padLeft(2, '0')}-${_selectedTanggalLahirAhliWaris!.day.toString().padLeft(2, '0')}'
-          : '2000-01-01',
-      'hubungan': hubunganController.text.trim(),
-    };
-
-    print('📤 Sending complete registration data...');
-    
-    // Call register API
-    final result = await _apiService.register(userData);
-
-    setState(() => _isLoading = false);
-
-    if (!mounted) return;
-
-    if (result['success'] == true) {
-      print('✅ Registration successful');
-      
-      // ✅ FIX: HAPUS AUTO-LOGIN, LANGSUNG KE LOGIN SCREEN
-      _showSuccessDialogManualLogin(
-        result['message'] ?? 'Pendaftaran berhasil! Silakan login dengan username dan password Anda.'
+    try {
+      // Check user exist
+      final checkResult = await _apiService.checkUserExist(
+        usernameController.text.trim(),
+        emailController.text.trim(),
       );
-      
-    } else {
-      print('❌ Registration failed: ${result['message']}');
-      _showErrorDialog(result['message'] ?? 'Registrasi gagal. Silakan coba lagi.');
-    }
-  } catch (e) {
-    setState(() => _isLoading = false);
-    print('❌ Register error: $e');
-    _showErrorDialog('Terjadi kesalahan: $e');
-  }
-}
 
-// ✅ FIX: DIALOG UNTUK LOGIN MANUAL SETELAH REGISTER BERHASIL
-void _showSuccessDialogManualLogin(String message) {
-  showDialog(
-    context: context,
-    barrierDismissible: false, // User harus klik tombol
-    builder: (_) => AlertDialog(
-      title: const Row(
-        children: [
-          Icon(Icons.check_circle, color: Colors.green),
-          SizedBox(width: 8),
-          Text('Pendaftaran Berhasil'),
-        ],
-      ),
-      content: Text(message),
-      actions: [
-        TextButton(
-          onPressed: () {
-            Navigator.pop(context); // Tutup dialog
-            // Langsung navigate ke login screen
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const LoginScreen()),
-              (route) => false, // Hapus semua route sebelumnya
-            );
-          },
-          child: const Text('LOGIN SEKARANG'),
-        )
-      ],
-    ),
-  );
-}
-
-// ✅ DIALOG UNTUK LOGIN MANUAL
-void _showSuccessDialogWithLogin(String message) {
-  showDialog(
-    context: context,
-    builder: (_) => AlertDialog(
-      title: const Text('Pendaftaran Berhasil 🎉'),
-      content: Text(message),
-      actions: [
-        TextButton(
-          onPressed: () {
-            Navigator.pop(context);
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const LoginScreen()),
-            );
-          },
-          child: const Text('LOGIN SEKARANG'),
-        )
-      ],
-    ),
-  );
-}
-
-  // ✅ VALIDATE ALL FORMS
-  bool _validateAllForms() {
-    for (int i = 0; i < _formKeys.length; i++) {
-      final formKey = _formKeys[i];
-      if (formKey.currentState != null && !formKey.currentState!.validate()) {
-        setState(() => _currentStep = i + 1);
-        return false;
+      if (checkResult['exists'] == true) {
+        setState(() => _isLoading = false);
+        _showErrorDialog(checkResult['message'] ?? 'Username atau email sudah terdaftar.');
+        return;
       }
+
+      // ✅ PREPARE DATA DENGAN MASTER DATA YANG SESUAI
+      final userData = {
+        // Data Umum
+        'username': usernameController.text.trim(),
+        'password': passwordController.text.trim(),
+        'email': emailController.text.trim(),
+        'fullname': fullnameController.text.trim(),
+        'fax': faxController.text.trim().isEmpty ? "-" : faxController.text.trim(),
+        'phone': phoneController.text.trim(),
+        'job': jobController.text.trim().isEmpty ? "Karyawan Swasta" : jobController.text.trim(),
+        'birth_place': birthPlaceController.text.trim(),
+        'birth_date': _selectedBirthDate != null 
+            ? '${_selectedBirthDate!.year}-${_selectedBirthDate!.month.toString().padLeft(2, '0')}-${_selectedBirthDate!.day.toString().padLeft(2, '0')}' 
+            : '2000-01-01',
+
+        // ✅ IDENTITAS - DENGAN DATA MASTER
+        'agama_id': _selectedAgamaId ?? "1",
+        'cabang_id': _selectedCabangId ?? "1",
+        'jenis_identitas': _selectedJenisIdentitas ?? "1",
+        'tanggal_berlaku': _selectedTanggalBerlaku != null
+            ? '${_selectedTanggalBerlaku!.year}-${_selectedTanggalBerlaku!.month.toString().padLeft(2, '0')}-${_selectedTanggalBerlaku!.day.toString().padLeft(2, '0')}'
+            : '2025-12-31',
+        'nomor_identitas': nomorIdentitasController.text.trim(),
+        'sumber_informasi': _selectedSumberInformasi ?? "MARKETING",
+
+        // ✅ DATA KTP
+        'ktp_alamat': ktpAlamatController.text.trim(),
+        'ktp_rt': ktpRtController.text.trim().isEmpty ? "001" : ktpRtController.text.trim(),
+        'ktp_rw': ktpRwController.text.trim().isEmpty ? "001" : ktpRwController.text.trim(),
+        'ktp_id_province': _selectedProvinsiKtp ?? "35",
+        'ktp_id_regency': _selectedKotaKtp ?? "3578",
+        'ktp_postal': ktpPostalController.text.trim().isEmpty ? "60111" : ktpPostalController.text.trim(),
+        'ktp_no': ktpNoController.text.trim().isEmpty ? "01" : ktpNoController.text.trim(),
+
+        // ✅ DATA DOMISILI
+        'domisili_alamat': _sameAsKtp ? ktpAlamatController.text.trim() : domisiliAlamatController.text.trim(),
+        'domisili_rt': _sameAsKtp ? 
+            (ktpRtController.text.trim().isEmpty ? "001" : ktpRtController.text.trim()) : 
+            (domisiliRtController.text.trim().isEmpty ? "001" : domisiliRtController.text.trim()),
+        'domisili_rw': _sameAsKtp ? 
+            (ktpRwController.text.trim().isEmpty ? "001" : ktpRwController.text.trim()) : 
+            (domisiliRwController.text.trim().isEmpty ? "001" : domisiliRwController.text.trim()),
+        'domisili_id_province': _sameAsKtp ? 
+            (_selectedProvinsiKtp ?? "35") : 
+            (_selectedProvinsiDomisili ?? "35"),
+        'domisili_id_regency': _sameAsKtp ? 
+            (_selectedKotaKtp ?? "3578") : 
+            (_selectedKotaDomisili ?? "3578"),
+        'domisili_postal': _sameAsKtp ? 
+            (ktpPostalController.text.trim().isEmpty ? "60111" : ktpPostalController.text.trim()) : 
+            (domisiliPostalController.text.trim().isEmpty ? "60111" : domisiliPostalController.text.trim()),
+        'domisili_no': _sameAsKtp ? 
+            (ktpNoController.text.trim().isEmpty ? "01" : ktpNoController.text.trim()) : 
+            (domisiliNoController.text.trim().isEmpty ? "01" : domisiliNoController.text.trim()),
+
+        // ✅ DATA AHLI WARIS
+        'nama_ahli_waris': namaAhliWarisController.text.trim().isEmpty ? 
+            fullnameController.text.trim() : namaAhliWarisController.text.trim(),
+        'tempat_lahir_ahli_waris': tempatLahirAhliWarisController.text.trim().isEmpty ? 
+            birthPlaceController.text.trim() : tempatLahirAhliWarisController.text.trim(),
+        'tanggal_lahir_ahli_waris': _selectedTanggalLahirAhliWaris != null
+            ? '${_selectedTanggalLahirAhliWaris!.year}-${_selectedTanggalLahirAhliWaris!.month.toString().padLeft(2, '0')}-${_selectedTanggalLahirAhliWaris!.day.toString().padLeft(2, '0')}'
+            : '2000-01-01',
+        'hubungan': _selectedHubungan ?? "ANAK",
+      };
+
+      // ✅ DEBUG: Print semua data sebelum dikirim
+      print('📤 Sending registration data:');
+      userData.forEach((key, value) {
+        print('   $key: $value');
+      });
+      
+      // Call register API
+      final result = await _apiService.register(userData);
+
+      setState(() => _isLoading = false);
+
+      if (!mounted) return;
+
+      if (result['success'] == true) {
+        print('✅ Registration successful');
+        
+        _showSuccessDialogManualLogin(
+          result['message'] ?? 'Pendaftaran berhasil! Silakan login dengan username dan password Anda.'
+        );
+        
+      } else {
+        print('❌ Registration failed: ${result['message']}');
+        _showErrorDialog(result['message'] ?? 'Registrasi gagal. Silakan coba lagi.');
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      print('❌ Register error: $e');
+      _showErrorDialog('Terjadi kesalahan: $e');
     }
-    return true;
   }
 
-  void _showSuccessDialog(String message) {
+  // ✅ DIALOG UNTUK LOGIN MANUAL SETELAH REGISTER BERHASIL
+  void _showSuccessDialogManualLogin(String message) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: const Text('Pendaftaran Berhasil 🎉'),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green),
+            SizedBox(width: 8),
+            Text('Pendaftaran Berhasil'),
+          ],
+        ),
         content: Text(message),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pushReplacement(
+              Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
               );
             },
             child: const Text('LOGIN SEKARANG'),
@@ -445,6 +450,18 @@ void _showSuccessDialogWithLogin(String message) {
         ],
       ),
     );
+  }
+
+  // ✅ VALIDATE ALL FORMS
+  bool _validateAllForms() {
+    for (int i = 0; i < _formKeys.length; i++) {
+      final formKey = _formKeys[i];
+      if (formKey.currentState != null && !formKey.currentState!.validate()) {
+        setState(() => _currentStep = i + 1);
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<void> _selectDate(Function(DateTime) onDateSelected, DateTime? initialDate) async {
@@ -514,7 +531,7 @@ void _showSuccessDialogWithLogin(String message) {
     return null;
   }
 
-  // ✅ PERBAIKAN: Build dropdown dengan handling duplicate values dan error handling
+  // ✅ BUILD DROPDOWN UNTUK DATA LIST (agama, cabang, jenis identitas)
   Widget _buildDropdownFormField({
     required String label,
     required String? value,
@@ -525,20 +542,16 @@ void _showSuccessDialogWithLogin(String message) {
     String? hintText,
   }) {
     try {
-      // ✅ HAPUS DUPLICATE VALUES DAN NULL VALUES
       final uniqueItems = items.where((item) => 
         item != null && 
         item['id'] != null && 
         item['id'].toString().isNotEmpty
       ).toSet().toList();
 
-      // ✅ BUAT DROPDOWN ITEMS
       final dropdownItems = uniqueItems.map((item) {
         final id = item['id']?.toString() ?? '';
         final nama = item['nama']?.toString() ?? 
                     item['name']?.toString() ?? 
-                    item['nama_provinsi']?.toString() ??
-                    item['nama_kota']?.toString() ??
                     'Unknown';
         
         return DropdownMenuItem<String>(
@@ -551,7 +564,6 @@ void _showSuccessDialogWithLogin(String message) {
         );
       }).toList();
 
-      // ✅ ADD DEFAULT ITEM JIKA KOSONG
       if (dropdownItems.isEmpty) {
         dropdownItems.add(
           const DropdownMenuItem(
@@ -561,7 +573,6 @@ void _showSuccessDialogWithLogin(String message) {
         );
       }
 
-      // ✅ VALIDASI: PASTIKAN VALUE ADA DI LIST
       String? validatedValue = value;
       if (value != null && value.isNotEmpty && !dropdownItems.any((item) => item.value == value)) {
         validatedValue = null;
@@ -575,6 +586,70 @@ void _showSuccessDialogWithLogin(String message) {
           labelText: label,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           hintText: hintText,
+          filled: !enabled,
+          fillColor: !enabled ? Colors.grey[100] : null,
+        ),
+        validator: validator,
+        isExpanded: true,
+        style: TextStyle(
+          color: enabled ? Colors.black87 : Colors.grey[600],
+          fontSize: 14,
+        ),
+        icon: enabled ? const Icon(Icons.arrow_drop_down) : const Icon(Icons.lock_outline),
+        borderRadius: BorderRadius.circular(12),
+      );
+    } catch (e) {
+      print('❌ Error building dropdown $label: $e');
+      return TextFormField(
+        initialValue: 'Error loading data',
+        decoration: InputDecoration(
+          labelText: label,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          filled: true,
+          fillColor: Colors.red[50],
+        ),
+        enabled: false,
+      );
+    }
+  }
+
+  // ✅ BUILD DROPDOWN UNTUK DATA MAP (sumber informasi, hubungan)
+  Widget _buildDropdownFromMap({
+    required String label,
+    required String? value,
+    required Map<String, String> items,
+    required Function(String?)? onChanged,
+    required String? Function(String?)? validator,
+    bool enabled = true,
+  }) {
+    try {
+      final dropdownItems = items.entries.map((entry) {
+        return DropdownMenuItem<String>(
+          value: entry.key,
+          child: Text(
+            entry.value,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 14),
+          ),
+        );
+      }).toList();
+
+      if (dropdownItems.isEmpty) {
+        dropdownItems.add(
+          const DropdownMenuItem(
+            value: '',
+            child: Text('Tidak ada data'),
+          ),
+        );
+      }
+
+      return DropdownButtonFormField<String>(
+        value: value,
+        items: dropdownItems,
+        onChanged: enabled ? onChanged : null,
+        decoration: InputDecoration(
+          labelText: label,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           filled: !enabled,
           fillColor: !enabled ? Colors.grey[100] : null,
         ),
@@ -630,7 +705,7 @@ void _showSuccessDialogWithLogin(String message) {
         children: [
           _buildInfoCard(
             'Profil Koperasi KSMI',
-            'Koperasi Syirkah Muslim Indonesia atau disingkat KSMI merupakan koperasi konsumen yang berkomitmen untuk menerapkan transaksi muamalah sesuai syariah, dengan dibimbing oleh beberapa guru/ustadz dan mentor yang mumpuni di bidangnya. Untuk itu, Koperasi ini insyaAllah menjadi solusi Transaksi Halal Tanpa Riba, Denda & Sita bagi kaum muslimin secara umum',
+            'Koperasi Syirkah Muslim Indonesia atau disingkat KSMI merupakan koperasi konsumen yang berkomitmen untuk menerapkan transaksi muamalah sesuai syariah...',
             Icons.business,
             Colors.green[800]!,
           ),
@@ -638,7 +713,7 @@ void _showSuccessDialogWithLogin(String message) {
           
           _buildInfoCard(
             'Visi Koperasi KSMI',
-            'Mewujudkan Koperasi Unggul & Profesional yang mampu meningkatkan kemandirian maupun kesejahteraan anggota serta bermuamalah demi tercapainya Kekuatan Ekonomi Umat yang berlandaskan Ajaran Al Quran dan As Sunnah dengan pemahaman Salafusshalih',
+            'Mewujudkan Koperasi Unggul & Profesional yang mampu meningkatkan kemandirian maupun kesejahteraan anggota...',
             Icons.flag,
             Colors.blue[700]!,
           ),
@@ -647,9 +722,7 @@ void _showSuccessDialogWithLogin(String message) {
           _buildInfoCard(
             'Misi Koperasi KSMI',
             '1. Melaksanakan kegiatan usaha dalam koperasi yang sesuai dengan prinsip-prinsip ekonomi tuntunan syariat\n'
-            '2. Meningkatkan dan mengembangkan pelayanan prima bagi koperasi untuk anggota dan masyarakat pada umumnya\n'
-            '3. Mengembangkan tata kelola organisasi dan manajemen di dalam koperasi sebagai upaya menciptakan unit-unit usaha yang unggul dan berkualitas\n'
-            '4. Menjadi mitra pilihan bagi instansi pemerintah, lembaga swasta, maupun kelompok tertentu guna memberikan manfaat dan promosi',
+            '2. Meningkatkan dan mengembangkan pelayanan prima bagi koperasi untuk anggota dan masyarakat...',
             Icons.assignment,
             Colors.orange[700]!,
           ),
@@ -659,11 +732,7 @@ void _showSuccessDialogWithLogin(String message) {
             'Manfaat Bergabung',
             '• Transaksi dengan akad yang halal sesuai syariat.\n'
             '• Berusaha bermuamalah sesuai dengan hukum syar`i tanpa riba.\n'
-            '• Ikut berperan aktif dalam memerangi riba.\n'
-            '• Mampu bersaing harga dengan lembaga keuangan pada umumnya.\n'
-            '• Tidak menerapkan 2 akad dalam 1 transaksi (sewa jual).\n'
-            '• Tidak ada denda maupun sita.\n'
-            '• Dapat membantu kaum muslimin yang membutuhkan untuk berlepas diri dari jeratan riba,',
+            '• Ikut berperan aktif dalam memerangi riba...',
             Icons.emoji_events,
             Colors.purple[700]!,
           ),
@@ -671,9 +740,9 @@ void _showSuccessDialogWithLogin(String message) {
           
           _buildInfoCard(
             'Manfaat Keanggotaan',
-            '• Mendapatkan profit dari bagi hasil SHU setiap tahun, apabila koperasi berhasil mendapatkan laba usaha demikian sebaliknya\n'
+            '• Mendapatkan profit dari bagi hasil SHU setiap tahun...\n'
             '• Mengembangkan networking (jaringan) dengan usaha lain\n'
-            '• Ikut berperan dalam perkembangan dakwah, karena sebagian profit (keuntungan) koperasi akan disalurkan untuk kegiatan dakwah dan sosial kepada masyarakat\n',
+            '• Ikut berperan dalam perkembangan dakwah...',
             Icons.card_membership,
             Colors.teal[700]!,
           ),
@@ -716,7 +785,6 @@ void _showSuccessDialogWithLogin(String message) {
     );
   }
 
-  // ✅ Info card dengan warna yang berbeda
   Widget _buildInfoCard(String title, String content, IconData icon, Color color) {
     return Card(
       elevation: 3,
@@ -862,61 +930,52 @@ void _showSuccessDialogWithLogin(String message) {
     );
   }
 
-  // ✅ STEP 2: IDENTITAS - DENGAN DROPDOWN YANG SUDAH DIPERBAIKI
+  // ✅ STEP 2: IDENTITAS - DENGAN DATA MASTER
   Widget _buildIdentitasStep() {
     return Form(
       key: _formKeys[1],
       child: SingleChildScrollView(
         child: Column(
           children: [
-            // ✅ AGAMA DROPDOWN - DIPERBAIKI
+            // AGAMA DROPDOWN
             _buildDropdownFormField(
               label: 'Agama *',
-              value: agamaIdController.text.isEmpty ? null : agamaIdController.text,
+              value: _selectedAgamaId,
               items: _agamaList,
               onChanged: (String? value) {
-                if (value != null) {
-                  setState(() {
-                    agamaIdController.text = value;
-                  });
-                }
+                setState(() => _selectedAgamaId = value);
+                _formKeys[1].currentState?.validate();
               },
               validator: (value) => _validateDropdown(value, 'Agama'),
             ),
             const SizedBox(height: 16),
 
-            // ✅ CABANG DROPDOWN - DIPERBAIKI
+            // CABANG DROPDOWN
             _buildDropdownFormField(
               label: 'Cabang *',
-              value: cabangIdController.text.isEmpty ? null : cabangIdController.text,
+              value: _selectedCabangId,
               items: _cabangList,
               onChanged: (String? value) {
-                if (value != null) {
-                  setState(() {
-                    cabangIdController.text = value;
-                  });
-                }
+                setState(() => _selectedCabangId = value);
+                _formKeys[1].currentState?.validate();
               },
               validator: (value) => _validateDropdown(value, 'Cabang'),
             ),
             const SizedBox(height: 16),
 
+            // JENIS IDENTITAS
             _buildDropdownFormField(
               label: 'Jenis Identitas *',
-              value: jenisIdentitasController.text,
-              items: const [
-                {'id': 'KTP', 'nama': 'KTP'},
-                {'id': 'SIM', 'nama': 'SIM'},
-                {'id': 'Passport', 'nama': 'Passport'},
-              ],
+              value: _selectedJenisIdentitas,
+              items: _jenisIdentitasList,
               onChanged: (String? value) {
-                if (value != null) {
-                  setState(() => jenisIdentitasController.text = value);
-                }
+                setState(() => _selectedJenisIdentitas = value);
+                _formKeys[1].currentState?.validate();
               },
               validator: (value) => _validateDropdown(value, 'Jenis identitas'),
             ),
             const SizedBox(height: 16),
+
             _buildTextField(
               controller: nomorIdentitasController,
               label: 'Nomor Identitas *',
@@ -925,6 +984,7 @@ void _showSuccessDialogWithLogin(String message) {
               validator: (v) => _validateRequired(v, 'Nomor identitas'),
             ),
             const SizedBox(height: 16),
+
             _buildDateField(
               label: 'Tanggal Berlaku Identitas',
               value: _selectedTanggalBerlaku,
@@ -933,14 +993,15 @@ void _showSuccessDialogWithLogin(String message) {
               }, DateTime.now().add(const Duration(days: 365 * 5))),
             ),
             const SizedBox(height: 16),
-            _buildDropdownFormField(
+
+            // SUMBER INFORMASI DARI MAP
+            _buildDropdownFromMap(
               label: 'Sumber Informasi *',
-              value: sumberInformasiController.text.isEmpty ? null : sumberInformasiController.text,
-              items: _sumberInfoList,
+              value: _selectedSumberInformasi,
+              items: _sumberInfoMap,
               onChanged: (String? value) {
-                if (value != null) {
-                  setState(() => sumberInformasiController.text = value);
-                }
+                setState(() => _selectedSumberInformasi = value);
+                _formKeys[1].currentState?.validate();
               },
               validator: (value) => _validateDropdown(value, 'Sumber informasi'),
             ),
@@ -950,7 +1011,7 @@ void _showSuccessDialogWithLogin(String message) {
     );
   }
 
-  // ✅ STEP 3: DATA KTP - DENGAN DROPDOWN PROVINSI & KOTA YANG SUDAH DIPERBAIKI
+  // ✅ STEP 3: DATA KTP
   Widget _buildDataKtpStep() {
     return Form(
       key: _formKeys[2],
@@ -997,7 +1058,7 @@ void _showSuccessDialogWithLogin(String message) {
             ),
             const SizedBox(height: 16),
             
-            // ✅ PROVINSI DROPDOWN - DIPERBAIKI
+            // PROVINSI DROPDOWN
             _buildDropdownFormField(
               label: 'Provinsi *',
               value: _selectedProvinsiKtp,
@@ -1016,7 +1077,7 @@ void _showSuccessDialogWithLogin(String message) {
             ),
             const SizedBox(height: 16),
             
-            // ✅ KOTA/KABUPATEN DROPDOWN - DIPERBAIKI
+            // KOTA/KABUPATEN DROPDOWN
             _buildDropdownFormField(
               label: 'Kabupaten/Kota *',
               value: _selectedKotaKtp,
@@ -1043,7 +1104,7 @@ void _showSuccessDialogWithLogin(String message) {
     );
   }
 
-  // ✅ STEP 4: DATA DOMISILI - DENGAN DROPDOWN YANG SUDAH DIPERBAIKI
+  // ✅ STEP 4: DATA DOMISILI
   Widget _buildDataDomisiliStep() {
     return Form(
       key: _formKeys[3],
@@ -1057,23 +1118,35 @@ void _showSuccessDialogWithLogin(String message) {
                 onChanged: (value) {
                   setState(() => _sameAsKtp = value ?? false);
                   if (value ?? false) {
+                    // Copy data dari KTP ke domisili
                     domisiliAlamatController.text = ktpAlamatController.text;
                     domisiliNoController.text = ktpNoController.text;
                     domisiliRtController.text = ktpRtController.text;
                     domisiliRwController.text = ktpRwController.text;
                     domisiliPostalController.text = ktpPostalController.text;
+                    
                     _selectedProvinsiDomisili = _selectedProvinsiKtp;
                     _selectedKotaDomisili = _selectedKotaKtp;
                     
-                    // Load kota untuk domisili jika provinsi berbeda
                     if (_selectedProvinsiDomisili != null) {
                       _loadKota(_selectedProvinsiDomisili!, false);
                     }
+                  } else {
+                    // Reset jika tidak sama dengan KTP
+                    domisiliAlamatController.text = '';
+                    domisiliNoController.text = '';
+                    domisiliRtController.text = '';
+                    domisiliRwController.text = '';
+                    domisiliPostalController.text = '';
+                    _selectedProvinsiDomisili = null;
+                    _selectedKotaDomisili = null;
+                    _kotaListDomisili = [];
                   }
                 },
               ),
             ),
             const SizedBox(height: 16),
+            
             _buildTextField(
               controller: domisiliAlamatController,
               label: 'Alamat Domisili *',
@@ -1083,6 +1156,7 @@ void _showSuccessDialogWithLogin(String message) {
               enabled: !_sameAsKtp,
             ),
             const SizedBox(height: 16),
+            
             _buildTextField(
               controller: domisiliNoController,
               label: 'No. Rumah *',
@@ -1091,6 +1165,7 @@ void _showSuccessDialogWithLogin(String message) {
               enabled: !_sameAsKtp,
             ),
             const SizedBox(height: 16),
+            
             Row(
               children: [
                 Expanded(
@@ -1118,10 +1193,10 @@ void _showSuccessDialogWithLogin(String message) {
             ),
             const SizedBox(height: 16),
             
-            // ✅ PROVINSI DOMISILI DROPDOWN - DIPERBAIKI
+            // PROVINSI DOMISILI
             _buildDropdownFormField(
-              label: 'Provinsi *',
-              value: _selectedProvinsiDomisili,
+              label: 'Provinsi Domisili *',
+              value: _sameAsKtp ? _selectedProvinsiKtp : _selectedProvinsiDomisili,
               items: _provinsiList,
               onChanged: _sameAsKtp ? null : (String? value) {
                 if (value != null) {
@@ -1133,22 +1208,22 @@ void _showSuccessDialogWithLogin(String message) {
                   _loadKota(value, false);
                 }
               },
-              validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Provinsi'),
+              validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Provinsi domisili'),
               enabled: !_sameAsKtp,
             ),
             const SizedBox(height: 16),
             
-            // ✅ KOTA DOMISILI DROPDOWN - DIPERBAIKI
+            // KOTA DOMISILI
             _buildDropdownFormField(
-              label: 'Kabupaten/Kota *',
-              value: _selectedKotaDomisili,
+              label: 'Kabupaten/Kota Domisili *',
+              value: _sameAsKtp ? _selectedKotaKtp : _selectedKotaDomisili,
               items: _kotaListDomisili,
               onChanged: _sameAsKtp ? null : (String? value) {
                 if (value != null) {
                   setState(() => _selectedKotaDomisili = value);
                 }
               },
-              validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Kabupaten/Kota'),
+              validator: _sameAsKtp ? null : (value) => _validateDropdown(value, 'Kabupaten/Kota domisili'),
               enabled: !_sameAsKtp,
             ),
             const SizedBox(height: 16),
@@ -1161,13 +1236,40 @@ void _showSuccessDialogWithLogin(String message) {
               validator: _sameAsKtp ? null : (v) => _validateRequired(v, 'Kode Pos'),
               enabled: !_sameAsKtp,
             ),
+
+            if (_sameAsKtp)
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.green[600], size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Data domisili sama dengan KTP',
+                        style: TextStyle(
+                          color: Colors.green[700],
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  // ✅ STEP 5: DATA AHLI WARIS
+  // ✅ STEP 5: DATA AHLI WARIS - DENGAN HUBUNGAN DARI MASTER DATA
   Widget _buildDataAhliWarisStep() {
     return Form(
       key: _formKeys[4],
@@ -1197,19 +1299,13 @@ void _showSuccessDialogWithLogin(String message) {
               validator: (v) => _selectedTanggalLahirAhliWaris == null ? 'Tanggal lahir ahli waris wajib diisi' : null,
             ),
             const SizedBox(height: 16),
-            _buildDropdownFormField(
+            // HUBUNGAN KELUARGA DARI MAP
+            _buildDropdownFromMap(
               label: 'Hubungan Keluarga *',
-              value: hubunganController.text,
-              items: const [
-                {'id': 'Orang Tua', 'nama': 'Orang Tua'},
-                {'id': 'Suami/Istri', 'nama': 'Suami/Istri'},
-                {'id': 'Anak', 'nama': 'Anak'},
-                {'id': 'Saudara Kandung', 'nama': 'Saudara Kandung'},
-              ],
+              value: _selectedHubungan,
+              items: _hubunganMap,
               onChanged: (String? value) {
-                if (value != null) {
-                  setState(() => hubunganController.text = value);
-                }
+                setState(() => _selectedHubungan = value);
               },
               validator: (value) => _validateDropdown(value, 'Hubungan keluarga'),
             ),
@@ -1333,7 +1429,7 @@ void _showSuccessDialogWithLogin(String message) {
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 16),
-                  Text('Memuat data provinsi dan kota...'),
+                  Text('Memuat data master...'),
                 ],
               ),
             )
@@ -1470,11 +1566,7 @@ void _showSuccessDialogWithLogin(String message) {
     faxController.dispose();
     phoneController.dispose();
     jobController.dispose();
-    agamaIdController.dispose();
-    cabangIdController.dispose();
-    jenisIdentitasController.dispose();
     nomorIdentitasController.dispose();
-    sumberInformasiController.dispose();
     ktpAlamatController.dispose();
     ktpNoController.dispose();
     ktpRtController.dispose();
@@ -1487,7 +1579,6 @@ void _showSuccessDialogWithLogin(String message) {
     domisiliPostalController.dispose();
     namaAhliWarisController.dispose();
     tempatLahirAhliWarisController.dispose();
-    hubunganController.dispose();
     super.dispose();
   }
 }

@@ -1,0 +1,265 @@
+[33mcommit 7aabbff9936121b280a96dc86d268e6cc5ae2dbf[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Fri Nov 7 05:03:50 2025 -0500
+
+    FINAL RESULT TINGGAL UPLOAD PROFILE
+
+[33mcommit 4e0329aa19ab59d3165955632b2820719b43b946[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Fri Nov 7 04:49:21 2025 -0500
+
+    FINAL RESULT TINGGAL UPLOAD PROFILEzdfz
+
+[33mcommit c822ecebec1d502954f3f56556959031ddc2b90e[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Fri Nov 7 01:14:29 2025 -0500
+
+    TEST NOTIFIKASI ANDROID 2
+
+[33mcommit 7fe090b05e039cc74dd356bf3d556828b00d6e35[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Thu Nov 6 12:21:09 2025 -0500
+
+    TEST NOTIFIKASI ANDROID 1
+
+[33mcommit e0f0921a876c12e782e0f79da093710a739fe24b[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Thu Nov 6 06:50:52 2025 -0500
+
+    TEST NOTIFIKASI ANDROID
+
+[33mcommit b101c88950b626e140a9254234923887095c4642[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Wed Nov 5 02:28:57 2025 -0500
+
+    REALASE ANDROID FIX
+
+[33mcommit 6d02ec10afb3b9ee54617dc070b613f942ed5f3b[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Wed Nov 5 01:08:00 2025 -0500
+
+    REALASE ANDROID 3
+
+[33mcommit 55453519a2de94d05ecd605caa20296e1cde4968[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Wed Nov 5 00:56:21 2025 -0500
+
+    REALASE ANDROID 2
+
+[33mcommit c1a8e974854ed2aef9dc4c8315a1ecae098df72f[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Wed Nov 5 00:48:28 2025 -0500
+
+    REALASE ANDROID 1
+
+[33mcommit 6c0d3b850a66ab5ba27c1220ad826e6d2b615913[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Wed Nov 5 00:39:34 2025 -0500
+
+    REALASE ANDROID
+
+[33mcommit 52e7ba49070dfc18b63b6333370345072237094a[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 10:32:30 2025 -0500
+
+    fix: FIX WHITE SCREEN 1
+
+[33mcommit 1c87dcc9faf11ff52382f5f78a2c95cc44b052d9[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 10:20:54 2025 -0500
+
+    fix: FIX WHITE SCREEN
+
+[33mcommit 37391a8525dab30f9633edc3b5eef648a2ed3e3a[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 09:56:47 2025 -0500
+
+    fix: JSON GOOGLE FINAL
+
+[33mcommit 35dc1a076327f57a3e4486a8c1156a0e462454d9[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 08:39:21 2025 -0500
+
+    fix: JSON GOOGLE 1
+
+[33mcommit 43417b94d27be7b853f4e839395653aaa9e49352[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 08:26:45 2025 -0500
+
+    fix: JSON GOOGLE
+
+[33mcommit fb116136d3e2b9c8a8d13a0fc183e5cd17bc46e1[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 08:05:57 2025 -0500
+
+    fix: FIREBASE
+
+[33mcommit f2dd8dcee2e0ab16b2daae94af6121be0f15aaf7[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 07:01:47 2025 -0500
+
+    fix: disable minify and shrink resources 5
+
+[33mcommit 2a8cc125d8338f7b8a8bae8a1a9084f7a1c19778[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 06:49:47 2025 -0500
+
+    fix: disable minify and shrink resources 4
+
+[33mcommit eb19bb89e9c00e3f63c5b2926ea8f3f01feb8b85[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 06:36:58 2025 -0500
+
+    fix: disable minify and shrink resources 3
+
+[33mcommit 6c29e147fbd95a707170e906179f8a009f145228[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 06:26:47 2025 -0500
+
+    fix: disable minify and shrink resources 2
+
+[33mcommit 815a8c2c6a847e1d0a164dc4f00e87343b12cb0f[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 06:00:00 2025 -0500
+
+    fix: disable minify and shrink resources 1
+
+[33mcommit f54a96365878dccd11167e5d9c6e04906a181078[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 05:53:39 2025 -0500
+
+    fix: disable minify and shrink resources
+
+[33mcommit 5be59d3180b05e9f9405ddb12d861e71925452e0[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 05:44:56 2025 -0500
+
+    fix: simplify android build config
+
+[33mcommit 5a8c8a8dbb795d710d78abac2de3b92e3a063522[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 05:37:58 2025 -0500
+
+    fix: kotlin dsl syntax and remove firebase
+
+[33mcommit 09e9bcaf659ebd1ae5c59c7df86604f37500fa09[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 05:30:40 2025 -0500
+
+    fix: build configuration 1
+
+[33mcommit 54e3f3c77001ed17978076d27945ea3a2e500ebb[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 05:28:27 2025 -0500
+
+    fix: build configuration
+
+[33mcommit cc72148c65cfd0311623d5cc3120921df8baa1a7[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 05:25:58 2025 -0500
+
+    Integrasi to API UPDATED FIX UPLOAD FOTO TESTTTT
+
+[33mcommit a95034725dc8b38320b0c5d45402b0d423f3f51d[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 05:18:46 2025 -0500
+
+    Integrasi to API UPDATED FIX UPLOAD FOTO TESTTT
+
+[33mcommit bfe33095e038b2e300f68e7bbe4c4af213566d1d[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 05:13:53 2025 -0500
+
+    Integrasi to API UPDATED FIX UPLOAD FOTO TESTT
+
+[33mcommit 122e1ac522c169e7bbe895de2275799d2f48e560[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 04:18:18 2025 -0500
+
+    Integrasi to API UPDATED FIX UPLOAD FOTO TEST
+
+[33mcommit 77865cb6d75c2583faeae891212b2434681d220a[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 04:15:24 2025 -0500
+
+    Integrasi to API UPDATED FIX UPLOAD FOTO 3
+
+[33mcommit 2cc3b6a081cf904112ac18a9e6ce82b7f4f29d62[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 03:55:00 2025 -0500
+
+    Integrasi to API UPDATED FIX UPLOAD FOTO 2
+
+[33mcommit c12da8938e946192b2a80e693929317333508a4d[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sun Nov 2 02:57:58 2025 -0500
+
+    Integrasi to API UPDATED FIX UPLOAD FOTO 1
+
+[33mcommit d1abaef6283f3194208e87f0f3f0b1565a76c96a[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sat Nov 1 17:40:54 2025 -0400
+
+    Integrasi to API UPDATED FIX UPLOAD FOTO
+
+[33mcommit c24a51a52bb752e14fbd12169b6241089b6f79c6[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sat Nov 1 17:04:18 2025 -0400
+
+    Integrasi to API UPDATED FIX FINALL
+
+[33mcommit 97f933ef79c772edad4117073cf84920b81bd624[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sat Nov 1 15:58:06 2025 -0400
+
+    Integrasi to API UPDATED FIX FINALLL
+
+[33mcommit c4e280e2f7e8a3923932cbc0bbd120a247713874[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sat Nov 1 13:54:01 2025 -0400
+
+    Integrasi to API UPDATED FIX 3
+
+[33mcommit f7d8281c31f1f53f317efa359faf04b4923807e4[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sat Nov 1 12:43:24 2025 -0400
+
+    Integrasi to API UPDATED FIX 2
+
+[33mcommit d09be47c75b26a327928c9122c9c43087b21b717[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sat Nov 1 12:30:42 2025 -0400
+
+    Integrasi to API UPDATED FIX 1
+
+[33mcommit 1af2ddbd093e2a42e604875fd8c1b4963fb5d4bd[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sat Nov 1 10:26:32 2025 -0400
+
+    Integrasi to API UPDATED FULL VERSION
+
+[33mcommit a41148b3c00f50b2250bb1ca2fad86ef679b1cad[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sat Nov 1 07:16:44 2025 -0400
+
+    Integrasi to API UPDATED 5
+
+[33mcommit 7f8b74c5e8afe80b9ca8dbe925a2f323e942f211[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sat Nov 1 07:02:44 2025 -0400
+
+    Integrasi to API UPDATED 4
+
+[33mcommit 2efe0a7e40aaa04d5b24013ec2ed40705cbc72de[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sat Nov 1 06:55:51 2025 -0400
+
+    Integrasi to API UPDATED 3
+
+[33mcommit 73134fd49384402894a9bf466ab0944a6f12b6f7[m
+Author: fahrulriadu <fahrul@fahrul-linux.bbrouter>
+Date:   Sat Nov 1 06:53:29 2025 -0400
+
+    Integrasi to API UPDATED 2
+
+[33mcommit 467d033fdcb98fa0c5cda1defe0

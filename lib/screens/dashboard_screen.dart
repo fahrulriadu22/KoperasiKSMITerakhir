@@ -399,64 +399,68 @@ void dispose() {
     );
   }
 
-  // ✅ PERBAIKAN: LOAD DATA DENGAN STRUCTURE YANG SESUAI RIWAYAT_ANGSURAN_SCREEN
-  Future<void> _loadDataFromApi() async {
-    if (mounted) {
-      setState(() {
-        _isLoading = true;
-        _hasError = false;
-        _errorMessage = '';
-      });
-    }
+// ✅ PERBAIKAN: LOAD DATA DENGAN STRUCTURE YANG SESUAI RIWAYAT_ANGSURAN_SCREEN
+Future<void> _loadDataFromApi() async {
+  // ✅ CEK MOUNTED SEBELUM SET STATE
+  if (!mounted) return;
+  
+  setState(() {
+    _isLoading = true;
+    _hasError = false;
+    _errorMessage = '';
+  });
 
-    try {
-      print('🚀 Memulai load data dashboard dengan struktur taqsith...');
+  try {
+    print('🚀 Memulai load data dashboard dengan struktur taqsith...');
 
-      // ✅ LOAD DATA SALDO DAN TAQSITH SECARA PARALEL
-      final results = await Future.wait([
-        _apiService.getAllSaldo(), // ✅ GET SALDO YANG SUDAH FIX
-        _apiService.getAlltaqsith(),
-      ]);
+    // ✅ LOAD DATA SALDO DAN TAQSITH SECARA PARALEL
+    final results = await Future.wait([
+      _apiService.getAllSaldo(), // ✅ GET SALDO YANG SUDAH FIX
+      _apiService.getAlltaqsith(),
+    ]);
 
-      final saldoResult = results[0];
-      final taqsithResult = results[1];
+    final saldoResult = results[0];
+    final taqsithResult = results[1];
 
-      if (mounted) {
-        setState(() {
-          // ✅ PROSES DATA SALDO
-          if (saldoResult['success'] == true) {
-            _saldoData = saldoResult['data'] ?? {};
-            print('✅ Berhasil load data saldo');
-          } else {
-            _saldoData = {};
-            print('❌ Gagal load data saldo');
-          }
+    // ✅ CEK MOUNTED LAGI SEBELUM SET STATE
+    if (!mounted) return;
 
-          // ✅ PROSES DATA TAQSITH - SESUAI STRUCTURE DARI RIWAYAT_ANGSURAN_SCREEN
-          if (taqsithResult['success'] == true) {
-            _angsuranData = _processTaqsithDataForDashboard(taqsithResult);
-            print('✅ Berhasil load data taqsith untuk dashboard');
-          } else {
-            _angsuranData = {};
-            print('❌ Gagal load data taqsith');
-          }
-          
-          _isLoading = false;
-        });
+    setState(() {
+      // ✅ PROSES DATA SALDO
+      if (saldoResult['success'] == true) {
+        _saldoData = saldoResult['data'] ?? {};
+        print('✅ Berhasil load data saldo');
+      } else {
+        _saldoData = {};
+        print('❌ Gagal load data saldo');
       }
-    } catch (e) {
-      print('❌ Error loading dashboard data: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _hasError = true;
-          _errorMessage = 'Gagal memuat data: $e';
-          _saldoData = {};
-          _angsuranData = {};
-        });
+
+      // ✅ PROSES DATA TAQSITH - SESUAI STRUCTURE DARI RIWAYAT_ANGSURAN_SCREEN
+      if (taqsithResult['success'] == true) {
+        _angsuranData = _processTaqsithDataForDashboard(taqsithResult);
+        print('✅ Berhasil load data taqsith untuk dashboard');
+      } else {
+        _angsuranData = {};
+        print('❌ Gagal load data taqsith');
       }
-    }
+      
+      _isLoading = false;
+    });
+  } catch (e) {
+    print('❌ Error loading dashboard data: $e');
+    
+    // ✅ CEK MOUNTED SEBELUM SET STATE ERROR
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoading = false;
+      _hasError = true;
+      _errorMessage = 'Gagal memuat data: $e';
+      _saldoData = {};
+      _angsuranData = {};
+    });
   }
+}
 
   // ✅ PROSES DATA TAQSITH UNTUK DASHBOARD
   Map<String, dynamic> _processTaqsithDataForDashboard(Map<String, dynamic> taqsithResult) {
@@ -887,16 +891,18 @@ void _showNotificationPopup() {
     }
   }
 
-  // ✅ REFRESH DATA FUNCTION
-  Future<void> _refreshData() async {
-    if (mounted) {
-      setState(() {
-        _isLoading = true;
-        _hasError = false;
-        _errorMessage = '';
-      });
-    }
+// ✅ REFRESH DATA FUNCTION
+Future<void> _refreshData() async {
+  // ✅ CEK MOUNTED
+  if (!mounted) return;
+  
+  setState(() {
+    _isLoading = true;
+    _hasError = false;
+    _errorMessage = '';
+  });
 
+  try {
     // Refresh user data dari session
     await _loadCurrentUser();
     // Refresh data dari API
@@ -907,6 +913,7 @@ void _showNotificationPopup() {
     // ✅ Panggil callback jika ada
     widget.onRefresh?.call();
     
+    // ✅ CEK MOUNTED SEBELUM SHOW SNACKBAR
     if (mounted && !_hasError) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -916,7 +923,19 @@ void _showNotificationPopup() {
         ),
       );
     }
+  } catch (e) {
+    print('❌ Error refreshing data: $e');
+    
+    // ✅ CEK MOUNTED SEBELUM SET STATE ERROR
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoading = false;
+      _hasError = true;
+      _errorMessage = 'Gagal refresh data: $e';
+    });
   }
+}
 
   // ✅ PERBAIKAN: HANDLE MENU TAP DENGAN DATA YANG BENAR
   void _handleMenuTap(MenuIcon menu, BuildContext context) {
@@ -937,30 +956,30 @@ void _showNotificationPopup() {
     }
   }
 
-  // ✅ PERBAIKAN: NAVIGASI KE RIWAYAT TABUNGAN DENGAN FILTER YANG BENAR
-  void _navigateToRiwayatTabungan(BuildContext context, MenuIcon menu, Map<String, dynamic> userData) {
-    print('🚀 Navigating to RiwayatTabungan with type: ${menu.key}');
-    
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => RiwayatTabunganScreen(
-          user: userData,
-          initialTabunganType: menu.key,
-        ),
+// ✅ NAVIGASI NORMAL - USER PENCET BACK UNTUK KEMBALI
+void _navigateToRiwayatTabungan(BuildContext context, MenuIcon menu, Map<String, dynamic> userData) {
+  print('🚀 Navigating to RiwayatTabungan with type: ${menu.key}');
+  
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => RiwayatTabunganScreen(
+        user: userData,
+        initialTabunganType: menu.key,
       ),
-    );
-  }
+    ),
+  );
+}
 
-  // ✅ NAVIGASI KE RIWAYAT ANGSURAN
-  void _navigateToRiwayatAngsuran(BuildContext context, Map<String, dynamic> userData) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => RiwayatAngsuranScreen(user: userData),
-      ),
-    );
-  }
+// ✅ NAVIGASI KE RIWAYAT ANGSURAN
+void _navigateToRiwayatAngsuran(BuildContext context, Map<String, dynamic> userData) {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => RiwayatAngsuranScreen(user: userData),
+    ),
+  );
+}
 
   // ✅ PERBAIKAN: SHOW SALDO DETAIL DENGAN DATA YANG AKURAT
   void _showSaldoDetail(BuildContext context) {
@@ -1342,12 +1361,16 @@ Widget _buildNotificationItem({
   );
 }
 
-// ✅ CLOSE NOTIFICATION POPUP
+// ✅ CLOSE NOTIFICATION POPUP - FIXED
 void _closeNotificationPopup() {
   if (_notificationOverlayEntry != null) {
     _notificationOverlayEntry!.remove();
     _notificationOverlayEntry = null;
   }
+  
+  // ✅ CEK MOUNTED SEBELUM SET STATE
+  if (!mounted) return;
+  
   setState(() {
     _isNotificationPopupOpen = false;
   });
@@ -1504,16 +1527,6 @@ void _showAllNotifications() {
           automaticallyImplyLeading: false,
           centerTitle: true,
             actions: [
-              // ✅ TOMBOL TEST NOTIFIKASI SYSTEM - TARUH SEBELUM NOTIFIKASI
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
-                child: IconButton(
-                  icon: Icon(Icons.notification_add), // Ikon test
-                  onPressed: _showAndroidSystemTestDialog, // Panggil dialog test
-                  tooltip: 'Test System Notifications',
-                ),
-              ),
-
             // ✅ NOTIFICATION BUTTON WITH BADGE
             Padding(
               padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
@@ -1560,16 +1573,6 @@ void _showAllNotifications() {
                 icon: const Icon(Icons.refresh),
                 onPressed: _refreshData,
                 tooltip: 'Refresh Data',
-              ),
-            ),
-            
-            // ✅ LOGOUT BUTTON
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10.0, right: 8.0),
-              child: IconButton(
-                icon: const Icon(Icons.logout),
-                onPressed: _logout,
-                tooltip: 'Logout',
               ),
             ),
           ],
